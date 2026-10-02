@@ -149,7 +149,7 @@ It uses tools and nothing else. Resources and prompts are not used. Roots, sampl
 |---|---|---|
 | `list_annotations(status?, limit, cursor, detail)` | pending by default; cursor pagination | readOnlyHint |
 | `get_annotation(id, detail)` | prompt, elements, attachments with file paths and summaries (recording, error groups, perf verdict) | readOnlyHint |
-| `wait_for_annotation(timeoutSec = 50, max 1800)` | the next new annotation, or `{ timedOut: true }` as a normal result | readOnlyHint |
+| `wait_for_annotation(timeoutSec = 50, max 1800)` | the oldest pending, unclaimed annotation, immediately if one exists, otherwise the first to arrive; `{ timedOut: true }` as a normal result | readOnlyHint |
 | `set_status(id, status, note?)` | `acknowledged` creates `claim.json` with `O_EXCL`; `resolved` and `dismissed` append a status event | destructiveHint false, idempotentHint true |
 | `reply(id, text)` | appended to `thread.jsonl`, shown in the overlay | destructiveHint false, idempotentHint false |
 | `get_errors(since?, limit, detail)` | open error groups from the live snapshot | readOnlyHint |
@@ -206,7 +206,9 @@ marquee end(rect)
   selection = Shift ? selection ∪ hits : hits
 ```
 
-Source location comes from a serve-only transform that stamps `data-pka-src="file:line:col"` on DOM JSX at the call site, in both client and SSR environments. First try `@tanstack/devtools-bundler-core`'s `injectSource` (0.1.3); write our own transform if it needs TanStack's devtools panel. Elements without the attribute (portals, `node_modules`) fall back to `bippy/source` reading `_debugStack`. Owner chains drop framework internals such as `SafeFragment`, `MatchInnerImpl`, and `Lazy`.
+Source location comes from our own serve-only Vite plugin (spike: `/tmp/pk-annotator/spike-source/plugins/pka-source.ts`). It parses with Vite's re-exported `parseSync` and `Visitor` and writes with `magic-string`, stamping `data-pka-src="<workspace-relative path>:line:col"` (1-based) on every lowercase host JSX element. Paths are relative to `searchForWorkspaceRoot`, so Lean reports `apps/web/src/...`. The hook must use `enforce: "pre"` and `transform.order: "pre"` so it stamps the untouched source in client, route-split, and SSR environments alike; without that order the spike reproduced a hydration mismatch. TanStack's `injectSource` was rejected: fixed attribute name, composite elements stamped, spread detection defeated by rest destructuring, parse errors swallowed.
+
+Each element reports two locations when they differ: `source` (the host element's own JSX, for example `button.tsx:4:10` inside a `Button` wrapper) and `usedAt` (the nearest user-code owner's call site, for example `index.tsx:20:6`, from bippy `getSource(ownerFiber)`). Elements without the attribute (Radix content, portals, `node_modules`) fall back to bippy 0.7.3: walk `getRawOwnerStack(fiber)`, take the first frame under the project and outside `node_modules`, and symbolicate it. bippy columns are 0-based (add 1) and file names are basenames (resolve with `new URL(source, frameUrl)`). A cold lookup costs about 300 ms while source maps load, so pick mode pre-warms it. Owner chains drop every frame whose URL contains `/node_modules/`, which removes `SafeFragment`, `MatchInnerImpl`, `Lazy`, `Primitive.*`, and the like, while keeping user components such as `RootDocument`.
 
 In React Bench, tools that sent `file:line` let the agent find the right file 95 to 96% of the time; tools that sent only a component name scored 86%, the same as no tool.
 
@@ -215,7 +217,7 @@ In React Bench, tools that sent `file:line` let the agent find the right file 95
 ```xml
 <annotation id="a-17" route="/projects/abc" viewport="1440x900@2">
 <prompt>Archive should confirm first; the row below jumps when this one leaves.</prompt>
-<element n="1" source="apps/web/src/project-row.tsx:48:7" owners="ProjectRow > ProjectList"
+<element n="1" source="apps/web/src/ui/button.tsx:4:10" usedAt="apps/web/src/project-row.tsx:48:7" owners="ProjectRow > ProjectList"
          role="button" name="Archive project" crop="capture/frames/sel-1.webp"/>
 <capture>_interim/annotations/a-17/capture/summary.md</capture>
 </annotation>
@@ -269,10 +271,18 @@ The overlay names suspects; pass/fail claims come only from lab verdicts on prod
 
 ## AI Elements inside the shadow root
 
-- Radix portals (dropdown-menu, select, hover-card, tooltip) take a `container` inside the shadow root.
-- Tailwind 4 `@property` rules are ignored inside shadow roots; register them once on `document`.
-- Radix outside-click detection sees the shadow host as the target; filter on `composedPath()` unless Radix PR #2433 has shipped.
-- The compiled stylesheet is attached with `adoptedStyleSheets`, so nothing leaks either way.
+Proven in the spike at `/tmp/pk-annotator/spike-ui/` (shadcn 4.21.1 `init -t vite -b radix`, ai-elements 1.9.0 `add prompt-input attachments`, Tailwind 4.3.3, React 19.3.0), verified with Playwright against a host page with hostile global CSS:
+
+1. **Stylesheet.** Import the compiled CSS with `?inline`, build one `CSSStyleSheet`, and adopt it into the shadow root. shadcn variables live on `:host`; base `html`/`body` rules move to `.pka-root`. `:host { all: initial !important; position: fixed !important; inset: 0 auto auto 0 !important; z-index: 2147483647 !important }` stops inherited host styles. Fonts declared with `@font-face` inside a shadow root do not load; use system fonts or declare faces on `document`.
+2. **rem.** A PostCSS step rewrites `Nrem` to `N*16px` in the overlay stylesheet, so a host `html { font-size }` cannot resize the overlay.
+3. **`@property`.** Collect the sheet's `CSSPropertyRule`s and adopt them once on `document`.
+4. **Focus.** Radix Select and Menu compare `document.activeElement`, which is retargeted to the host element. While mounted, an instance getter on `document` returns `shadow.activeElement` only when the native value is our host; unmount removes it.
+5. **Portals.** A context supplies a portal container inside the shadow root, a sibling of the app root, to every shadcn portal.
+6. **Stacking.** The host is the only stacking context; the dock carries no z-index, so portal content stacks above it.
+7. **No modal primitives.** Modal Select, Dialog, and DropdownMenu lock host scrolling, set `pointer-events: none` on `body`, and put `aria-hidden` on host elements; the spike measured an 8 px host shift. Use non-modal variants only: `modal={false}` menus, and a non-modal menu or popover in place of Select (including PromptInput's model select).
+8. **Theming.** Consumers theme through custom properties on the host element (`pk-annotator { --primary: var(--lean-accent); --radius: 4px; }`), which beat `:host` and inherit across the boundary. Dark mode needs a `.dark` class on `.pka-root`, driven by the consumer's theme attribute or `prefers-color-scheme`.
+
+Outside-click dismissal needed no `composedPath()` fix. Sizes from the spike's production build: launcher 1.65 kB gzip; UI chunk 135 kB gzip including 9 kB of CSS, loaded only on first open.
 
 ## Agentation removal
 
@@ -309,9 +319,6 @@ Confirmed on 2026-10-02:
 
 Unconfirmed:
 
-- Whether the `ai-elements` CLI works in a Vite library (its setup page names Next.js).
-- Whether TanStack's `injectSource` works without its panel.
-- Whether source attributes survive SSR hydration.
 - Whether Codex reads project `.codex/config.toml` for MCP servers and shows the model both content channels.
 - Cancellation support in Claude Code and Codex.
 - Whether chrome-devtools-mcp 1.x attaches to Electron 44.
