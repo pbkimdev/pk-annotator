@@ -96,6 +96,35 @@ describe("error groups", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it("shows the symbolicated stack but resends the browser stack on recurrence", () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const current = start();
+    const raise = (): void => console.error(new Error("recurs"));
+    const handle = (): void => raise();
+    const dispatch = (): void => handle();
+    dispatch();
+    vi.advanceTimersByTime(0);
+    const browserStack = sent[0]?.groups[0]?.stack;
+    const fingerprint = sent[0]?.groups[0]?.fingerprint ?? "";
+    current.applySymbolicated({
+      groups: [
+        {
+          fingerprint,
+          stack: "Error: recurs\n    at raise (src/a.ts:1:1)",
+          topFrame: "src/a.ts:1",
+        },
+      ],
+    });
+    expect(current.snapshot().groups[0]).toMatchObject({ topFrame: "src/a.ts:1" });
+
+    dispatch();
+    vi.advanceTimersByTime(1000);
+    expect(sent[1]?.groups[0]).toMatchObject({ count: 2, stack: browserStack });
+    expect(sent[1]?.groups[0]?.topFrame).not.toBe("src/a.ts:1");
+    expect(current.snapshot().groups[0]).toMatchObject({ topFrame: "src/a.ts:1" });
+  });
+
   it("falls back to type and normalized message without in-app frames", () => {
     const vendor =
       "    at render (http://localhost:3000/node_modules/.vite/deps/react-dom.js:10:5)";

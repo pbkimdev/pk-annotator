@@ -75,8 +75,16 @@ interface Thrown {
 }
 
 interface GroupState {
+  // `stack` and `topFrame` show the symbolicated values once the plugin acknowledges them.
   group: ErrorGroup;
+  // The browser's stack, which is what the plugin can symbolicate on every send.
+  raw: Pick<ErrorGroup, "stack" | "topFrame">;
   opened: ErrorEntry;
+}
+
+function rawStack(entry: ErrorEntry, topFrame: string | undefined): GroupState["raw"] {
+  const stack = entry.stack ?? "";
+  return topFrame === undefined ? { stack } : { stack, topFrame };
 }
 
 const EMPTY: CaptureSnapshot = { console: [], errors: [], groups: [], requests: [], actions: [] };
@@ -246,7 +254,9 @@ export function createCapture(options: CaptureOptions): Capture {
       if (batch.length === MAX_GROUPS_PER_MESSAGE) break;
       pendingSend.delete(fingerprint);
       const state = groups.get(fingerprint);
-      if (state !== undefined) batch.push({ ...state.group });
+      if (state === undefined) continue;
+      const { stack: _shownStack, topFrame: _shownTopFrame, ...rest } = state.group;
+      batch.push({ ...rest, ...state.raw });
     }
     if (batch.length > 0) {
       try {
@@ -276,6 +286,7 @@ export function createCapture(options: CaptureOptions): Capture {
     const state = groups.get(entry.fingerprint);
     if (state === undefined) {
       if (groups.size >= MAX_GROUPS) evictGroup();
+      const raw = rawStack(entry, topFrame);
       const group: ErrorGroup = {
         fingerprint: entry.fingerprint,
         message: entry.message,
@@ -284,11 +295,10 @@ export function createCapture(options: CaptureOptions): Capture {
         firstSeen: entry.at,
         lastSeen: entry.at,
         lastSeq: entry.seq,
-        stack: entry.stack ?? "",
         status: "open",
+        ...raw,
       };
-      if (topFrame !== undefined) group.topFrame = topFrame;
-      groups.set(entry.fingerprint, { group, opened: entry });
+      groups.set(entry.fingerprint, { group, raw, opened: entry });
     } else {
       const { group } = state;
       group.count += 1;
@@ -297,7 +307,8 @@ export function createCapture(options: CaptureOptions): Capture {
       if (group.status === "cleared" && entry.seq > watermarks.errors) {
         group.status = "open";
         group.message = entry.message;
-        group.stack = entry.stack ?? "";
+        state.raw = rawStack(entry, topFrame);
+        group.stack = state.raw.stack;
         if (topFrame === undefined) delete group.topFrame;
         else group.topFrame = topFrame;
         state.opened = entry;
