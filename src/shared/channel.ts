@@ -15,6 +15,10 @@ import { AnnotationDraft, ErrorGroup, Id, RelativePath, State, ThreadEntry } fro
 // moves the finished annotation directory into place in one rename, so readers
 // never see a partial annotation and large files never sit in memory.
 //
+// Symbolicating the stacks a hunt attaches (occurrence, owner, and component stacks):
+//   overlay  pka:symbolicate    {requestId, stacks}
+//   plugin   pka:symbolicated   {requestId, stacks} in the same order
+//
 // Resuming after a reload:
 //   overlay  pka:sync    {ids} the annotations this tab sent earlier
 //   plugin   pka:synced  {annotations[{id, state, thread}]} for the ids that still exist
@@ -30,6 +34,8 @@ export const CHANNEL = {
   errorsAck: "pka:errors-ack",
   sync: "pka:sync",
   synced: "pka:synced",
+  symbolicate: "pka:symbolicate",
+  symbolicated: "pka:symbolicated",
 } as const;
 
 export const MAX_CHUNK_BYTES = 512 * 1024;
@@ -72,6 +78,11 @@ export const SyncMessage = z.strictObject({
   ids: z.array(Id).max(200),
 });
 
+export const SymbolicateMessage = z.strictObject({
+  requestId: Id,
+  stacks: z.array(z.string().max(16_000)).max(150),
+});
+
 // plugin -> overlay
 
 export const CreatedMessage = z.strictObject({
@@ -104,6 +115,11 @@ export const ErrorsAckMessage = z.strictObject({
   ),
 });
 
+export const SymbolicatedMessage = z.strictObject({
+  requestId: Id,
+  stacks: z.array(z.string()),
+});
+
 export const SyncedMessage = z.strictObject({
   annotations: z.array(
     z.strictObject({
@@ -125,6 +141,8 @@ export type ThreadMessage = z.infer<typeof ThreadMessage>;
 export type ErrorsAckMessage = z.infer<typeof ErrorsAckMessage>;
 export type SyncMessage = z.infer<typeof SyncMessage>;
 export type SyncedMessage = z.infer<typeof SyncedMessage>;
+export type SymbolicateMessage = z.infer<typeof SymbolicateMessage>;
+export type SymbolicatedMessage = z.infer<typeof SymbolicatedMessage>;
 
 export interface ChannelEvents {
   [CHANNEL.create]: CreateMessage;
@@ -138,4 +156,6 @@ export interface ChannelEvents {
   [CHANNEL.errorsAck]: ErrorsAckMessage;
   [CHANNEL.sync]: SyncMessage;
   [CHANNEL.synced]: SyncedMessage;
+  [CHANNEL.symbolicate]: SymbolicateMessage;
+  [CHANNEL.symbolicated]: SymbolicatedMessage;
 }

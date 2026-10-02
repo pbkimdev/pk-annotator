@@ -20,8 +20,10 @@ import {
   ErrorsMessage,
   FileChunkMessage,
   ReplyMessage,
+  SymbolicateMessage,
   SyncMessage,
   type ErrorsAckMessage,
+  type SymbolicatedMessage,
   type SyncedMessage,
 } from "../shared/channel.ts";
 import { ID_PATTERN, type AnnotationDraft, type ErrorGroup } from "../shared/schema.ts";
@@ -321,6 +323,16 @@ async function serve(server: ViteDevServer, maxStoreBytes: number): Promise<() =
       ),
     };
     client.send(CHANNEL.errorsAck, ack);
+  });
+
+  listen(CHANNEL.symbolicate, SymbolicateMessage, async (message, client) => {
+    const stacks = await Promise.all(
+      message.stacks.map(
+        async (stack) => (await symbolicate(environment, workspaceRoot, stack)).stack,
+      ),
+    );
+    const reply: SymbolicatedMessage = { requestId: message.requestId, stacks };
+    client.send(CHANNEL.symbolicated, reply);
   });
 
   listen(CHANNEL.reply, ReplyMessage, async (message) => {
