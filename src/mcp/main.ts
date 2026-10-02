@@ -114,7 +114,8 @@ function createServer(store: string): McpServer {
       title: "Get one browser annotation",
       description:
         "Get one annotation: the human's prompt and each picked element with its source file:line:col, " +
-        "owner components, and selector, plus attachment paths. detail full adds HTML, boxes, nearby text, " +
+        "usedAt (the owner component's call site, when it differs), owner components, and selector, " +
+        "plus attachment paths. detail full adds HTML, boxes, nearby text, " +
         "attachment summaries, status history, and the reply thread. Paths are relative to `dir`; read the " +
         `files with your file tools. ${UNTRUSTED}`,
       inputSchema: GetInput,

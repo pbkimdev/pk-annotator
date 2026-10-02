@@ -46,6 +46,7 @@ function optionalPageText(value: string | undefined, max: number): string | unde
 export const ElementView = z.strictObject({
   n: z.number(),
   source: z.string().optional(),
+  usedAt: z.string().optional(),
   owners: z.array(z.string()),
   selector: z.strictObject({
     role: z.string().optional(),
@@ -122,6 +123,7 @@ function elementView(element: ElementRef, detail: Detail): ElementView {
   const view: ElementView = {
     n: element.n,
     source: optionalPageText(element.source, CAP.label),
+    usedAt: optionalPageText(element.usedAt, CAP.label),
     owners: element.owners.slice(0, CAP.owners).map((owner) => pageText(owner, CAP.short)),
     selector: {
       role: optionalPageText(element.selector.role, CAP.short),

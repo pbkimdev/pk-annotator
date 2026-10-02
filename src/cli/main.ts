@@ -184,7 +184,7 @@ function printAnnotation(view: AnnotationView): void {
   for (const element of view.elements) {
     const label = [element.selector.role, element.selector.name].filter(Boolean).join(" ");
     line(
-      `  [${element.n}] ${element.source ?? "(no source)"}  ${element.owners.join(" > ")}  ${label || element.selector.css}`,
+      `  [${element.n}] ${element.source ?? "(no source)"}${element.usedAt === undefined ? "" : ` usedAt ${element.usedAt}`}  ${element.owners.join(" > ")}  ${label || element.selector.css}`,
     );
   }
   for (const attachment of view.attachments) {
