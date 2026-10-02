@@ -186,18 +186,19 @@ export function networkLine(entry: RequestEntry): NetworkLine {
   return line;
 }
 
+// Aborted requests were cancelled by the page and are listed only in network.jsonl.
 function isProblem(request: RequestEntry): boolean {
   return (
-    request.state === "failed" ||
-    request.state === "aborted" ||
-    (request.status ?? 0) >= 400 ||
-    (request.durationMs ?? 0) >= SLOW_REQUEST_MS
+    request.state !== "aborted" &&
+    (request.state === "failed" ||
+      (request.status ?? 0) >= 400 ||
+      (request.durationMs ?? 0) >= SLOW_REQUEST_MS)
   );
 }
 
 function describeRequest(request: RequestEntry): string {
   const outcome =
-    request.state === "failed" || request.state === "aborted"
+    request.state === "failed"
       ? `${request.state}${request.error === undefined ? "" : ` (${clip(request.error)})`}`
       : request.status === undefined
         ? request.state

@@ -30,16 +30,18 @@ export function formatMs(ms: number | undefined): string {
   return ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(2)} s`;
 }
 
+// An aborted request was cancelled by the page (AbortController, TanStack Query
+// deduplication), so it is not a failure.
 export function isFailed(request: RequestEntry): boolean {
   return (
-    request.state === "failed" ||
-    request.state === "aborted" ||
-    (request.status !== undefined && request.status >= 400)
+    request.state !== "aborted" &&
+    (request.state === "failed" || (request.status !== undefined && request.status >= 400))
   );
 }
 
-/** Status column text: the HTTP status, or the state while there is none. */
+/** Status column text: the HTTP status, or the state while there is none or it was aborted. */
 export function statusText(request: RequestEntry): string {
+  if (request.state === "aborted") return request.state;
   if (request.status !== undefined && request.status > 0) return String(request.status);
   return request.state === "pending" ? "…" : request.state;
 }

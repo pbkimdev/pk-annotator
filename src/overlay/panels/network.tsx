@@ -82,7 +82,8 @@ function StatusCell({ request }: { request: RequestEntry }) {
       className={cn(
         "text-right tabular-nums",
         isFailed(request) && "text-destructive",
-        (request.state === "pending" || request.state === "open") && "text-muted-foreground",
+        (request.state === "pending" || request.state === "open" || request.state === "aborted") &&
+          "text-muted-foreground",
       )}
     >
       {statusText(request)}
