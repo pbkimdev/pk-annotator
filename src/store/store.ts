@@ -21,6 +21,7 @@ import {
   Claim,
   ID_PATTERN,
   State,
+  type Annotation,
   type LiveErrorsSnapshot,
   type ThreadEntry,
 } from "../shared/schema.ts";
@@ -255,7 +256,7 @@ function temporaryName(file: string): string {
 export async function writeJsonAtomic(
   store: string,
   file: string,
-  value: State | LiveErrorsSnapshot,
+  value: State | LiveErrorsSnapshot | Annotation,
 ): Promise<void> {
   await refuseSymlinks(store, path.dirname(file));
   const temporary = temporaryName(file);
@@ -394,6 +395,41 @@ export async function writeAnnotationDir(
     throw thrown;
   }
   return dir;
+}
+
+/**
+ * Adds files to an existing annotation directory without overwriting any:
+ * each is written to a temporary file and hard-linked into place. If one
+ * fails, the files already placed are removed. Returns the placed paths.
+ */
+export async function placeNewFiles(
+  store: string,
+  dir: string,
+  files: NewFile[],
+): Promise<string[]> {
+  const placed: string[] = [];
+  try {
+    for (const file of files) {
+      const target = resolveInside(dir, file.path);
+      await refuseSymlinks(store, path.dirname(target));
+      await mkdir(path.dirname(target), { recursive: true });
+      const temporary = temporaryName(target);
+      try {
+        await writeExclusive(temporary, file.data);
+        await link(temporary, target);
+      } catch (thrown) {
+        if (isErrno(thrown, "EEXIST")) throw new PkaError(`${file.path} already exists in ${dir}`);
+        throw thrown;
+      } finally {
+        await rm(temporary, { force: true });
+      }
+      placed.push(target);
+    }
+  } catch (thrown) {
+    await Promise.all(placed.map((target) => rm(target, { force: true })));
+    throw thrown;
+  }
+  return placed;
 }
 
 /**

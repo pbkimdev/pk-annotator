@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, open, readFile, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, open, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -6,8 +6,17 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { AnnotationDraft } from "../shared/schema.ts";
-import { createStore, listIds } from "../store/store.ts";
-import { create, loadAnnotation, reply, setStatus, wait, type WaitOptions } from "./ops.ts";
+import { PkaError, createStore, listIds } from "../store/store.ts";
+import {
+  attach,
+  create,
+  get,
+  loadAnnotation,
+  reply,
+  setStatus,
+  wait,
+  type WaitOptions,
+} from "./ops.ts";
 
 const DRAFT: AnnotationDraft = {
   url: "http://localhost:3000/projects",
@@ -118,6 +127,13 @@ describe("closed annotations", () => {
       status: "resolved",
       changed: false,
     });
+    const verdict = new TextEncoder().encode("{}\n");
+    await expect(
+      attach(store, id, [
+        { kind: "perf", path: "capture/perf/lab.json", summary: "lab", data: verdict },
+      ]),
+    ).rejects.toThrow(/is resolved/);
+    expect((await loadAnnotation(store, id)).annotation.attachments).toEqual([]);
     expect((await loadAnnotation(store, id)).state.history).toHaveLength(3);
 
     const waiting = wait(store, OPTIONS);
@@ -129,5 +145,47 @@ describe("closed annotations", () => {
     expect(record.state.history.at(-1)).toMatchObject({ by: "human", note: "reopened by reply" });
     expect(record.claim).toBeUndefined();
     expect(record.thread.map((entry) => entry.from)).toEqual(["human"]);
+  });
+});
+
+describe("attach", () => {
+  const data = new TextEncoder().encode("{}\n");
+  const perf = (file: string) => ({ kind: "perf" as const, path: file, summary: "lab", data });
+
+  it("refuses paths outside capture/ and a symlinked capture directory", async () => {
+    const { id } = await create(store, DRAFT);
+    for (const file of [
+      "../escape.json",
+      "capture/../../escape.json",
+      "notes.json",
+      "/tmp/x.json",
+    ]) {
+      await expect(attach(store, id, [perf(file)])).rejects.toThrow(PkaError);
+    }
+    const outside = path.join(root, "outside");
+    await mkdir(outside);
+    await symlink(outside, path.join(store, id, "capture"));
+    await expect(attach(store, id, [perf("capture/perf/lab.json")])).rejects.toThrow(/symlink/);
+    expect(await readdir(outside)).toEqual([]);
+    expect(await readdir(root)).toEqual(["_interim", "outside"]);
+    expect((await get(store, { id, detail: "full" })).annotation.attachments).toEqual([]);
+  });
+
+  it("adds every file or none, never overwrites, and get lists the result", async () => {
+    const { id } = await create(store, DRAFT);
+    const perfDir = path.join(store, id, "capture", "perf");
+    await mkdir(perfDir, { recursive: true });
+    await writeFile(path.join(perfDir, "old.json"), data);
+    await expect(
+      attach(store, id, [perf("capture/perf/new.json"), perf("capture/perf/old.json")]),
+    ).rejects.toThrow(/already exists/);
+    expect(await readdir(perfDir)).toEqual(["old.json"]);
+    expect((await get(store, { id, detail: "full" })).annotation.attachments).toEqual([]);
+
+    await attach(store, id, [perf("capture/perf/new.json")]);
+    expect((await readdir(perfDir)).sort()).toEqual(["new.json", "old.json"]);
+    expect((await get(store, { id, detail: "full" })).annotation.attachments).toEqual([
+      { kind: "perf", path: "capture/perf/new.json", summary: "lab" },
+    ]);
   });
 });

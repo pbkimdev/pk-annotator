@@ -1,9 +1,11 @@
 import { watch } from "node:fs";
+import { rm } from "node:fs/promises";
 
 import { z } from "zod";
 
 import {
   Annotation,
+  Attachment,
   Id,
   LiveErrorsSnapshot,
   State,
@@ -11,6 +13,7 @@ import {
   ThreadEntry,
   Timestamp,
   type AnnotationDraft,
+  type AttachmentKind,
   type ErrorGroup,
   type StatusEvent,
 } from "../shared/schema.ts";
@@ -23,6 +26,7 @@ import {
   listIds,
   liveErrorsFile,
   newId,
+  placeNewFiles,
   prune as pruneStore,
   readClaim,
   readJson,
@@ -423,6 +427,64 @@ export async function create(
     staged,
   );
   return { id };
+}
+
+export interface AttachFile {
+  kind: AttachmentKind;
+  /** Relative to the annotation directory; must be under capture/ and new. */
+  path: string;
+  summary: string;
+  data: Uint8Array;
+}
+
+/**
+ * Adds files to an existing annotation's capture/ directory and lists them in
+ * annotation.json. An agent write: resolved and dismissed annotations refuse
+ * it. Existing files are never overwritten; on any failure no new file stays
+ * behind and annotation.json is unchanged.
+ */
+export async function attach(
+  store: string,
+  id: string,
+  files: AttachFile[],
+): Promise<{ id: string; attachments: Attachment[] }> {
+  const paths = await requireAnnotation(store, id);
+  const state = await readJson(store, paths.state, State);
+  if (isClosed(state.status)) throw closedError(id, state.status);
+  const annotation = await readJson(store, paths.annotation, Annotation);
+  const added = files.map((file) => {
+    const parsed = Attachment.safeParse({
+      kind: file.kind,
+      path: file.path,
+      summary: file.summary,
+    });
+    if (!parsed.success) {
+      throw new PkaError(`Invalid attachment ${file.path}:\n${z.prettifyError(parsed.error)}`);
+    }
+    return parsed.data;
+  });
+  checkCaptureFiles(
+    { ...annotation, elements: [], attachments: added },
+    added.map((attachment) => attachment.path),
+  );
+  const listed = new Set(annotation.attachments.map((attachment) => attachment.path));
+  const relisted = added.filter((attachment) => listed.has(attachment.path));
+  if (relisted.length > 0) {
+    throw new PkaError(`Annotation ${id} already lists ${relisted.map((a) => a.path).join(", ")}`);
+  }
+  const placed = await placeNewFiles(
+    store,
+    paths.dir,
+    files.map((file) => ({ path: file.path, data: file.data })),
+  );
+  const next: Annotation = { ...annotation, attachments: [...annotation.attachments, ...added] };
+  try {
+    await writeJsonAtomic(store, paths.annotation, next);
+  } catch (thrown) {
+    await Promise.all(placed.map((file) => rm(file, { force: true })));
+    throw thrown;
+  }
+  return { id, attachments: next.attachments };
 }
 
 export interface PruneResult {
