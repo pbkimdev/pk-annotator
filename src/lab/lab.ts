@@ -341,7 +341,8 @@ function sameTarget(a: ActionTarget, b: ActionTarget): boolean {
 }
 
 interface Tracker {
-  quiet(): boolean;
+  /** True when no request is in flight and none started or ended in the last 500 ms after `since`. */
+  quiet(since: number): boolean;
 }
 
 function trackRequests(page: Page): Tracker {
@@ -357,14 +358,19 @@ function trackRequests(page: Page): Tracker {
   };
   page.on("requestfinished", done);
   page.on("requestfailed", done);
-  return { quiet: () => inflight.size === 0 && Date.now() - lastChange >= QUIET_MS };
+  return {
+    quiet: (since) => inflight.size === 0 && Date.now() - Math.max(lastChange, since) >= QUIET_MS,
+  };
 }
 
-// Waits until no request has been in flight for 500 ms, at most 10 s; a stream
-// that never ends reaches the cap and the flow continues.
+// Waits until the step has been quiet for 500 ms, at most 10 s. The window
+// starts when the step ends, not at the last request: a click that starts no
+// request still needs time to paint, or its Event Timing entry (and so INP)
+// never exists. A stream that never ends reaches the cap and the flow continues.
 async function settle(page: Page, tracker: Tracker): Promise<void> {
-  const deadline = Date.now() + SETTLE_MAX_MS;
-  while (!tracker.quiet() && Date.now() < deadline) await sleep(50);
+  const since = Date.now();
+  const deadline = since + SETTLE_MAX_MS;
+  while (!tracker.quiet(since) && Date.now() < deadline) await sleep(50);
   await page.waitForLoadState("load", { timeout: NAVIGATION_TIMEOUT_MS });
 }
 
