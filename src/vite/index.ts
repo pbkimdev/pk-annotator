@@ -362,12 +362,13 @@ async function serve(server: ViteDevServer, maxStoreBytes: number): Promise<() =
   function unwatch(id: string): void {
     annotationWatchers.get(id)?.close();
     annotationWatchers.delete(id);
-    seen.delete(id);
   }
 
   /**
    * Brings one annotation's watch and broadcasts up to date. An annotation
-   * seen for the first time sets the baseline without broadcasting.
+   * seen for the first time sets the baseline without broadcasting. Closed
+   * annotations keep their baseline, so a human reply that reopens one (which
+   * touches its directory and so reaches the store root watch) is broadcast.
    */
   async function sync(id: string): Promise<void> {
     let record;
@@ -376,6 +377,7 @@ async function serve(server: ViteDevServer, maxStoreBytes: number): Promise<() =
     } catch (thrown) {
       if (!(thrown instanceof MissingAnnotationError)) throw thrown;
       unwatch(id);
+      seen.delete(id);
       return;
     }
     if (closed) return;
@@ -388,11 +390,11 @@ async function serve(server: ViteDevServer, maxStoreBytes: number): Promise<() =
         hot.send(CHANNEL.thread, { id, entry });
       }
     }
+    seen.set(id, { history: record.state.history.length, thread: record.thread.length });
     if (record.state.status === "resolved" || record.state.status === "dismissed") {
       unwatch(id);
       return;
     }
-    seen.set(id, { history: record.state.history.length, thread: record.thread.length });
     if (annotationWatchers.has(id)) return;
     const watcher = watch(record.dir, (_event, filename) => {
       if (filename === "state.json" || filename === "thread.jsonl") schedule(id);
