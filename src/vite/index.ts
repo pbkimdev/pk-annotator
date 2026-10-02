@@ -1,7 +1,9 @@
+import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { constants, watch, type FSWatcher } from "node:fs";
-import { lstat, mkdir, open, readdir, rm } from "node:fs/promises";
+import { lstat, mkdir, open, readFile, readdir, rm } from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
 
 import {
   normalizePath,
@@ -26,6 +28,12 @@ import {
   type SymbolicatedMessage,
   type SyncedMessage,
 } from "../shared/channel.ts";
+import {
+  RECORDING,
+  RecordingErrors,
+  RecordingManifestDraft,
+  type RecordingManifest,
+} from "../shared/recording.ts";
 import { ID_PATTERN, type AnnotationDraft, type ErrorGroup } from "../shared/schema.ts";
 import {
   DEFAULT_SIZE_CAP_BYTES,
@@ -54,6 +62,8 @@ export const BODIES_GLOBAL = "__PKA_BODIES__";
 
 const STAGING_DIR = ".staging";
 const MB = 1024 * 1024;
+const MAX_RECORDING_JSON_BYTES = 4 * MB;
+const execFileAsync = promisify(execFile);
 
 interface UploadFile {
   bytes: number;
@@ -117,6 +127,33 @@ async function createEmpty(file: string): Promise<void> {
     0o644,
   );
   await handle.close();
+}
+
+async function rewrite(file: string, text: string): Promise<void> {
+  const handle = await open(file, constants.O_WRONLY | constants.O_TRUNC | constants.O_NOFOLLOW);
+  try {
+    await handle.writeFile(text);
+  } finally {
+    await handle.close();
+  }
+}
+
+/** HEAD of the workspace when the annotation is stored, so the SHA matches the code it was taken against. */
+async function headSha(cwd: string): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync("git", ["rev-parse", "--verify", "HEAD"], {
+      cwd,
+      timeout: 5000,
+    });
+    return stdout.trim();
+  } catch (cause) {
+    const stderr = cause instanceof Error && "stderr" in cause ? String(cause.stderr) : "";
+    // No Git, no repository, or no commit yet: there is no SHA to record.
+    if (isErrno(cause, "ENOENT") || /not a git repository|Needed a single revision/.test(stderr)) {
+      return null;
+    }
+    throw new Error(`git rev-parse HEAD failed in ${cwd}: ${describeError(cause)}`, { cause });
+  }
 }
 
 /** Opens the store, serves the overlay's channel events, and pushes store changes. Returns the closer. */
@@ -187,7 +224,60 @@ async function serve(server: ViteDevServer, maxStoreBytes: number): Promise<() =
       );
   }
 
+  /** Replaces the page's raw stack and top frame with source positions. */
+  async function symbolicateGroup(group: ErrorGroup): Promise<ErrorGroup> {
+    const { topFrame: _pageTopFrame, ...rest } = group;
+    const result = await symbolicate(environment, workspaceRoot, group.stack);
+    return result.topFrame === undefined
+      ? { ...rest, stack: result.stack }
+      : { ...rest, stack: result.stack, topFrame: result.topFrame };
+  }
+
+  async function readStagedJson<S extends z.ZodType>(
+    upload: Upload,
+    relative: string,
+    schema: S,
+  ): Promise<z.infer<S>> {
+    const bytes = upload.files.get(relative)?.bytes ?? 0;
+    if (bytes > MAX_RECORDING_JSON_BYTES) {
+      throw new PkaError(`${relative} is ${Math.round(bytes / MB)} MB; the limit is 4 MB`);
+    }
+    const text = await readFile(resolveInside(upload.dir, relative), "utf8");
+    let value;
+    try {
+      value = JSON.parse(text);
+    } catch (cause) {
+      throw new PkaError(`${relative} is not JSON: ${describeError(cause)}`);
+    }
+    const parsed = schema.safeParse(value);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      throw new PkaError(
+        `${relative} does not match its schema: ${issue === undefined ? "invalid" : `${issue.path.join(".")}: ${issue.message}`}`,
+      );
+    }
+    return parsed.data;
+  }
+
+  /** Stamps the git SHA into a recording's manifest and symbolicates its error groups. */
+  async function completeRecording(upload: Upload): Promise<void> {
+    const draft = await readStagedJson(upload, RECORDING.manifest, RecordingManifestDraft);
+    const manifest: RecordingManifest = { ...draft, gitSha: await headSha(workspaceRoot) };
+    await rewrite(
+      resolveInside(upload.dir, RECORDING.manifest),
+      `${JSON.stringify(manifest, null, 2)}\n`,
+    );
+    if (!upload.files.has(RECORDING.errors)) return;
+    const errors = await readStagedJson(upload, RECORDING.errors, RecordingErrors);
+    const groups = await Promise.all(errors.groups.map(symbolicateGroup));
+    await rewrite(
+      resolveInside(upload.dir, RECORDING.errors),
+      `${JSON.stringify({ groups }, null, 2)}\n`,
+    );
+  }
+
   async function finish(upload: Upload): Promise<void> {
+    if (upload.files.has(RECORDING.manifest)) await completeRecording(upload);
     const { id } = await create(store, upload.draft, {
       dir: upload.dir,
       paths: [...upload.files.keys()],
@@ -199,7 +289,10 @@ async function serve(server: ViteDevServer, maxStoreBytes: number): Promise<() =
   }
 
   async function prepare(upload: Upload, declaredBytes: number): Promise<void> {
-    if (upload.draft.attachments.some((attachment) => attachment.kind === "video")) {
+    if (
+      upload.files.has(RECORDING.video) ||
+      upload.draft.attachments.some((attachment) => attachment.kind === "video")
+    ) {
       const size = await checkStoreSize(store, maxStoreBytes);
       if (size.bytes + declaredBytes > maxStoreBytes) {
         throw new PkaError(
@@ -300,15 +393,7 @@ async function serve(server: ViteDevServer, maxStoreBytes: number): Promise<() =
   });
 
   listen(CHANNEL.errors, ErrorsMessage, async (message, client) => {
-    const groups = await Promise.all(
-      message.groups.map(async (group): Promise<ErrorGroup> => {
-        const { topFrame: _pageTopFrame, ...rest } = group;
-        const result = await symbolicate(environment, workspaceRoot, group.stack);
-        return result.topFrame === undefined
-          ? { ...rest, stack: result.stack }
-          : { ...rest, stack: result.stack, topFrame: result.topFrame };
-      }),
-    );
+    const groups = await Promise.all(message.groups.map(symbolicateGroup));
     const write = errorsQueue.then(() => upsertErrorGroups(store, groups));
     errorsQueue = write.then(
       () => undefined,
