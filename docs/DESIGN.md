@@ -106,21 +106,21 @@ API calls go through the Vite proxy (`apps/web/vite.config.ts:144`), so they are
 ## Overlay component tree
 
 ```tsx
-<pk-annotator> shadow root
+<pk-annotator> shadow root, a child of <html>
   launcher.ts  plain DOM button with an error badge; no React until first open
   <Dock>  React root, loaded on first open; draggable, snaps to a corner
-    Pick · Box · Record · Network · Console · Perf · Compose   (named icon buttons, Tab-reachable)
+    Pick · Box | Record · Network · Console · Perf | Compose · Sent | Close   (named icon buttons, Tab-reachable)
   <PickLayer>  takes pointer events only while picking
     <HoverBox> component name + file:line
-    <SelectionBox n> numbered badge per selected element
+    <SelectionBox n> numbered tab outside the element's box, so it never covers the element
     <MarqueeRect>
-  <Panel>  one open at a time
-    <NetworkPanel> | <ConsolePanel> | <PerfPanel> | <RecordingPanel>
-  <Composer>  AI Elements PromptInput
-    <ElementChips>     one per selected element, removable
-    <AttachmentChips>  recording, error groups, requests, perf snapshot
-    <Textarea> + Send (to the store) / Copy (Markdown)
-  <Thread>  agent replies and status for sent annotations
+  <Panel>  one open at a time, beside the dock
+    <RecordPanel> | <NetworkPanel> | <ConsolePanel> | <PerfPanel>
+    <Composer>  AI Elements PromptInput
+      <ElementChips>     one per selected element, removable; details open beside the panel
+      <AttachmentChips>  recording, error groups, requests, perf snapshot
+      <Textarea> + Send (to the store) / Copy (Markdown)
+    <Thread>  "Sent": agent replies and status for annotations sent from this tab
 ```
 
 ## Data flow
@@ -152,12 +152,12 @@ Nothing runs that you are not using, and production carries zero bytes.
 | Piece | Idle (dock closed, not recording) | In use |
 |---|---|---|
 | Launcher | One DOM button in a shadow root; React, AI Elements, and Tailwind not loaded | UI chunk loads on first open by dynamic import |
-| Console and errors | Wrappers append to fixed ring buffers (500 entries). Arguments are serialized at capture time with depth and length caps, so the buffer never holds app objects. Only new error groups are sent to the plugin, throttled to once per second | Batched to the plugin every 250 ms while a panel is open or a recording runs |
+| Console and errors | Wrappers append to fixed ring buffers (500 entries). Arguments are serialized at capture time with depth and length caps, so the buffer never holds app objects. An error group that is new, recurs, or changes status is sent to the plugin for the live error snapshot, at most once per second; the timer exists only while a group waits | Panels subscribe to the in-page buffers and read them directly. A recording copies each new entry through a tap, so the ring cap cannot drop it. Nothing else reaches the plugin until you send an annotation |
 | Network | Request metadata only, same ring-buffer cap. Bodies are captured only for allowlisted same-origin paths, 64 KB each, 8 MB total. Event streams (Lean's live connection, `apps/web/src/sse-client.ts:19`) are never cloned; only open, close, and byte count are recorded. The overlay's own requests (source maps for symbolication, images and fonts snapdom inlines) use the unwrapped fetch and are never recorded | Same |
 | Performance | No observers. Opening the Perf panel starts PerformanceObserver with `buffered: true`, which still returns LCP, CLS, and earlier long animation frames | `react-scan/lite` runs only while the Perf panel is open |
-| Recording | Off | Keyframes only at actions, navigations, and errors; video only when chosen |
+| Recording | Off | Keyframes only at actions, navigations, and errors (one per error group); video only when chosen |
 | Automation | Nothing mounts when `navigator.webdriver` is true (Playwright, e2e runs) | n/a |
-| Vite plugin | One `fs.watch` on the store; source transform runs only under `serve` | Writes on events only |
+| Vite plugin | One `fs.watch` on the store root plus one per open annotation's directory; source transform runs only under `serve` | Writes on events only |
 | pka-mcp | Not running until a client spawns it. Between calls it holds no timers or watchers. It exits on stdin EOF | `wait_for_annotation` holds one inotify watcher for its bounded duration, then closes it |
 | pka CLI | No process | `pka watch --once` exists only while waiting |
 | Store | `pka prune` removes resolved and dismissed annotations older than 7 days; new video is refused above a size cap (default 500 MB) | n/a |
@@ -226,8 +226,9 @@ _interim/annotations/
 pick mode, capture-phase pointer listeners, overlay host skipped in elementsFromPoint
   click          → selection = [target]
   Shift+click    → toggle target in selection
-  drag > 4 px    → marquee
-  Esc            → clear
+  drag > 4 px    → marquee (box mode: any drag)
+  Esc            → clear the selection; with none, leave pick mode
+  Enter          → leave pick mode and open Compose (not while typing in a field)
 marquee end(rect)
   candidates = interactive, text, img, or [data-pka-src] elements, minus tiny and near-viewport-size ones
   hits = full containment (Alt: intersection)
@@ -236,7 +237,7 @@ marquee end(rect)
   selection = Shift ? selection ∪ hits : hits
 ```
 
-Source location comes from our own serve-only Vite plugin (spike: `/tmp/pk-annotator/spike-source/plugins/pka-source.ts`). It parses with Vite's re-exported `parseSync` and `Visitor` and writes with `magic-string`, stamping `data-pka-src="<workspace-relative path>:line:col"` (1-based) on every lowercase host JSX element. Paths are relative to `searchForWorkspaceRoot`, so Lean reports `apps/web/src/...`. The hook must use `enforce: "pre"` and `transform.order: "pre"` so it stamps the untouched source in client, route-split, and SSR environments alike; without that order the spike reproduced a hydration mismatch. TanStack's `injectSource` was rejected: fixed attribute name, composite elements stamped, spread detection defeated by rest destructuring, parse errors swallowed.
+Source location comes from our own serve-only Vite plugin, `src/vite/source.ts`, first proven in a scratch spike that has since been deleted. It parses with Vite's re-exported `parseSync` and `Visitor` and writes with `magic-string`, stamping `data-pka-src="<workspace-relative path>:line:col"` (1-based) on every lowercase host JSX element. Paths are relative to `searchForWorkspaceRoot`, so Lean reports `apps/web/src/...`. The hook must use `enforce: "pre"` and `transform.order: "pre"` so it stamps the untouched source in client, route-split, and SSR environments alike; without that order the spike reproduced a hydration mismatch. TanStack's `injectSource` was rejected: fixed attribute name, composite elements stamped, spread detection defeated by rest destructuring, parse errors swallowed.
 
 Each element reports two locations when they differ: `source` (the host element's own JSX, for example `button.tsx:4:10` inside a `Button` wrapper) and `usedAt` (the nearest user-code owner's call site, for example `index.tsx:20:6`, from bippy `getSource(ownerFiber)`). Elements without the attribute (Radix content, portals, `node_modules`) fall back to bippy 0.7.3: walk `getRawOwnerStack(fiber)`, take the first frame under the project and outside `node_modules`, and symbolicate it. bippy columns are 0-based (add 1) and file names are basenames (resolve with `new URL(source, frameUrl)`). A cold lookup costs about 300 ms while source maps load, so pick mode pre-warms it. Owner chains drop every frame whose URL contains `/node_modules/`, which removes `SafeFragment`, `MatchInnerImpl`, `Lazy`, `Primitive.*`, and the like, while keeping user components such as `RootDocument`.
 
@@ -303,7 +304,7 @@ The overlay names suspects; pass/fail claims come only from lab verdicts on prod
 
 ## AI Elements inside the shadow root
 
-Proven in the spike at `/tmp/pk-annotator/spike-ui/` (shadcn 4.21.1 `init -t vite -b radix`, ai-elements 1.9.0 `add prompt-input attachments`, Tailwind 4.3.3, React 19.3.0), verified with Playwright against a host page with hostile global CSS:
+Proven in a scratch spike that has since been deleted (shadcn 4.21.1 `init -t vite -b radix`, ai-elements 1.9.0 `add prompt-input attachments`, Tailwind 4.3.3, React 19.3.0), verified with Playwright against a host page with hostile global CSS. Its results, which the overlay follows:
 
 1. **Stylesheet.** Import the compiled CSS with `?inline`, build one `CSSStyleSheet`, and adopt it into the shadow root. shadcn variables live on `:host`; base `html`/`body` rules move to `.pka-root`. `:host { all: initial !important; position: fixed !important; inset: 0 auto auto 0 !important; z-index: 2147483647 !important }` stops inherited host styles. Fonts declared with `@font-face` inside a shadow root do not load; use system fonts or declare faces on `document`.
 2. **rem.** A PostCSS step rewrites `Nrem` to `N*16px` in the overlay stylesheet, so a host `html { font-size }` cannot resize the overlay.
@@ -312,7 +313,7 @@ Proven in the spike at `/tmp/pk-annotator/spike-ui/` (shadcn 4.21.1 `init -t vit
 5. **Portals.** A context supplies a portal container inside the shadow root, a sibling of the app root, to every shadcn portal.
 6. **Stacking.** The host is the only stacking context; the dock carries no z-index, so portal content stacks above it.
 7. **No modal primitives.** Modal Select, Dialog, and DropdownMenu lock host scrolling, set `pointer-events: none` on `body`, and put `aria-hidden` on host elements; the spike measured an 8 px host shift. Use non-modal variants only: `modal={false}` menus, and a non-modal menu or popover in place of Select (including PromptInput's model select).
-8. **Theming.** Consumers theme through custom properties on the host element (`pk-annotator { --primary: var(--lean-accent); --radius: 4px; }`), which beat `:host` and inherit across the boundary. Dark mode needs a `.dark` class on `.pka-root`, driven by the consumer's theme attribute or `prefers-color-scheme`.
+8. **Theming.** Consumers theme through custom properties on the host element (`pk-annotator { --primary: var(--lean-accent); --radius: 4px; }`), which beat `:host` and inherit across the boundary. Dark mode needs `data-theme="dark"` on the host, which switches the `:host` variables, and a `.dark` class on `.pka-root` for Tailwind's dark variant; the `theme` option and `setTheme` set both (see Public API).
 
 Outside-click dismissal needed no `composedPath()` fix. Sizes from the spike's production build: launcher 1.65 kB gzip; UI chunk 135 kB gzip including 9 kB of CSS, loaded only on first open.
 
@@ -356,7 +357,7 @@ Unconfirmed:
 - Whether chrome-devtools-mcp 1.x attaches to Electron 44.
 - Whether Element Capture works through Electron's display-media handler.
 
-Next step: a scratch spike on AI Elements in a Vite library inside a shadow root, source attributes under SSR hydration, and `pka-mcp` against Claude Code, Codex, and Pi (legacy handshake, `structuredContent` visibility, 50-second wait with progress). Then phase 1.
+The scratch spike planned here for AI Elements in a shadow root and source attributes under SSR hydration has run; its results are in Selection and in AI Elements inside the shadow root.
 
 ## Sources
 
