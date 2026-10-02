@@ -1,5 +1,6 @@
-import { snapdom } from "@zumer/snapdom";
+import { snapdom, type CaptureResult } from "@zumer/snapdom";
 import type { ViteHotContext } from "vite/types/hot.d.ts";
+import { z } from "zod";
 
 import { describe, preferredLocator, type Description } from "../select/describe.ts";
 import { locate } from "../select/source.ts";
@@ -111,6 +112,29 @@ async function crop(page: HTMLCanvasElement, box: Box): Promise<Blob | undefined
   return toBlob(canvas);
 }
 
+const DecodeFailure = z.object({ name: z.literal("EncodingError") });
+
+/**
+ * Rasterizes a snapdom capture. snapdom draws the page as an SVG foreignObject image, and
+ * Chromium paints such an image into an exportable canvas only from a data: URL (from a
+ * blob: URL it taints the canvas), so a page CSP must allow `img-src data:`.
+ */
+export async function captureCanvas(result: CaptureResult): Promise<HTMLCanvasElement> {
+  try {
+    return await result.toCanvas();
+  } catch (cause) {
+    // snapdom decodes in its own frame, so the DOMException comes from another realm and
+    // fails instanceof.
+    if (DecodeFailure.safeParse(cause).success) {
+      throw new Error(
+        "The screenshot did not decode; if the page sets a Content-Security-Policy, its img-src must allow data:",
+        { cause },
+      );
+    }
+    throw cause;
+  }
+}
+
 /** One snapdom capture of the viewport (without the overlay) and a webp crop per element. */
 async function capture(elements: LocatedElement[]): Promise<{
   page: Blob;
@@ -123,7 +147,7 @@ async function capture(elements: LocatedElement[]): Promise<{
     // Pixel-exact text wrapping; without it inline text can re-wrap in the capture.
     reconcile: true,
   });
-  const page = await result.toCanvas();
+  const page = await captureCanvas(result);
   const crops = new Map<number, Blob>();
   for (const element of elements) {
     const blob = await crop(page, element.box);

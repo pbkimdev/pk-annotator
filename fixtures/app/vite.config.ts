@@ -80,8 +80,21 @@ function handleApi(request: IncomingMessage, response: ServerResponse, next: Con
   sendJson(response, 404, JSON.stringify({ error: `no fixture route ${route}` }));
 }
 
+// The narrowest image policy the overlay works under: screenshots need data: (see
+// captureCanvas in src/overlay/send.ts), pasted images need blob:.
+const csp: Plugin = {
+  name: "pk-annotator-fixture:csp",
+  apply: "serve",
+  configureServer(server) {
+    server.middlewares.use((_request, response, next) => {
+      response.setHeader("content-security-policy", "img-src 'self' blob: data:");
+      next();
+    });
+  },
+};
+
 export default defineConfig({
-  plugins: [...annotator({ bodies: ["/api/"] }), api, tanstackStart(), viteReact()],
+  plugins: [...annotator({ bodies: ["/api/"] }), api, csp, tanstackStart(), viteReact()],
   // The overlay is consumed as built, like a published package: launcher chunk first,
   // UI chunk on first open. `pnpm fixture` builds dist first.
   resolve: {

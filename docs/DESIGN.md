@@ -288,6 +288,8 @@ capture/
 
 Redaction happens in the page: inputs masked, auth and cookie headers dropped, bodies kept only for allowlisted same-origin API paths, storage never read.
 
+**Content Security Policy.** Keyframes and selection crops come from snapdom, which renders the page as an SVG `<foreignObject>` image and draws it into a canvas. Chromium lets such a canvas be exported only when the image loads from a `data:` URL. Loaded from a `blob:` URL, the image taints the canvas and `toBlob` throws; `createImageBitmap` cannot decode it, and `OffscreenCanvas` is tainted the same way (probed in Playwright 1.63 Chromium on 2026-10-03). A page CSP must therefore allow `img-src data:`, and `blob:` for images pasted into the composer. Without `data:`, sending fails with an error that names the CSP. The fixture's dev server sends `img-src 'self' blob: data:` so that this minimum stays tested.
+
 ## Performance
 
 | Live in the overlay (dev build, labeled as such) | Lab run (`pka lab`, production build) |

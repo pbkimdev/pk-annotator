@@ -7,7 +7,7 @@ import type { RequestEntry, TimelineEntry } from "../../shared/timeline.ts";
 import { getCapture } from "../capture.ts";
 import { HOST_TAG } from "../launcher.ts";
 import { addAttachment } from "../registry.ts";
-import { currentViewport } from "../send.ts";
+import { captureCanvas, currentViewport } from "../send.ts";
 import { createStore } from "../store.ts";
 import { buildRecording, type RecordedFrame, type RecordedVideo } from "./files.ts";
 
@@ -172,7 +172,7 @@ async function keyframe(): Promise<Blob> {
       },
     ],
   });
-  return toWebp(await result.toCanvas());
+  return toWebp(await captureCanvas(result));
 }
 
 function transparent(color: string): boolean {
