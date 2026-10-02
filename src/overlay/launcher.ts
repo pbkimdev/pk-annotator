@@ -161,7 +161,8 @@ export function createLauncher(hot: ViteHotContext, theme: ThemeSetting): Launch
   button.append(badge);
   shadow.append(button);
   // Outside body, so a recording video restricted to body by Element Capture leaves the
-  // overlay out. React 19 hydration of the document does not report the extra child.
+  // overlay out. React 19 hydrates a document from body's first child and resolves html,
+  // head, and body by reference, so hydration never visits this element.
   document.documentElement.append(host);
 
   const renderBadge = () => {

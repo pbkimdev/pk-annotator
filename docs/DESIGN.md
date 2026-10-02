@@ -284,10 +284,12 @@ capture/
 ├── network.jsonl    # redacted, HAR-like
 ├── errors.json      # deduplicated groups
 ├── frames/NNN.webp  # snapdom keyframe at each action, navigation, error
-└── video.webm       # opt-in: getDisplayMedia + Element Capture restricted to the app root
+└── video.webm       # opt-in: getDisplayMedia + Element Capture restricted to body
 ```
 
 Redaction happens in the page: inputs masked, auth and cookie headers dropped, bodies kept only for allowlisted same-origin API paths, storage never read.
+
+**Overlay exclusion.** The video is restricted to body, and the `<pk-annotator>` host is a child of `<html>` from mount on, so the video never contains the overlay. This placement is safe when a consumer hydrates the whole document. React 19 starts hydrating a document at body's first child and resolves html, head, and body by reference, so it never visits another child of `<html>` (react-dom 19.3.0, `beginWork` for the root and for host singletons). It also skips, without an error, an unexpected element that is a direct child of head or body. In the fixture on 2026-10-03, neither placement produced a hydration error in at least 60 loads each. Those loads covered fresh contexts, 4x and 6x CPU throttling, a cold Vite dependency cache, navigation between `/` and `/lab`, reloads with the dock open, and clicks before hydration ended. An injected mismatch was reported every time.
 
 **Content Security Policy.** Keyframes and selection crops come from snapdom, which renders the page as an SVG `<foreignObject>` image and draws it into a canvas. Chromium lets such a canvas be exported only when the image loads from a `data:` URL. Loaded from a `blob:` URL, the image taints the canvas and `toBlob` throws; `createImageBitmap` cannot decode it, and `OffscreenCanvas` is tainted the same way (probed in Playwright 1.63 Chromium on 2026-10-03). A page CSP must therefore allow `img-src data:`, and `blob:` for images pasted into the composer. Without `data:`, sending fails with an error that names the CSP. The fixture's dev server sends `img-src 'self' blob: data:` so that this minimum stays tested.
 
