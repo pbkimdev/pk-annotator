@@ -1,14 +1,80 @@
-import { defineConfig } from "tsdown";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import tailwindcss from "@tailwindcss/postcss";
+import postcss, { type Declaration } from "postcss";
+import { defineConfig, type UserConfig } from "tsdown";
 
-export default defineConfig({
-  entry: {
-    vite: "src/vite/index.ts",
-    overlay: "src/overlay/index.ts",
-    pka: "src/cli/main.ts",
-    "pka-mcp": "src/mcp/main.ts",
+const INLINE_CSS = "?inline";
+
+// rem resolves against the host page's <html> font-size, the one host value that
+// crosses the shadow boundary, so the overlay stylesheet is compiled to px.
+const remToPx = {
+  postcssPlugin: "pka-rem-to-px",
+  Declaration(declaration: Declaration) {
+    if (!declaration.value.includes("rem")) return;
+    declaration.value = declaration.value.replace(
+      /(-?\d*\.?\d+)rem\b/g,
+      (_, value: string) => `${Number(value) * 16}px`,
+    );
   },
-  platform: "node",
+};
+
+// Compiles `*.css?inline` imports with Tailwind and inlines the result as a string
+// that the overlay adopts into its shadow root.
+const inlineTailwind = {
+  name: "pka-inline-tailwind",
+  resolveId(source: string, importer: string | undefined) {
+    if (!source.endsWith(`.css${INLINE_CSS}`) || importer === undefined) return null;
+    return path.resolve(path.dirname(importer), source.slice(0, -INLINE_CSS.length)) + INLINE_CSS;
+  },
+  async load(id: string) {
+    if (!id.endsWith(`.css${INLINE_CSS}`)) return null;
+    const file = id.slice(0, -INLINE_CSS.length);
+    const result = await postcss([tailwindcss({ optimize: { minify: true } }), remToPx]).process(
+      await readFile(file, "utf8"),
+      { from: file },
+    );
+    return { code: `export default ${JSON.stringify(result.css)};`, moduleType: "js" as const };
+  },
+};
+
+const overlay: UserConfig = {
+  entry: { overlay: "src/overlay/index.ts" },
+  platform: "browser",
   format: "esm",
+  target: "es2024",
   dts: true,
-  clean: true,
-});
+  clean: false,
+  minify: true,
+  outExtensions: () => ({ js: ".mjs", dts: ".d.mts" }),
+  // The UI chunk imports the launcher's modules from the entry instead of a third chunk,
+  // so the first page load requests one small file. Radix ships "use client" directives
+  // that mean nothing in this browser bundle.
+  inputOptions: {
+    preserveEntrySignatures: "allow-extension",
+    checks: { moduleLevelDirective: false },
+  },
+  alias: { "@": path.resolve(import.meta.dirname, "src") },
+  define: { "process.env.NODE_ENV": JSON.stringify("production") },
+  deps: {
+    neverBundle: [/^react($|\/)/, /^react-dom($|\/)/],
+    alwaysBundle: [/^(?!react($|\/)|react-dom($|\/))/],
+    onlyBundle: false,
+  },
+  plugins: [inlineTailwind],
+};
+
+export default defineConfig([
+  {
+    entry: {
+      vite: "src/vite/index.ts",
+      pka: "src/cli/main.ts",
+      "pka-mcp": "src/mcp/main.ts",
+    },
+    platform: "node",
+    format: "esm",
+    dts: true,
+    clean: true,
+  },
+  overlay,
+]);
