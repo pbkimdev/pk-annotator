@@ -8,6 +8,8 @@
     "pnpm-lock.yaml",
     "AGENTS.md",
     "docs/**",
-    "fixtures/app/src/routeTree.gen.ts"
+    "fixtures/app/src/routeTree.gen.ts",
+    "src/overlay/ui/**",
+    "src/overlay/ai-elements/**"
   ]
 }
