@@ -28,6 +28,8 @@ export interface NetworkHooks {
 export interface Network {
   list: () => RequestEntry[];
   resolveTimings: () => boolean;
+  // The fetch this module wrapped; requests made through it are not tracked.
+  untracked: typeof fetch;
   restore: () => void;
 }
 
@@ -468,6 +470,8 @@ export function installNetwork(hooks: NetworkHooks): Network {
   return {
     list: () => tracked.map((item) => ({ ...item.entry })),
     resolveTimings,
+    // Called as a method of another object, the native fetch throws "Illegal invocation".
+    untracked: (input, init) => originalFetch(input, init),
     restore() {
       globalThis.fetch = originalFetch;
       proto.open = originalOpen;

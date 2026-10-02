@@ -203,8 +203,11 @@ describe("network capture", () => {
     await fetch("/other/data");
     await fetch("/api/big");
     await fetch("https://example.com/api/data");
+    // Overlay requests go around capture.
+    await current.fetch("/api/overlay-source.js");
     await vi.waitFor(() => expect(current.snapshot().requests[0]?.state).toBe("done"));
 
+    expect(current.snapshot().requests).toHaveLength(4);
     const [login, other, big, crossOrigin] = current.snapshot().requests;
     expect(login?.url).toBe("http://localhost:3000/api/login?token=REDACTED&page=2");
     expect(login?.requestHeaders).toEqual({

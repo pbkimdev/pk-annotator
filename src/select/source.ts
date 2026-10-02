@@ -8,6 +8,8 @@ import {
 import type { Fiber } from "bippy";
 import { formatOwnerStack, parseStack, symbolicateStack, type StackFrame } from "bippy/source";
 
+import { untrackedFetch } from "../overlay/untracked-fetch.ts";
+
 export const SOURCE_ATTRIBUTE = "data-pka-src";
 
 export type Location = {
@@ -125,7 +127,8 @@ async function resolve(element: Element): Promise<Location> {
 
 /** A frame as workspace `file:line:col` through its source map, or undefined when unmapped. */
 export async function symbolicate(frame: StackFrame): Promise<string | undefined> {
-  const [resolved] = await symbolicateStack([frame]);
+  // bippy reads globalThis.fetch, which the free-fetch injection does not reach.
+  const [resolved] = await symbolicateStack([frame], true, untrackedFetch);
   if (
     resolved?.isSymbolicated !== true ||
     resolved.fileName === undefined ||

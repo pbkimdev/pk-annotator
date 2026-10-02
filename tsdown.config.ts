@@ -51,7 +51,8 @@ const overlay: UserConfig = {
   // so the first page load requests one small file. Radix ships "use client" directives
   // that mean nothing in this browser bundle.
   // web-vitals has no stop API, so its observers are built from a tracked subclass that the
-  // overlay disconnects on unmount.
+  // overlay disconnects on unmount. Free `fetch` calls (snapdom, overlay code) go around
+  // capture's wrapper so overlay requests stay out of the Network panel.
   inputOptions: {
     preserveEntrySignatures: "allow-extension",
     checks: { moduleLevelDirective: false },
@@ -60,6 +61,10 @@ const overlay: UserConfig = {
         PerformanceObserver: [
           path.resolve(import.meta.dirname, "src/overlay/perf/observer.ts"),
           "TrackedPerformanceObserver",
+        ],
+        fetch: [
+          path.resolve(import.meta.dirname, "src/overlay/untracked-fetch.ts"),
+          "untrackedFetch",
         ],
       },
     },

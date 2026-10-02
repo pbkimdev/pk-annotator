@@ -149,7 +149,7 @@ Nothing runs that you are not using, and production carries zero bytes.
 |---|---|---|
 | Launcher | One DOM button in a shadow root; React, AI Elements, and Tailwind not loaded | UI chunk loads on first open by dynamic import |
 | Console and errors | Wrappers append to fixed ring buffers (500 entries). Arguments are serialized at capture time with depth and length caps, so the buffer never holds app objects. Only new error groups are sent to the plugin, throttled to once per second | Batched to the plugin every 250 ms while a panel is open or a recording runs |
-| Network | Request metadata only, same ring-buffer cap. Bodies are captured only for allowlisted same-origin paths, 64 KB each, 8 MB total. Event streams (Lean's live connection, `apps/web/src/sse-client.ts:19`) are never cloned; only open, close, and byte count are recorded | Same |
+| Network | Request metadata only, same ring-buffer cap. Bodies are captured only for allowlisted same-origin paths, 64 KB each, 8 MB total. Event streams (Lean's live connection, `apps/web/src/sse-client.ts:19`) are never cloned; only open, close, and byte count are recorded. The overlay's own requests (source maps for symbolication, images and fonts snapdom inlines) use the unwrapped fetch and are never recorded | Same |
 | Performance | No observers. Opening the Perf panel starts PerformanceObserver with `buffered: true`, which still returns LCP, CLS, and earlier long animation frames | `react-scan/lite` runs only while the Perf panel is open |
 | Recording | Off | Keyframes only at actions, navigations, and errors; video only when chosen |
 | Automation | Nothing mounts when `navigator.webdriver` is true (Playwright, e2e runs) | n/a |

@@ -74,6 +74,9 @@ export interface Capture {
   // starts and when it settles. Its bodies can be dropped later to keep the ring's body
   // cap, so a recording copies them when the request settles.
   tap: (listener: (entry: TimelineEntry) => void) => () => void;
+  // The page's fetch from before capture wrapped it. Overlay requests (source maps,
+  // screenshot resources) go through it so they never show up as page requests.
+  fetch: typeof fetch;
   reactRootOptions: ReactRootOptions;
   stop: () => void;
 }
@@ -112,6 +115,7 @@ function inertCapture(): Capture {
     },
     applySymbolicated: () => {},
     tap: () => () => {},
+    fetch: globalThis.fetch.bind(globalThis),
     reactRootOptions: {},
     stop: () => {},
   };
@@ -674,6 +678,7 @@ export function createCapture(options: CaptureOptions): Capture {
       taps.add(listener);
       return () => taps.delete(listener);
     },
+    fetch: network.untracked,
     reactRootOptions,
     stop() {
       if (stopped) return;
