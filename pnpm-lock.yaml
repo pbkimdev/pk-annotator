@@ -8,9 +8,15 @@ importers:
 
   .:
     dependencies:
+      '@jridgewell/trace-mapping':
+        specifier: 0.3.31
+        version: 0.3.31
       '@modelcontextprotocol/server':
         specifier: 2.2.0
         version: 2.2.0
+      magic-string:
+        specifier: 1.4.2
+        version: 1.4.2
       zod:
         specifier: 4.6.5
         version: 4.6.5

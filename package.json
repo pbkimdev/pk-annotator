@@ -36,7 +36,9 @@
     "verify": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm build"
   },
   "dependencies": {
+    "@jridgewell/trace-mapping": "0.3.31",
     "@modelcontextprotocol/server": "2.2.0",
+    "magic-string": "1.4.2",
     "zod": "4.6.5"
   },
   "devDependencies": {
