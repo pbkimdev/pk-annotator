@@ -207,7 +207,10 @@ function prepareBody(): () => void {
   if (bodyPlain && htmlStyle.backgroundImage === "none") {
     set(body, "background-color", behindBody);
   }
+  let restored = false;
   return () => {
+    if (restored) return;
+    restored = true;
     for (const restore of restores.reverse()) restore();
   };
 }
@@ -358,16 +361,16 @@ export function createRecorder() {
     const restoreBody = prepareBody();
     try {
       if (track === undefined) throw new Error("the capture has no video track");
-      if (track.getSettings().displaySurface !== "browser" || track.restrictTo === undefined) {
-        throw new Error("share this tab; Element Capture cannot restrict a window or screen");
-      }
+      if (track.restrictTo === undefined) throw new Error("the track has no restrictTo");
       const target = await globalThis.RestrictionTarget?.fromElement(document.body);
       if (target === undefined) throw new Error("RestrictionTarget disappeared");
+      // restrictTo itself refuses anything but this tab; the surface names what was shared.
       await track.restrictTo(target);
     } catch (cause) {
+      const surface = track?.getSettings().displaySurface ?? "unknown";
       restoreBody();
       stopTracks(stream);
-      fail(`Element Capture failed: ${describe(cause)}`);
+      fail(`Element Capture failed on a ${surface} capture; share this tab (${describe(cause)})`);
       return;
     }
     if (session !== current) {
@@ -404,6 +407,7 @@ export function createRecorder() {
     });
     track.addEventListener("ended", () => {
       if (recorder.state !== "inactive") recorder.stop();
+      restoreBody();
       if (session === current) setVideo({ state: "failed", reason: "Tab sharing was stopped" });
     });
     current.video = { kind: "on", video };
