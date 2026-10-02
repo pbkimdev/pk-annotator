@@ -50,8 +50,8 @@ const USAGE = `Usage: pka [--root DIR] [--json] <command>
 
 The store is <root>/_interim/annotations. Without --root or PKA_ROOT, pka uses
 CLAUDE_PROJECT_DIR, then the nearest parent of the working directory that has one.
-pka lab: --flow is a timeline.jsonl file or an annotation id with a recorded
-capture/timeline.jsonl. Budgets left out use the Core Web Vitals "good"
+pka lab: --flow is a timeline.jsonl file or an annotation id with a recording
+(its timeline.jsonl sits beside capture/summary.md). Budgets left out use the Core Web Vitals "good"
 thresholds. --out defaults to $TMPDIR/pka-lab/<time>. --attach adds the
 verdict to that annotation as a perf attachment.
 Exit codes: 0 ok, 1 operation error, 2 usage error, 3 lab verdict is fail or incomplete.`;

@@ -78,7 +78,6 @@ const QUIET_MS = 500;
 const SETTLE_MAX_MS = 10_000;
 const TEXT_CAP = 40;
 const BINDING = "__pkaLabReport";
-const TIMELINE_PATH = "capture/timeline.jsonl";
 
 /** A step that could not be replayed; it fails the run, not the command. */
 class StepError extends Error {
@@ -125,17 +124,26 @@ export async function readFlowFile(file: string): Promise<FlowStep[]> {
   return flowFromTimeline(entries);
 }
 
-/** Reads the flow from an annotation's recorded capture/timeline.jsonl. */
+/**
+ * Reads the flow from an annotation's recording. The recording attachment
+ * points at capture/summary.md; timeline.jsonl sits in the same directory.
+ */
 export async function readAnnotationFlow(store: string, id: string): Promise<FlowStep[]> {
   const { annotation } = await get(store, { id, detail: "concise" });
-  const timeline = annotation.attachments.find((item) => item.path === TIMELINE_PATH);
-  if (timeline === undefined) {
+  const recording = annotation.attachments.find((item) => item.kind === "recording");
+  if (recording === undefined) {
     throw new PkaError(
-      `Annotation ${id} has no ${TIMELINE_PATH}; record a flow in the overlay or pass a timeline file to --flow.`,
+      `Annotation ${id} has no recording; record a flow in the overlay or pass a timeline file to --flow.`,
     );
   }
-  const file = resolveInside(annotation.dir, timeline.path);
-  return flowFromTimeline(await readJsonLines(store, file, TimelineEntry));
+  const file = resolveInside(annotation.dir, path.posix.dirname(recording.path), "timeline.jsonl");
+  const entries = await readJsonLines(store, file, TimelineEntry);
+  if (entries.length === 0) {
+    throw new PkaError(
+      `Annotation ${id}'s ${path.relative(annotation.dir, file)} is missing or empty; record the flow again or pass a timeline file to --flow.`,
+    );
+  }
+  return flowFromTimeline(entries);
 }
 
 // --- Page script ----------------------------------------------------------
