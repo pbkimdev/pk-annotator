@@ -32,7 +32,7 @@
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "typecheck": "tsc --noEmit && tsc --noEmit -p fixtures/app",
-    "fixture": "pnpm --filter @srv/pk-annotator-fixture dev",
+    "fixture": "pnpm build && pnpm --filter @srv/pk-annotator-fixture dev",
     "verify": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm build"
   },
   "dependencies": {

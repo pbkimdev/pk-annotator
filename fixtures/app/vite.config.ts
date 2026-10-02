@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { fileURLToPath } from "node:url";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
@@ -74,5 +75,14 @@ const api: Plugin = {
 
 export default defineConfig({
   plugins: [...annotator({ bodies: ["/api/"] }), api, tanstackStart(), viteReact()],
+  // The overlay is consumed as built, like a published package: launcher chunk first,
+  // UI chunk on first open. `pnpm fixture` builds dist first.
+  resolve: {
+    alias: {
+      "@srv/pk-annotator/overlay": fileURLToPath(
+        new URL("../../dist/overlay.mjs", import.meta.url),
+      ),
+    },
+  },
   server: { host: "127.0.0.1", port: Number(process.env.PORT ?? 3200), strictPort: true },
 });

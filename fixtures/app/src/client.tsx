@@ -4,7 +4,7 @@ import { hydrateRoot } from "react-dom/client";
 
 let rootOptions = {};
 if (import.meta.env.DEV) {
-  const { mount } = await import("../../../src/overlay/index.ts");
+  const { mount } = await import("@srv/pk-annotator/overlay");
   rootOptions = mount({ hot: import.meta.hot! }).reactRootOptions;
 }
 hydrateRoot(
