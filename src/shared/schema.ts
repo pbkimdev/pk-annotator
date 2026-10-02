@@ -45,6 +45,11 @@ export const ElementRef = z.strictObject({
     .string()
     .regex(/^.+:\d+:\d+$/, "source must be file:line:col")
     .optional(),
+  // Call site of the nearest owner component in project code, when it differs from source.
+  usedAt: z
+    .string()
+    .regex(/^.+:\d+:\d+$/, "usedAt must be file:line:col")
+    .optional(),
   owners: z.array(z.string()),
   selector: Selector,
   html: z.string(),
