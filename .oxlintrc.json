@@ -14,7 +14,8 @@
     "_interim/**",
     "dist/**",
     "node_modules/**",
-    "tools/oxlint/anti-slop/**"
+    "tools/oxlint/anti-slop/**",
+    "fixtures/app/src/routeTree.gen.ts"
   ],
   "categories": {
     "correctness": "error"

@@ -7,6 +7,7 @@
     "tools/oxlint/anti-slop/**",
     "pnpm-lock.yaml",
     "AGENTS.md",
-    "docs/**"
+    "docs/**",
+    "fixtures/app/src/routeTree.gen.ts"
   ]
 }
