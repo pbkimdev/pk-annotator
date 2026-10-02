@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { constants, watch } from "node:fs";
+import { constants, watch, type FSWatcher } from "node:fs";
 import { lstat, mkdir, open, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 
@@ -24,24 +24,15 @@ import {
   type ErrorsAckMessage,
   type SyncedMessage,
 } from "../shared/channel.ts";
-import {
-  ID_PATTERN,
-  State,
-  ThreadEntry,
-  type AnnotationDraft,
-  type ErrorGroup,
-} from "../shared/schema.ts";
+import { ID_PATTERN, type AnnotationDraft, type ErrorGroup } from "../shared/schema.ts";
 import {
   DEFAULT_SIZE_CAP_BYTES,
   MissingAnnotationError,
   PkaError,
-  annotationFiles,
   checkStoreSize,
   createStore,
   isErrno,
   listIds,
-  readJson,
-  readJsonLines,
   resolveInside,
 } from "../store/store.ts";
 import { sourcePlugin } from "./source.ts";
@@ -146,6 +137,9 @@ async function serve(server: ViteDevServer, maxStoreBytes: number): Promise<() =
   let pushQueue = Promise.resolve();
   const changed = new Set<string>();
   let flushScheduled = false;
+  let closed = false;
+  /** Pending and acknowledged annotations only; resolved and dismissed ones are not watched. */
+  const annotationWatchers = new Map<string, FSWatcher>();
 
   const warn = (line: string): void => logger.warn(`pk-annotator: ${line}`, { timestamp: true });
   const error = (line: string): void => logger.error(`pk-annotator: ${line}`, { timestamp: true });
@@ -358,21 +352,58 @@ async function serve(server: ViteDevServer, maxStoreBytes: number): Promise<() =
   hot.on("vite:client:disconnect", onDisconnect);
   listeners.push(["vite:client:disconnect", onDisconnect]);
 
-  async function push(id: string): Promise<void> {
+  function schedule(id: string): void {
+    changed.add(id);
+    if (flushScheduled) return;
+    flushScheduled = true;
+    setImmediate(flush);
+  }
+
+  function unwatch(id: string): void {
+    annotationWatchers.get(id)?.close();
+    annotationWatchers.delete(id);
+    seen.delete(id);
+  }
+
+  /**
+   * Brings one annotation's watch and broadcasts up to date. An annotation
+   * seen for the first time sets the baseline without broadcasting.
+   */
+  async function sync(id: string): Promise<void> {
     let record;
     try {
       record = await loadAnnotation(store, id);
     } catch (thrown) {
       if (!(thrown instanceof MissingAnnotationError)) throw thrown;
-      seen.delete(id);
+      unwatch(id);
       return;
     }
-    const known = seen.get(id) ?? { history: 0, thread: 0 };
-    if (record.state.history.length !== known.history) {
-      hot.send(CHANNEL.state, { id, state: record.state });
+    if (closed) return;
+    const known = seen.get(id);
+    if (known !== undefined) {
+      if (record.state.history.length !== known.history) {
+        hot.send(CHANNEL.state, { id, state: record.state });
+      }
+      for (const entry of record.thread.slice(known.thread)) {
+        hot.send(CHANNEL.thread, { id, entry });
+      }
     }
-    for (const entry of record.thread.slice(known.thread)) hot.send(CHANNEL.thread, { id, entry });
+    if (record.state.status === "resolved" || record.state.status === "dismissed") {
+      unwatch(id);
+      return;
+    }
     seen.set(id, { history: record.state.history.length, thread: record.thread.length });
+    if (annotationWatchers.has(id)) return;
+    const watcher = watch(record.dir, (_event, filename) => {
+      if (filename === "state.json" || filename === "thread.jsonl") schedule(id);
+    });
+    watcher.on("error", (cause) => {
+      error(`watching annotation ${id} failed: ${describeError(cause)}`);
+      unwatch(id);
+    });
+    annotationWatchers.set(id, watcher);
+    // A change between the read above and the watch would otherwise go unseen.
+    schedule(id);
   }
 
   function flush(): void {
@@ -381,7 +412,7 @@ async function serve(server: ViteDevServer, maxStoreBytes: number): Promise<() =
     changed.clear();
     pushQueue = pushQueue.then(async () => {
       for (const id of ids) {
-        await push(id).catch((cause: unknown) =>
+        await sync(id).catch((cause: unknown) =>
           error(`reading annotation ${id} failed: ${describeError(cause)}`),
         );
       }
@@ -394,34 +425,19 @@ async function serve(server: ViteDevServer, maxStoreBytes: number): Promise<() =
   }
   await mkdir(serverStaging);
   await removeStaleStaging();
-  for (const id of await listIds(store)) {
-    const files = annotationFiles(store, id);
-    try {
-      const [state, thread] = await Promise.all([
-        readJson(store, files.state, State),
-        readJsonLines(store, files.thread, ThreadEntry),
-      ]);
-      seen.set(id, { history: state.history.length, thread: thread.length });
-    } catch (thrown) {
-      error(`annotation ${id} is unreadable: ${describeError(thrown)}`);
-    }
-  }
 
-  // Only state.json and thread.jsonl of an annotation reach the overlay; staging and live/ are ignored.
-  const watcher = watch(store, { recursive: true }, (_event, filename) => {
-    if (filename === null) return;
-    const [id, name, ...rest] = filename.split(path.sep);
-    if (id === undefined || !ID_PATTERN.test(id) || rest.length > 0) return;
-    if (name !== "state.json" && name !== "thread.jsonl") return;
-    changed.add(id);
-    if (flushScheduled) return;
-    flushScheduled = true;
-    setImmediate(flush);
+  // New and removed annotation directories appear in the store root; .staging and live are not ids.
+  const storeWatcher = watch(store, (_event, filename) => {
+    if (filename !== null && ID_PATTERN.test(filename)) schedule(filename);
   });
-  watcher.on("error", (cause) => error(`store watcher failed: ${describeError(cause)}`));
+  storeWatcher.on("error", (cause) => error(`store watcher failed: ${describeError(cause)}`));
+  for (const id of await listIds(store)) schedule(id);
 
   return async () => {
-    watcher.close();
+    closed = true;
+    storeWatcher.close();
+    for (const watcher of annotationWatchers.values()) watcher.close();
+    annotationWatchers.clear();
     for (const [event, listener] of listeners) hot.off(event, listener);
     for (const upload of uploads.values()) upload.done = true;
     uploads.clear();
