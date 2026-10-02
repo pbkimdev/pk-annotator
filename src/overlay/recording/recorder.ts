@@ -1,9 +1,9 @@
 import { snapdom } from "@zumer/snapdom";
 
-import { redactUrl } from "../../core/network.ts";
+import { MAX_BODY_TOTAL_BYTES, redactUrl, utf8Length } from "../../core/network.ts";
 import { RECORDING, framePath } from "../../shared/recording.ts";
 import type { Viewport } from "../../shared/schema.ts";
-import type { TimelineEntry } from "../../shared/timeline.ts";
+import type { RequestEntry, TimelineEntry } from "../../shared/timeline.ts";
 import { getCapture } from "../capture.ts";
 import { HOST_TAG } from "../launcher.ts";
 import { addAttachment } from "../registry.ts";
@@ -72,12 +72,20 @@ type Video = {
   restoreBody: () => void;
 };
 
+type Bodies = Pick<RequestEntry, "requestBody" | "responseBody">;
+
 type Session = {
   startedAt: Date;
   url: string;
   viewport: Viewport;
   entries: TimelineEntry[];
   dropped: number;
+  /** Requests seen by the tap, and whether they were kept or dropped over the entry cap. */
+  requests: WeakMap<RequestEntry, boolean>;
+  /** Bodies copied when each kept request settled, by seq; null when over the body budget. */
+  bodies: Map<number, Bodies | null>;
+  bodyBytes: number;
+  bodiesDropped: number;
   counts: Counts;
   errorFingerprints: Set<string>;
   frames: RecordedFrame[];
@@ -208,6 +216,15 @@ function stopTracks(stream: MediaStream): void {
   for (const track of stream.getTracks()) track.stop();
 }
 
+// Request entries are live until stop; the copy freezes them, with the bodies kept at settle.
+function frozenEntries(current: Session): TimelineEntry[] {
+  return structuredClone(current.entries).map((entry) => {
+    if (entry.kind !== "request" || !current.bodies.has(entry.seq)) return entry;
+    const { requestBody: _request, responseBody: _response, ...rest } = entry;
+    return { ...rest, ...current.bodies.get(entry.seq) };
+  });
+}
+
 export function createRecorder() {
   const state = createStore<RecorderState>({
     phase: "idle",
@@ -257,9 +274,34 @@ export function createRecorder() {
     });
   }
 
+  // The capture may later drop a settled request's bodies to keep its own cap, so the
+  // recording copies them now, within a budget of its own.
+  function keepBodies(current: Session, entry: RequestEntry): void {
+    const bytes = utf8Length(entry.requestBody ?? "") + utf8Length(entry.responseBody ?? "");
+    if (bytes === 0) return;
+    if (current.bodyBytes + bytes > MAX_BODY_TOTAL_BYTES) {
+      current.bodies.set(entry.seq, null);
+      current.bodiesDropped += 1;
+      return;
+    }
+    current.bodyBytes += bytes;
+    const bodies: Bodies = {};
+    if (entry.requestBody !== undefined) bodies.requestBody = entry.requestBody;
+    if (entry.responseBody !== undefined) bodies.responseBody = entry.responseBody;
+    current.bodies.set(entry.seq, bodies);
+  }
+
   function onEntry(current: Session, entry: TimelineEntry): void {
     // snapdom warns once per page during the first keyframe; that is the overlay, not the page.
     if (entry.kind === "console" && String(entry.args[0]).startsWith("[snapdom]")) return;
+    if (entry.kind === "request") {
+      const kept = current.requests.get(entry);
+      if (kept !== undefined) {
+        if (kept) keepBodies(current, entry);
+        return;
+      }
+      current.requests.set(entry, current.entries.length < MAX_ENTRIES);
+    }
     if (current.entries.length >= MAX_ENTRIES) {
       current.dropped += 1;
       current.counts.dropped = current.dropped;
@@ -407,6 +449,10 @@ export function createRecorder() {
       viewport: currentViewport(),
       entries: [],
       dropped: 0,
+      requests: new WeakMap(),
+      bodies: new Map(),
+      bodyBytes: 0,
+      bodiesDropped: 0,
       counts: { steps: 0, errors: 0, requests: 0, frames: 0, dropped: 0 },
       errorFingerprints: new Set(),
       frames: [],
@@ -447,14 +493,15 @@ export function createRecorder() {
         viewport: current.viewport,
         startedAt: current.startedAt.toISOString(),
         endedAt: endedAt.toISOString(),
-        // Request entries are live until they settle; the copy freezes them.
-        entries: structuredClone(current.entries),
+        entries: frozenEntries(current),
         entryLimit: MAX_ENTRIES,
         entriesDropped: current.dropped,
         frames: current.frames,
         frameLimit: MAX_FRAMES,
         framesDropped: current.framesDropped,
         framesFailed: current.framesFailed,
+        bodyLimit: MAX_BODY_TOTAL_BYTES,
+        bodiesDropped: current.bodiesDropped,
         video,
         groups,
         bodies: globalThis.__PKA_BODIES__ ?? [],

@@ -44,6 +44,8 @@ export type RecordingInput = {
   frameLimit: number;
   framesDropped: number;
   framesFailed: number;
+  bodyLimit: number;
+  bodiesDropped: number;
   video: RecordedVideo;
   /** The capture's current groups, for symbolicated top frames and status. */
   groups: readonly ErrorGroup[];
@@ -251,6 +253,7 @@ function manifestOf(input: RecordingInput, frames: RecordingFrame[]): RecordingM
       limit: input.entryLimit,
       dropped: input.entriesDropped,
     },
+    bodies: { limitBytes: input.bodyLimit, dropped: input.bodiesDropped },
     frames: {
       items: frames,
       limit: input.frameLimit,
@@ -329,6 +332,11 @@ function fileLines(input: RecordingInput, { requests, frames }: Digest): string[
   if (input.framesDropped > 0) {
     lines.push(
       `- **Keyframes truncated:** stopped at ${input.frameLimit}; ${input.framesDropped} later keyframes were skipped`,
+    );
+  }
+  if (input.bodiesDropped > 0) {
+    lines.push(
+      `- **Bodies truncated:** ${count(input.bodiesDropped, "request")} past the ${Math.round(input.bodyLimit / 1024 / 1024)} MB body budget kept no body`,
     );
   }
   if (input.framesFailed > 0) lines.push(`- ${input.framesFailed} keyframes failed to render`);

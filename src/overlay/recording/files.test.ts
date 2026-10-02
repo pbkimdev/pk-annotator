@@ -94,6 +94,8 @@ describe("buildRecording", () => {
       frameLimit: 200,
       framesDropped: 0,
       framesFailed: 0,
+      bodyLimit: 8 * 1024 * 1024,
+      bodiesDropped: 0,
       video: { data: undefined, meta: { path: null, reason: "Not chosen" } },
       groups: [],
       bodies: ["/api/"],

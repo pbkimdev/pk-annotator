@@ -53,6 +53,8 @@ export const RecordingManifestDraft = z.strictObject({
     // Entries after the limit are counted, not kept.
     dropped: Count,
   }),
+  // Request and response bodies kept in network.jsonl, within a byte budget.
+  bodies: z.strictObject({ limitBytes: Count, dropped: Count }),
   frames: z.strictObject({
     items: z.array(RecordingFrame),
     limit: Count,
