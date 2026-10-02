@@ -266,3 +266,22 @@ describe("network capture", () => {
     expect(current.snapshot().requests[0]?.responseBody).toBeUndefined();
   });
 });
+
+describe("tap", () => {
+  it("passes every entry to a recording after the ring buffer has dropped the oldest", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.stubGlobal("fetch", async () => new Response("ok"));
+    const current = start();
+    const tapped: TimelineEntry[] = [];
+    const untap = current.tap((entry) => tapped.push(entry));
+
+    for (let index = 0; index < 600; index += 1) console.log("line", index);
+    await fetch("/api/after");
+    untap();
+    console.log("after untap");
+
+    expect(current.snapshot().console).toHaveLength(500);
+    expect(tapped.filter((entry) => entry.kind === "console")).toHaveLength(600);
+    expect(tapped.at(-1)).toMatchObject({ kind: "request", state: "done" });
+  });
+});

@@ -10,6 +10,7 @@ import type {
   ErrorSource,
   NavigationEntry,
   RequestEntry,
+  TimelineEntry,
 } from "../shared/timeline.ts";
 import { fingerprintError, fingerprintResource } from "./errors.ts";
 import { installNetwork, redactUrl } from "./network.ts";
@@ -68,6 +69,10 @@ export interface Capture {
   markResolved: (fingerprints: readonly string[], updatedAt: number) => void;
   huntContext: (fingerprint: string, windowMs?: number) => HuntContext;
   applySymbolicated: (ack: ErrorsAckMessage) => void;
+  // Passes every new entry to the listener before a ring buffer can drop it, so a
+  // recording keeps all of them. A request arrives once, when it starts, as the live
+  // entry that keeps updating until it settles; copy it before keeping it.
+  tap: (listener: (entry: TimelineEntry) => void) => () => void;
   reactRootOptions: ReactRootOptions;
   stop: () => void;
 }
@@ -105,6 +110,7 @@ function inertCapture(): Capture {
       throw new Error(`No error group ${fingerprint}: capture is off under navigator.webdriver`);
     },
     applySymbolicated: () => {},
+    tap: () => () => {},
     reactRootOptions: {},
     stop: () => {},
   };
@@ -214,6 +220,7 @@ export function createCapture(options: CaptureOptions): Capture {
   const counted = new WeakSet<Error>();
   const watermarks = { console: 0, network: 0, errors: 0 } satisfies Record<CaptureStream, number>;
   const listeners = new Set<() => void>();
+  const taps = new Set<(entry: TimelineEntry) => void>();
   let notifyQueued = false;
   const pendingSend = new Set<string>();
   let sendTimer: ReturnType<typeof setTimeout> | undefined;
@@ -233,6 +240,21 @@ export function createCapture(options: CaptureOptions): Capture {
 
   function fail(context: string, cause: unknown): void {
     originalError.call(console, `pk-annotator: ${context} failed`, cause);
+  }
+
+  function emit(entry: TimelineEntry): void {
+    for (const tap of taps) {
+      try {
+        tap(entry);
+      } catch (cause) {
+        fail("recording tap", cause);
+      }
+    }
+  }
+
+  function append<Entry extends TimelineEntry>(list: Entry[], entry: Entry): void {
+    pushBounded(list, entry);
+    emit(entry);
   }
 
   function changed(): void {
@@ -288,7 +310,7 @@ export function createCapture(options: CaptureOptions): Capture {
   }
 
   function recordError(entry: ErrorEntry, topFrame: string | undefined): void {
-    pushBounded(errorEntries, entry);
+    append(errorEntries, entry);
     const state = groups.get(entry.fingerprint);
     if (state === undefined) {
       if (groups.size >= MAX_GROUPS) evictGroup();
@@ -364,7 +386,7 @@ export function createCapture(options: CaptureOptions): Capture {
     args: readonly unknown[],
     site: Error | undefined,
   ): void {
-    pushBounded(consoleEntries, {
+    append(consoleEntries, {
       kind: "console",
       seq: nextSeq(),
       at: now(),
@@ -483,7 +505,7 @@ export function createCapture(options: CaptureOptions): Capture {
 
   // Network
 
-  const network = installNetwork({ bodies: options.bodies, nextSeq, changed, fail });
+  const network = installNetwork({ bodies: options.bodies, nextSeq, changed, added: emit, fail });
   cleanups.push(network.restore);
 
   // Actions and navigation
@@ -514,7 +536,7 @@ export function createCapture(options: CaptureOptions): Capture {
       target: descriptor,
     };
     if (key !== undefined) entry.key = key;
-    pushBounded(actionEntries, entry);
+    append(actionEntries, entry);
     changed();
   }
 
@@ -531,7 +553,7 @@ export function createCapture(options: CaptureOptions): Capture {
     const entry: NavigationEntry = { kind: "navigation", seq: nextSeq(), at: now(), type, to };
     if (lastUrl !== undefined) entry.from = lastUrl;
     lastUrl = to;
-    pushBounded(actionEntries, entry);
+    append(actionEntries, entry);
     changed();
   }
 
@@ -640,6 +662,10 @@ export function createCapture(options: CaptureOptions): Capture {
       }
       changed();
     },
+    tap(listener) {
+      taps.add(listener);
+      return () => taps.delete(listener);
+    },
     reactRootOptions,
     stop() {
       if (stopped) return;
@@ -649,6 +675,7 @@ export function createCapture(options: CaptureOptions): Capture {
       sendTimer = undefined;
       pendingSend.clear();
       listeners.clear();
+      taps.clear();
     },
   };
 }

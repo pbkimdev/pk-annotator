@@ -20,6 +20,7 @@ export interface NetworkHooks {
   bodies: readonly string[];
   nextSeq: () => number;
   changed: () => void;
+  added: (entry: RequestEntry) => void;
   fail: (context: string, cause: unknown) => void;
 }
 
@@ -180,6 +181,7 @@ export function installNetwork(hooks: NetworkHooks): Network {
     };
     tracked.push(item);
     if (tracked.length > MAX_REQUESTS) bodyTotal -= tracked.shift()?.bodyBytes ?? 0;
+    hooks.added(entry);
     hooks.changed();
     return item;
   }
