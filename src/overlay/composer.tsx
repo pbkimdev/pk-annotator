@@ -63,6 +63,8 @@ function fileLine(location: string): string {
 }
 
 function ElementChip({ element, n, remove }: { element: Element; n: number; remove(): void }) {
+  const { ui } = useOverlay();
+  const corner = useStore(ui, (state) => state.corner);
   const [location, setLocation] = useState<Location | undefined>();
   useEffect(() => {
     let current = true;
@@ -92,14 +94,19 @@ function ElementChip({ element, n, remove }: { element: Element; n: number; remo
           className="h-7 max-w-56 cursor-default pl-1 text-xs"
         >
           <AttachmentPreview
-            className="size-5 rounded-full bg-pick text-[11px] font-semibold text-pick-foreground"
+            className="size-4 rounded-[3px] bg-pick text-[10px] font-semibold text-pick-foreground"
             fallbackIcon={<span aria-hidden="true">{n}</span>}
           />
           <AttachmentInfo className="font-mono text-[11px]" />
           <AttachmentRemove label={`Remove element ${n}`} className="focus-visible:opacity-100" />
         </Attachment>
       </AttachmentHoverCardTrigger>
-      <AttachmentHoverCardContent className="w-80 space-y-1 font-mono text-[11px] leading-4">
+      {/* Beside the panel, toward the page, so the card never covers the prompt. */}
+      <AttachmentHoverCardContent
+        side={corner.endsWith("right") ? "left" : "right"}
+        sideOffset={24}
+        className="w-80 space-y-1 font-mono text-[11px] leading-4"
+      >
         <p className="font-sans text-xs font-semibold">{name}</p>
         {location?.source !== undefined && <p className="break-all">source {location.source}</p>}
         {location?.usedAt !== undefined && <p className="break-all">used at {location.usedAt}</p>}
