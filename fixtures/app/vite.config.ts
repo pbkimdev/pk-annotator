@@ -8,6 +8,7 @@ import { annotator } from "../../src/vite/index.ts";
 function sendJson(response: ServerResponse, statusCode: number, json: string) {
   response.statusCode = statusCode;
   response.setHeader("content-type", "application/json");
+  response.setHeader("server-timing", "db;dur=1, total;dur=2");
   response.end(json);
 }
 

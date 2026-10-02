@@ -144,10 +144,27 @@ function describeBody(body: AnyBody): BodyInfo {
 
 export function installNetwork(hooks: NetworkHooks): Network {
   const tracked: Tracked[] = [];
-  const claimed = new WeakSet<PerformanceEntry>();
-  // An open stream keeps resolveTimings scanning on every snapshot; parse each name once.
-  const redactedNames = new WeakMap<PerformanceEntry, string>();
+  // Fetch and XHR timings by redacted URL, oldest first. An observer receives
+  // entries after the page's resource timing buffer is full (250 by default,
+  // which a Vite dev page fills with module scripts), and reading it leaves
+  // the page's own buffer untouched.
+  const timings: { name: string; timing: PerformanceResourceTiming }[] = [];
+  const timingObserver = new PerformanceObserver((list) => collectTimings(list.getEntries()));
+  timingObserver.observe({ type: "resource" });
   let bodyTotal = 0;
+
+  function collectTimings(entries: PerformanceEntryList): void {
+    for (const timing of entries) {
+      if (
+        !(timing instanceof PerformanceResourceTiming) ||
+        (timing.initiatorType !== "fetch" && timing.initiatorType !== "xmlhttprequest")
+      ) {
+        continue;
+      }
+      timings.push({ name: redactUrl(timing.name), timing });
+      if (timings.length > MAX_REQUESTS) timings.shift();
+    }
+  }
 
   function begin(
     initiator: RequestEntry["initiator"],
@@ -428,39 +445,21 @@ export function installNetwork(hooks: NetworkHooks): Network {
   }
 
   function resolveTimings(): boolean {
+    collectTimings(timingObserver.takeRecords());
     const pending = tracked.filter((item) => item.timingUntil !== undefined);
     if (pending.length === 0) return false;
     const now = performance.now();
-    const timings = performance
-      .getEntriesByType("resource")
-      .filter(
-        (timing): timing is PerformanceResourceTiming =>
-          timing instanceof PerformanceResourceTiming &&
-          (timing.initiatorType === "fetch" || timing.initiatorType === "xmlhttprequest") &&
-          !claimed.has(timing),
-      );
-    const redactedName = (timing: PerformanceEntry): string => {
-      let name = redactedNames.get(timing);
-      if (name === undefined) {
-        name = redactUrl(timing.name);
-        redactedNames.set(timing, name);
-      }
-      return name;
-    };
     let changed = false;
     for (const item of pending) {
       const match = timings.find(
-        (timing) =>
-          !claimed.has(timing) &&
-          timing.startTime >= item.start - 1 &&
-          redactedName(timing) === item.entry.url,
+        ({ name, timing }) => timing.startTime >= item.start - 1 && name === item.entry.url,
       );
       if (match === undefined) {
         if (now > (item.timingUntil ?? 0)) item.timingUntil = undefined;
         continue;
       }
-      claimed.add(match);
-      applyTiming(item, match);
+      timings.splice(timings.indexOf(match), 1);
+      applyTiming(item, match.timing);
       changed = true;
     }
     if (changed) hooks.changed();
@@ -473,6 +472,7 @@ export function installNetwork(hooks: NetworkHooks): Network {
     // Called as a method of another object, the native fetch throws "Illegal invocation".
     untracked: (input, init) => originalFetch(input, init),
     restore() {
+      timingObserver.disconnect();
       globalThis.fetch = originalFetch;
       proto.open = originalOpen;
       proto.send = originalSend;
