@@ -11,6 +11,7 @@ import { ConsolePanel } from "./panels/console.tsx";
 import { stopHuntTracking } from "./panels/hunt.ts";
 import { NetworkPanel } from "./panels/network.tsx";
 import { registerPerfPanel } from "./panels/perf.tsx";
+import { registerRecordPanel } from "./panels/record.tsx";
 import { PickLayer } from "./pick-layer.tsx";
 import { PortalContainerContext } from "./portal-container.tsx";
 import { registerPanel } from "./registry.ts";
@@ -109,6 +110,7 @@ export function open(context: UiContext): UiController {
   };
 
   const stopPanels = [
+    registerRecordPanel(),
     registerPanel({ id: "network", label: "Network", icon: NetworkIcon, component: NetworkPanel }),
     registerPanel({
       id: "console",
