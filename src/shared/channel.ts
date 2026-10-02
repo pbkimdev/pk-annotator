@@ -11,7 +11,7 @@ import { AnnotationDraft, ErrorGroup, Id, RelativePath, State, ThreadEntry } fro
 //   plugin   pka:create-failed  when it refuses up front (bad paths, video over the store cap)
 //   overlay  pka:file     one or more chunks per declared file, in offset order
 //   plugin   pka:created  after every declared byte has arrived and the annotation is written
-// The plugin stages chunks on disk under the store's .staging/<requestId>/ and
+// The plugin stages chunks on disk under the store's .staging/<server>/<requestId>/ and
 // moves the finished annotation directory into place in one rename, so readers
 // never see a partial annotation and large files never sit in memory.
 //
