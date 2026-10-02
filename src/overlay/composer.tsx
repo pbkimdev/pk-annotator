@@ -239,6 +239,7 @@ function ComposerForm() {
         setPhase,
       );
       thread.added({ id, prompt: message.text, createdAt, elements: selection.length });
+      for (const attachment of extra) attachment.sent?.(id);
       attachmentList.clear();
       ui.set({ selection: [], panel: THREAD, picking: null });
     } catch (cause) {

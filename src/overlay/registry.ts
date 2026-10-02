@@ -16,7 +16,13 @@ export type PanelDefinition = {
   component: ComponentType<PanelProps>;
 };
 
-/** One file written under the annotation directory, for example `capture/network.jsonl`. */
+/** The file the agent reads first. Each attachment may add a section to it. */
+export const SUMMARY_PATH = "capture/summary.md";
+
+/**
+ * One file written under the annotation directory, for example `capture/network.jsonl`.
+ * Files at SUMMARY_PATH from several attachments are joined into one summary.
+ */
 export type AttachmentFile = { path: string; data: Blob };
 
 export type CollectedAttachment = {
@@ -33,6 +39,8 @@ export type ComposerAttachment = {
   label: string;
   /** Runs once when the annotation is sent. */
   collect(): Promise<CollectedAttachment>;
+  /** Runs after the dev server has stored the annotation. */
+  sent?(id: string): void;
 };
 
 type Listener = () => void;

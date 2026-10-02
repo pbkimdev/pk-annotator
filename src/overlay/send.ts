@@ -15,7 +15,7 @@ import type { Attachment, Box, Viewport } from "../shared/schema.ts";
 import { listen, send } from "./channel-client.ts";
 import { HOST_TAG } from "./launcher.ts";
 import type { LocatedElement } from "./markdown.ts";
-import type { AttachmentFile, ComposerAttachment } from "./registry.ts";
+import { SUMMARY_PATH, type AttachmentFile, type ComposerAttachment } from "./registry.ts";
 
 export const MAX_ELEMENTS = 100;
 const REPLY_TIMEOUT_MS = 30_000;
@@ -178,10 +178,17 @@ export async function sendAnnotation(
     files.push({ path, data: blob });
     return { ...ref, crop: path };
   });
+  const summary: Blob[] = [];
   for (const attachment of composerAttachments) {
     const collected = await attachment.collect();
-    files.push(...collected.files);
+    for (const file of collected.files) {
+      if (file.path === SUMMARY_PATH) summary.push(file.data);
+      else files.push(file);
+    }
     attachments.push({ kind: attachment.kind, path: collected.path, summary: collected.summary });
+  }
+  if (summary.length > 0) {
+    files.push({ path: SUMMARY_PATH, data: new Blob(summary.flatMap((part) => [part, "\n"])) });
   }
 
   // getRandomValues, unlike randomUUID, also works on plain-http LAN dev origins.
