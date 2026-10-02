@@ -99,7 +99,7 @@ pka prune                                                         remove closed 
 pka lab --url URL --flow ID                                       replay a recording against a production build
 ```
 
-Every command takes `--json` and `--root DIR`. `pka lab` needs Playwright; it writes `verdict.json` and exits 3 when a budget fails. Run `pka --help` for every option.
+Every command takes `--json` and `--root DIR`. `pka lab` needs Playwright; it writes `verdict.json` and exits 3 when the verdict fails a budget or is incomplete. Run `pka --help` for every option.
 
 ## Resource budget
 
