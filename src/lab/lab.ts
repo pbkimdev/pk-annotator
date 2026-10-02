@@ -14,9 +14,10 @@ import {
   type ActionTarget,
   type NavigationEntry,
 } from "../shared/timeline.ts";
+import { RecordingManifest } from "../shared/recording.ts";
 import { LabMetric, LoafScript, Verdict, type NetworkPreset } from "../shared/verdict.ts";
 import { get } from "../ops/ops.ts";
-import { PkaError, readJsonLines, resolveInside } from "../store/store.ts";
+import { PkaError, isErrno, readJson, readJsonLines, resolveInside } from "../store/store.ts";
 import { analyzeTrace } from "./insights.ts";
 import {
   computeVerdict,
@@ -126,7 +127,10 @@ export async function readFlowFile(file: string): Promise<FlowStep[]> {
 
 /**
  * Reads the flow from an annotation's recording. The recording attachment
- * points at capture/summary.md; timeline.jsonl sits in the same directory.
+ * points at capture/summary.md; timeline.jsonl and manifest.json sit in the same
+ * directory. A recording started on an already loaded page has no navigation
+ * before its first action, so the replay starts with a load of the manifest's
+ * start URL, rebased onto --url like every recorded navigation.
  */
 export async function readAnnotationFlow(store: string, id: string): Promise<FlowStep[]> {
   const { annotation } = await get(store, { id, detail: "concise" });
@@ -136,14 +140,36 @@ export async function readAnnotationFlow(store: string, id: string): Promise<Flo
       `Annotation ${id} has no recording; record a flow in the overlay or pass a timeline file to --flow.`,
     );
   }
-  const file = resolveInside(annotation.dir, path.posix.dirname(recording.path), "timeline.jsonl");
+  const dir = path.posix.dirname(recording.path);
+  const file = resolveInside(annotation.dir, dir, "timeline.jsonl");
   const entries = await readJsonLines(store, file, TimelineEntry);
   if (entries.length === 0) {
     throw new PkaError(
       `Annotation ${id}'s ${path.relative(annotation.dir, file)} is missing or empty; record the flow again or pass a timeline file to --flow.`,
     );
   }
-  return flowFromTimeline(entries);
+  const steps = flowFromTimeline(entries);
+  const first = steps[0];
+  if (first === undefined || first.kind === "navigation") return steps;
+  const manifestFile = resolveInside(annotation.dir, dir, "manifest.json");
+  let manifest: RecordingManifest;
+  try {
+    manifest = await readJson(store, manifestFile, RecordingManifest);
+  } catch (thrown) {
+    if (!isErrno(thrown, "ENOENT")) throw thrown;
+    throw new PkaError(
+      `Annotation ${id}'s ${path.relative(annotation.dir, manifestFile)} is missing, so the start page is unknown; record the flow again or pass a timeline file to --flow.`,
+      { cause: thrown },
+    );
+  }
+  const start: NavigationEntry = {
+    kind: "navigation",
+    seq: Math.max(0, first.seq - 1),
+    at: manifest.startedAt,
+    type: "load",
+    to: manifest.url,
+  };
+  return [start, ...steps];
 }
 
 // --- Page script ----------------------------------------------------------
