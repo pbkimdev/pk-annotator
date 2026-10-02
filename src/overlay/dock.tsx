@@ -32,6 +32,12 @@ const CORNER_CLASS = {
   "bottom-right": "bottom-4 right-4",
 } satisfies Record<Corner, string>;
 
+// shadcn's Toggle marks its pressed state with accent; consumers map accent to their
+// selected surface. The dark variant outranks the ghost button's dark hover, which
+// would otherwise hide the state under the pointer that just pressed it.
+const PRESSED =
+  "aria-pressed:bg-accent aria-pressed:text-accent-foreground dark:aria-pressed:bg-accent";
+
 function DockButton({
   label,
   shortcut,
@@ -169,7 +175,7 @@ export function Dock() {
           key={definition.id}
           label={definition.label}
           aria-pressed={panel === definition.id}
-          className="aria-pressed:bg-muted"
+          className={PRESSED}
           onClick={() => togglePanel(definition.id)}
         >
           <definition.icon />
@@ -179,7 +185,7 @@ export function Dock() {
       <DockButton
         label={selected > 0 ? `Compose (${selected} selected)` : "Compose"}
         aria-pressed={panel === COMPOSE}
-        className="relative aria-pressed:bg-muted"
+        className={cn("relative", PRESSED)}
         onClick={() => togglePanel(COMPOSE)}
       >
         <MessageSquarePlusIcon />
@@ -195,7 +201,7 @@ export function Dock() {
       <DockButton
         label={unread ? "Sent annotations (new replies)" : "Sent annotations"}
         aria-pressed={panel === THREAD}
-        className="relative aria-pressed:bg-muted"
+        className={cn("relative", PRESSED)}
         onClick={() => togglePanel(THREAD)}
       >
         <MessagesSquareIcon />
