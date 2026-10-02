@@ -1,7 +1,12 @@
 import type { ViteHotContext } from "vite/types/hot.d.ts";
 
 import type { HuntContext } from "../../core/index.ts";
-import { CHANNEL, StateMessage, SymbolicatedMessage } from "../../shared/channel.ts";
+import {
+  CHANNEL,
+  MAX_SYMBOLICATE_STACKS,
+  StateMessage,
+  SymbolicatedMessage,
+} from "../../shared/channel.ts";
 import { getCapture } from "../capture.ts";
 import { listen, send } from "../channel-client.ts";
 import { addAttachment, attachments, SUMMARY_PATH } from "../registry.ts";
@@ -121,7 +126,10 @@ async function collect(hot: ViteHotContext, fingerprints: readonly string[]) {
     error.ownerStack ?? "",
     error.componentStack ?? "",
   ]);
-  const mapped = await symbolicate(hot, raw);
+  const mapped: string[] = [];
+  for (let start = 0; start < raw.length; start += MAX_SYMBOLICATE_STACKS) {
+    mapped.push(...(await symbolicate(hot, raw.slice(start, start + MAX_SYMBOLICATE_STACKS))));
+  }
   const hunted: Hunted[] = contexts.map((context, index) => {
     const [stack = "", ownerStack = "", componentStack = ""] = mapped.slice(index * 3);
     const stacks: Stacks = { stack };

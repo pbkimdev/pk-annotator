@@ -78,9 +78,12 @@ export const SyncMessage = z.strictObject({
   ids: z.array(Id).max(200),
 });
 
+export const MAX_SYMBOLICATE_STACKS = 150;
+
+// Core caps a stack at 16,000 characters plus a short "…[+N chars]" marker.
 export const SymbolicateMessage = z.strictObject({
   requestId: Id,
-  stacks: z.array(z.string().max(16_000)).max(150),
+  stacks: z.array(z.string().max(16_100)).max(MAX_SYMBOLICATE_STACKS),
 });
 
 // plugin -> overlay
