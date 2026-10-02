@@ -1,0 +1,12 @@
+{
+  "printWidth": 100,
+  "ignorePatterns": [
+    "dist/**",
+    "node_modules/**",
+    "_interim/**",
+    "tools/oxlint/anti-slop/**",
+    "pnpm-lock.yaml",
+    "AGENTS.md",
+    "docs/**"
+  ]
+}
