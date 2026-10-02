@@ -125,7 +125,7 @@ describe("error groups", () => {
     expect(current.snapshot().groups[0]).toMatchObject({ topFrame: "src/a.ts:1" });
   });
 
-  it("falls back to type and normalized message without in-app frames", () => {
+  it("groups messages that differ only in numbers and addresses", () => {
     const vendor =
       "    at render (http://localhost:3000/node_modules/.vite/deps/react-dom.js:10:5)";
     const first = fingerprintError("Error", "user 42 at 0xdeadbeef1", vendor);

@@ -256,7 +256,7 @@ Per element, in order of how much it changes agent results: call-site `file:line
 ```text
 on window error (capture phase) | unhandledrejection | console.error | React root handlers
   stack = symbolicate(raw)                         # plugin, via module-graph source maps
-  fp    = in-app frames, else type + normalized message
+  fp    = type + normalized message + top 3 in-app frames as path:fn (no line, so an edit above the throw keeps the group)
   group[fp]: count, firstSeen, lastSeen, lastSeq
 Hunt(one group) / Hunt all
   attach the error, owner stack, and the actions and requests in the 20 s before first occurrence
