@@ -282,6 +282,10 @@ describe("tap", () => {
 
     expect(current.snapshot().console).toHaveLength(500);
     expect(tapped.filter((entry) => entry.kind === "console")).toHaveLength(600);
-    expect(tapped.at(-1)).toMatchObject({ kind: "request", state: "done" });
+    const requests = tapped.filter((entry) => entry.kind === "request");
+    // Once when it starts and once, as the same live entry, when it settles.
+    expect(requests).toHaveLength(2);
+    expect(requests[0]).toBe(requests[1]);
+    expect(requests[1]).toMatchObject({ state: "done" });
   });
 });

@@ -70,8 +70,9 @@ export interface Capture {
   huntContext: (fingerprint: string, windowMs?: number) => HuntContext;
   applySymbolicated: (ack: ErrorsAckMessage) => void;
   // Passes every new entry to the listener before a ring buffer can drop it, so a
-  // recording keeps all of them. A request arrives once, when it starts, as the live
-  // entry that keeps updating until it settles; copy it before keeping it.
+  // recording keeps all of them. A request arrives twice as the same live entry: when it
+  // starts and when it settles. Its bodies can be dropped later to keep the ring's body
+  // cap, so a recording copies them when the request settles.
   tap: (listener: (entry: TimelineEntry) => void) => () => void;
   reactRootOptions: ReactRootOptions;
   stop: () => void;
@@ -505,7 +506,14 @@ export function createCapture(options: CaptureOptions): Capture {
 
   // Network
 
-  const network = installNetwork({ bodies: options.bodies, nextSeq, changed, added: emit, fail });
+  const network = installNetwork({
+    bodies: options.bodies,
+    nextSeq,
+    changed,
+    added: emit,
+    settled: emit,
+    fail,
+  });
   cleanups.push(network.restore);
 
   // Actions and navigation

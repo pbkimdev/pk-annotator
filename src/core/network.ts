@@ -21,6 +21,7 @@ export interface NetworkHooks {
   nextSeq: () => number;
   changed: () => void;
   added: (entry: RequestEntry) => void;
+  settled: (entry: RequestEntry) => void;
   fail: (context: string, cause: unknown) => void;
 }
 
@@ -199,8 +200,13 @@ export function installNetwork(hooks: NetworkHooks): Network {
   // dropped from the oldest requests first.
   function storeBody(item: Tracked, field: "requestBody" | "responseBody", text: string): void {
     const bytes = utf8Length(text);
-    // A body read can finish after its request left the ring; its bytes would never be released.
-    if (bytes > MAX_BODY_BYTES || !tracked.includes(item)) return;
+    if (bytes > MAX_BODY_BYTES) return;
+    // A body read can finish after its request left the ring. Only a recording still holds
+    // that entry, so the body goes to it without counting against the ring's total.
+    if (!tracked.includes(item)) {
+      item.entry[field] = text;
+      return;
+    }
     for (const other of tracked) {
       if (bodyTotal + bytes <= MAX_BODY_TOTAL_BYTES) break;
       if (other === item || other.bodyBytes === 0) continue;
@@ -242,6 +248,7 @@ export function installNetwork(hooks: NetworkHooks): Network {
     item.entry.durationMs = Math.round(now - item.start);
     if (error !== undefined) item.entry.error = error;
     item.timingUntil = now + TIMING_GRACE_MS;
+    hooks.settled(item.entry);
     hooks.changed();
   }
 
