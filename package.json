@@ -67,6 +67,7 @@
     "radix-ui": "1.6.7",
     "react": "19.3.0",
     "react-dom": "19.3.0",
+    "react-scan": "0.5.7",
     "shadcn": "4.21.1",
     "tailwindcss": "4.3.3",
     "tsdown": "0.23.0",

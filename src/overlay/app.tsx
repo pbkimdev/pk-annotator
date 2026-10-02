@@ -10,6 +10,7 @@ import { PanelHost } from "./panel.tsx";
 import { ConsolePanel } from "./panels/console.tsx";
 import { stopHuntTracking } from "./panels/hunt.ts";
 import { NetworkPanel } from "./panels/network.tsx";
+import { registerPerfPanel } from "./panels/perf.tsx";
 import { PickLayer } from "./pick-layer.tsx";
 import { PortalContainerContext } from "./portal-container.tsx";
 import { registerPanel } from "./registry.ts";
@@ -115,6 +116,7 @@ export function open(context: UiContext): UiController {
       icon: SquareTerminalIcon,
       component: ConsolePanel,
     }),
+    registerPerfPanel(),
   ];
 
   const root = createRoot(appRoot);

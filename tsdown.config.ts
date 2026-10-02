@@ -50,9 +50,19 @@ const overlay: UserConfig = {
   // The UI chunk imports the launcher's modules from the entry instead of a third chunk,
   // so the first page load requests one small file. Radix ships "use client" directives
   // that mean nothing in this browser bundle.
+  // web-vitals has no stop API, so its observers are built from a tracked subclass that the
+  // overlay disconnects on unmount.
   inputOptions: {
     preserveEntrySignatures: "allow-extension",
     checks: { moduleLevelDirective: false },
+    transform: {
+      inject: {
+        PerformanceObserver: [
+          path.resolve(import.meta.dirname, "src/overlay/perf/observer.ts"),
+          "TrackedPerformanceObserver",
+        ],
+      },
+    },
   },
   alias: { "@": path.resolve(import.meta.dirname, "src") },
   define: { "process.env.NODE_ENV": JSON.stringify("production") },
