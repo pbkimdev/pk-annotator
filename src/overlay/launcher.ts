@@ -8,6 +8,7 @@ export const CORNER_KEY = "pka:corner";
 const OPEN_KEY = "pka:open";
 
 export type Theme = "light" | "dark";
+export type ThemeSetting = Theme | "system";
 export type Corner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
 
 export type ThemeSignal = { get(): Theme; subscribe(listener: () => void): () => void };
@@ -97,34 +98,47 @@ const LAUNCHER_CSS = `
 
 function watchTheme(
   host: HTMLElement,
-  theme: "light" | "dark" | "system",
+  initial: ThemeSetting,
 ): ThemeSignal & {
+  set(setting: ThemeSetting): void;
   stop(): void;
 } {
   const listeners = new Set<() => void>();
-  const query = theme === "system" ? matchMedia("(prefers-color-scheme: dark)") : undefined;
-  let current: Theme = theme === "system" ? (query?.matches ? "dark" : "light") : theme;
+  const query = matchMedia("(prefers-color-scheme: dark)");
+  let setting = initial;
+  const resolve = (): Theme =>
+    setting === "system" ? (query.matches ? "dark" : "light") : setting;
+  let current = resolve();
   host.setAttribute("data-theme", current);
-  const onChange = (event: MediaQueryListEvent) => {
-    current = event.matches ? "dark" : "light";
-    host.setAttribute("data-theme", current);
+  const apply = () => {
+    const next = resolve();
+    if (next === current) return;
+    current = next;
+    host.setAttribute("data-theme", next);
     for (const listener of listeners) listener();
   };
-  query?.addEventListener("change", onChange);
+  query.addEventListener("change", apply);
   return {
     get: () => current,
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
-    stop: () => query?.removeEventListener("change", onChange),
+    set(next) {
+      if (next !== "light" && next !== "dark" && next !== "system") {
+        throw new Error(`setTheme expects "light", "dark", or "system", got ${String(next)}`);
+      }
+      setting = next;
+      apply();
+    },
+    stop: () => query.removeEventListener("change", apply),
   };
 }
 
-export type Launcher = { unmount(): void };
+export type Launcher = { setTheme(theme: ThemeSetting): void; unmount(): void };
 
 /** Creates the host element and the plain DOM launcher; the React UI loads on first open. */
-export function createLauncher(hot: ViteHotContext, theme: "light" | "dark" | "system"): Launcher {
+export function createLauncher(hot: ViteHotContext, theme: ThemeSetting): Launcher {
   if (document.querySelector(HOST_TAG) !== null) {
     throw new Error(`<${HOST_TAG}> is already mounted; call unmount() before mounting again`);
   }
@@ -197,6 +211,7 @@ export function createLauncher(hot: ViteHotContext, theme: "light" | "dark" | "s
   if (sessionStorage.getItem(OPEN_KEY) === "1") void show();
 
   return {
+    setTheme: themeSignal.set,
     unmount() {
       window.removeEventListener("keydown", onKeyDown, { capture: true });
       stopBadge();

@@ -86,16 +86,20 @@ type AnnotatorOptions = {
 function annotator(options?: AnnotatorOptions): Plugin[];
 
 // @srv/pk-annotator/overlay
+type ThemeSetting = "light" | "dark" | "system";
 type MountOptions = {
   hot: ViteHotContext;                    // the consumer's import.meta.hot
-  theme?: "light" | "dark" | "system";    // sets .dark on .pka-root; "system" follows prefers-color-scheme (default)
+  theme?: ThemeSetting;                   // initial theme; "system" follows prefers-color-scheme (default)
 };
 type Mounted = {
   reactRootOptions: Pick<HydrationOptions, "onCaughtError" | "onUncaughtError" | "onRecoverableError">;
+  setTheme(theme: ThemeSetting): void;    // applies at once to the launcher and, once loaded, the UI
   unmount(): void;
 };
 function mount(options: MountOptions): Mounted;
 ```
+
+The theme sets `data-theme` on the host element and `.dark` on `.pka-root`. A consumer whose theme setting loads after mount, as Lean's does, calls `setTheme` when it loads and whenever it changes. The launcher keeps the setting, so a call made before the UI chunk loads still applies when the UI opens.
 
 API calls go through the Vite proxy (`apps/web/vite.config.ts:144`), so they are same-origin in dev and `traceparent` or `Server-Timing` needs no CORS change.
 
