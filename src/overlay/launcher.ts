@@ -146,7 +146,9 @@ export function createLauncher(hot: ViteHotContext, theme: "light" | "dark" | "s
   badge.setAttribute("aria-hidden", "true");
   button.append(badge);
   shadow.append(button);
-  document.body.append(host);
+  // Outside body, so a recording video restricted to body by Element Capture leaves the
+  // overlay out. React 19 hydration of the document does not report the extra child.
+  document.documentElement.append(host);
 
   const renderBadge = () => {
     const count = getBadge();
