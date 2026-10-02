@@ -47,7 +47,7 @@ The agent skill that teaches `pka` lives in pkai, per Paul's rule that skills go
  ├── package.json             # - agentation 3.1.2, + @srv/pk-annotator
  ├── vite.config.ts           # + annotator({ bodies: ["/api/", "/ui-api/"] })
  └── src/
-+    ├── client.tsx           # dev: mount(), then hydrateRoot(..., reactRootOptions)
++    ├── client.tsx           # dev: mount({ hot: import.meta.hot }), then hydrateRoot(..., reactRootOptions)
 +    ├── annotator-theme.css  # maps shadcn variables to --lean-* tokens
      ├── routes/__root.tsx    # - Agentation lazy import and <Agentation endpoint=…>
      └── styles.css:3310      # agentation-toolbar selector → pk-annotator host element
@@ -65,12 +65,36 @@ import { StartClient } from "@tanstack/react-start/client";
 import { StrictMode } from "react";
 import { hydrateRoot } from "react-dom/client";
 
-let rootOptions;
+let rootOptions = {};
 if (import.meta.env.DEV) {
   const annotator = await import("@srv/pk-annotator/overlay");
-  rootOptions = annotator.mount().reactRootOptions;
+  rootOptions = annotator.mount({ hot: import.meta.hot! }).reactRootOptions;
 }
 hydrateRoot(document, <StrictMode><StartClient /></StrictMode>, rootOptions);
+```
+
+The consumer passes `import.meta.hot` because a pre-bundled dependency has no HMR context of its own; the app's client entry does.
+
+## Public API
+
+```ts
+// @srv/pk-annotator/vite
+type AnnotatorOptions = {
+  bodies?: string[];        // same-origin path prefixes whose JSON or text bodies are captured
+  maxStoreBytes?: number;   // store size cap; new video is refused above it (default 500 MB)
+};
+function annotator(options?: AnnotatorOptions): Plugin[];
+
+// @srv/pk-annotator/overlay
+type MountOptions = {
+  hot: ViteHotContext;                    // the consumer's import.meta.hot
+  theme?: "light" | "dark" | "system";    // sets .dark on .pka-root; "system" follows prefers-color-scheme (default)
+};
+type Mounted = {
+  reactRootOptions: Pick<HydrationOptions, "onCaughtError" | "onUncaughtError" | "onRecoverableError">;
+  unmount(): void;
+};
+function mount(options: MountOptions): Mounted;
 ```
 
 API calls go through the Vite proxy (`apps/web/vite.config.ts:144`), so they are same-origin in dev and `traceparent` or `Server-Timing` needs no CORS change.

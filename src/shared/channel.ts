@@ -11,8 +11,13 @@ import { AnnotationDraft, ErrorGroup, Id, RelativePath, State, ThreadEntry } fro
 //   plugin   pka:create-failed  when it refuses up front (bad paths, video over the store cap)
 //   overlay  pka:file     one or more chunks per declared file, in offset order
 //   plugin   pka:created  after every declared byte has arrived and the annotation is written
-// The plugin keeps the files in memory until the last chunk and then writes the
-// annotation directory in one rename, so readers never see a partial annotation.
+// The plugin stages chunks on disk under the store's .staging/<requestId>/ and
+// moves the finished annotation directory into place in one rename, so readers
+// never see a partial annotation and large files never sit in memory.
+//
+// Resuming after a reload:
+//   overlay  pka:sync    {ids} the annotations this tab sent earlier
+//   plugin   pka:synced  {annotations[{id, state, thread}]} for the ids that still exist
 export const CHANNEL = {
   create: "pka:create",
   file: "pka:file",
@@ -23,6 +28,8 @@ export const CHANNEL = {
   state: "pka:state",
   thread: "pka:thread",
   errorsAck: "pka:errors-ack",
+  sync: "pka:sync",
+  synced: "pka:synced",
 } as const;
 
 export const MAX_CHUNK_BYTES = 512 * 1024;
@@ -61,6 +68,10 @@ export const ReplyMessage = z.strictObject({
   text: z.string().min(1).max(10_000),
 });
 
+export const SyncMessage = z.strictObject({
+  ids: z.array(Id).max(200),
+});
+
 // plugin -> overlay
 
 export const CreatedMessage = z.strictObject({
@@ -93,6 +104,16 @@ export const ErrorsAckMessage = z.strictObject({
   ),
 });
 
+export const SyncedMessage = z.strictObject({
+  annotations: z.array(
+    z.strictObject({
+      id: Id,
+      state: State,
+      thread: z.array(ThreadEntry),
+    }),
+  ),
+});
+
 export type CreateMessage = z.infer<typeof CreateMessage>;
 export type FileChunkMessage = z.infer<typeof FileChunkMessage>;
 export type ErrorsMessage = z.infer<typeof ErrorsMessage>;
@@ -102,6 +123,8 @@ export type CreateFailedMessage = z.infer<typeof CreateFailedMessage>;
 export type StateMessage = z.infer<typeof StateMessage>;
 export type ThreadMessage = z.infer<typeof ThreadMessage>;
 export type ErrorsAckMessage = z.infer<typeof ErrorsAckMessage>;
+export type SyncMessage = z.infer<typeof SyncMessage>;
+export type SyncedMessage = z.infer<typeof SyncedMessage>;
 
 export interface ChannelEvents {
   [CHANNEL.create]: CreateMessage;
@@ -113,4 +136,6 @@ export interface ChannelEvents {
   [CHANNEL.state]: StateMessage;
   [CHANNEL.thread]: ThreadMessage;
   [CHANNEL.errorsAck]: ErrorsAckMessage;
+  [CHANNEL.sync]: SyncMessage;
+  [CHANNEL.synced]: SyncedMessage;
 }
