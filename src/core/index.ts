@@ -62,6 +62,10 @@ export interface Capture {
   snapshot: () => CaptureSnapshot;
   clear: (stream: CaptureStream) => void;
   markSent: (fingerprints: readonly string[]) => void;
+  // The agent resolved the annotation that carried these groups and the page hot-updated at
+  // `updatedAt` (epoch ms). A sent group not seen since is cleared; one seen since reopens
+  // with its latest occurrence.
+  markResolved: (fingerprints: readonly string[], updatedAt: number) => void;
   huntContext: (fingerprint: string, windowMs?: number) => HuntContext;
   applySymbolicated: (ack: ErrorsAckMessage) => void;
   reactRootOptions: ReactRootOptions;
@@ -80,6 +84,7 @@ interface GroupState {
   // The browser's stack, which is what the plugin can symbolicate on every send.
   raw: Pick<ErrorGroup, "stack" | "topFrame">;
   opened: ErrorEntry;
+  latest: { entry: ErrorEntry; topFrame: string | undefined };
 }
 
 function rawStack(entry: ErrorEntry, topFrame: string | undefined): GroupState["raw"] {
@@ -95,6 +100,7 @@ function inertCapture(): Capture {
     snapshot: () => EMPTY,
     clear: () => {},
     markSent: () => {},
+    markResolved: () => {},
     huntContext: (fingerprint) => {
       throw new Error(`No error group ${fingerprint}: capture is off under navigator.webdriver`);
     },
@@ -298,24 +304,29 @@ export function createCapture(options: CaptureOptions): Capture {
         status: "open",
         ...raw,
       };
-      groups.set(entry.fingerprint, { group, raw, opened: entry });
+      groups.set(entry.fingerprint, { group, raw, opened: entry, latest: { entry, topFrame } });
     } else {
       const { group } = state;
       group.count += 1;
       group.lastSeen = entry.at;
       group.lastSeq = entry.seq;
-      if (group.status === "cleared" && entry.seq > watermarks.errors) {
-        group.status = "open";
-        group.message = entry.message;
-        state.raw = rawStack(entry, topFrame);
-        group.stack = state.raw.stack;
-        if (topFrame === undefined) delete group.topFrame;
-        else group.topFrame = topFrame;
-        state.opened = entry;
-      }
+      state.latest = { entry, topFrame };
+      if (group.status === "cleared" && entry.seq > watermarks.errors) reopen(state);
     }
     groupChanged(entry.fingerprint);
     changed();
+  }
+
+  function reopen(state: GroupState): void {
+    const { group } = state;
+    const { entry, topFrame } = state.latest;
+    group.status = "open";
+    group.message = entry.message;
+    state.raw = rawStack(entry, topFrame);
+    group.stack = state.raw.stack;
+    if (topFrame === undefined) delete group.topFrame;
+    else group.topFrame = topFrame;
+    state.opened = entry;
   }
 
   function recordThrown(
@@ -587,6 +598,19 @@ export function createCapture(options: CaptureOptions): Capture {
       for (const fingerprint of fingerprints) {
         const state = groups.get(fingerprint);
         if (state !== undefined && state.group.status === "open") setStatus(state, "sent");
+      }
+      changed();
+    },
+    markResolved(fingerprints, updatedAt) {
+      for (const fingerprint of fingerprints) {
+        const state = groups.get(fingerprint);
+        if (state === undefined || state.group.status !== "sent") continue;
+        if (Date.parse(state.group.lastSeen) < updatedAt) {
+          setStatus(state, "cleared");
+          continue;
+        }
+        reopen(state);
+        groupChanged(fingerprint);
       }
       changed();
     },

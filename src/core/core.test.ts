@@ -125,6 +125,31 @@ describe("error groups", () => {
     expect(current.snapshot().groups[0]).toMatchObject({ topFrame: "src/a.ts:1" });
   });
 
+  it("clears a resolved group unless it recurred after the hot update", () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const current = start();
+    const raise = (message: string): void => console.error(new Error(message));
+    const handle = (message: string): void => raise(message);
+    const dispatch = (message: string): void => handle(message);
+    dispatch("fixed");
+    dispatch("still broken");
+    const fingerprints = current.snapshot().groups.map((group) => group.fingerprint);
+    current.markSent(fingerprints);
+    vi.advanceTimersByTime(10);
+    const updatedAt = Date.now();
+    vi.advanceTimersByTime(10);
+    dispatch("still broken");
+    current.markResolved(fingerprints, updatedAt);
+    expect(current.snapshot().groups.map((group) => [group.message, group.status])).toEqual([
+      ["fixed", "cleared"],
+      ["still broken", "open"],
+    ]);
+    expect(current.huntContext(fingerprints[1] ?? "").error.seq).toBe(
+      current.snapshot().groups[1]?.lastSeq,
+    );
+  });
+
   it("groups messages that differ only in numbers and addresses", () => {
     const vendor =
       "    at render (http://localhost:3000/node_modules/.vite/deps/react-dom.js:10:5)";
