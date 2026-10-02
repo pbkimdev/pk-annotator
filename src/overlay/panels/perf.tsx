@@ -33,6 +33,10 @@ export function registerPerfPanel(): () => void {
   });
   return () => {
     remove();
-    void loaded?.then((panel) => panel.stopAll());
+    // A chunk that failed to load already surfaced through lazy() and started nothing.
+    void loaded?.then(
+      (panel) => panel.stopAll(),
+      () => undefined,
+    );
   };
 }

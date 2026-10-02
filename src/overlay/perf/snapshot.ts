@@ -37,6 +37,9 @@ export type PerfSnapshot = {
   lab: string;
 };
 
+// Bounded like the hot spots it serves; a rejected lookup is dropped so a later render can
+// retry once the source map is ready.
+const MAX_SOURCES = 200;
 const sources = new Map<string, Promise<string | undefined>>();
 
 /** The hot spot's site through its source map, cached per site. */
@@ -46,9 +49,18 @@ export function hotSpotSource(spot: HotSpot): Promise<string | undefined> {
   if (source === undefined) {
     calibrateFromDocument();
     source = symbolicate(spot.site);
+    source.catch(() => sources.delete(key));
     sources.set(key, source);
+    if (sources.size > MAX_SOURCES) {
+      const oldest = sources.keys().next().value;
+      if (oldest !== undefined) sources.delete(oldest);
+    }
   }
   return source;
+}
+
+export function clearSources(): void {
+  sources.clear();
 }
 
 export function frameViews(frames: readonly Frame[]): FrameView[] {

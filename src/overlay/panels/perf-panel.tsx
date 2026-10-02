@@ -4,14 +4,26 @@ import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react
 import { getCapture } from "../capture.ts";
 import { cn } from "../lib/utils.ts";
 import { shortPath } from "../pick-layer.tsx";
-import { startObservers, startScan, stopScan, perf, type Target } from "../perf/collector.ts";
+import {
+  perf,
+  startObservers,
+  startScan,
+  stopAll as stopCollector,
+  stopScan,
+  type Target,
+} from "../perf/collector.ts";
 import { frameCause, slowRequests, type Cause, type HotSpot } from "../perf/join.ts";
-import { collected, hotSpotSource, LAB_COMMAND, SUSPECT, takeSnapshot } from "../perf/snapshot.ts";
+import {
+  clearSources,
+  collected,
+  hotSpotSource,
+  LAB_COMMAND,
+  SUSPECT,
+  takeSnapshot,
+} from "../perf/snapshot.ts";
 import { addAttachment } from "../registry.ts";
 import { useStore } from "../store.ts";
 import { Button } from "../ui/button.tsx";
-
-export { stopAll } from "../perf/collector.ts";
 
 const SHOWN = 5;
 
@@ -437,6 +449,12 @@ function Footer() {
       </div>
     </footer>
   );
+}
+
+/** Stops every perf observer and drops collected data; called when the overlay unmounts. */
+export function stopAll(): void {
+  stopCollector();
+  clearSources();
 }
 
 export default function PerfPanel() {
