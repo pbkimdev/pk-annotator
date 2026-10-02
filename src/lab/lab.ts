@@ -480,9 +480,12 @@ async function replay(page: Page, tracker: Tracker, steps: FlowStep[], base: URL
     try {
       if (step.kind === "navigation") {
         const target = rebase(step.to, appOrigin, base);
-        if (step.type === "reload") await page.reload({ timeout: NAVIGATION_TIMEOUT_MS });
-        // A push, replace, or traverse the previous action already caused is skipped.
-        else if (step.type === "load" || !samePage(page.url(), target)) {
+        if (step.type === "reload") {
+          await flushVitals(page);
+          await page.reload({ timeout: NAVIGATION_TIMEOUT_MS });
+          // A push, replace, or traverse the previous action already caused is skipped.
+        } else if (step.type === "load" || !samePage(page.url(), target)) {
+          await flushVitals(page);
           await page.goto(target, { timeout: NAVIGATION_TIMEOUT_MS });
         }
       } else {
@@ -501,6 +504,22 @@ async function replay(page: Page, tracker: Tracker, steps: FlowStep[], base: URL
       });
     }
   }
+  await flushVitals(page);
+}
+
+// web-vitals processes Event Timing entries in a requestIdleCallback with a
+// 1 s timeout (lib/whenIdleOrHidden.js), so under CPU throttling the INP of a
+// page's last interaction arrives up to a second after it. Leaving the page or
+// ending the trace first loses it; leaving did not trigger web-vitals' hidden
+// path here. An idle callback queued now runs after the pending one, and its
+// binding report reaches Node before this evaluate resolves.
+async function flushVitals(page: Page): Promise<void> {
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestIdleCallback(() => resolve(), { timeout: 2000 });
+      }),
+  );
 }
 
 // --- Tracing --------------------------------------------------------------
