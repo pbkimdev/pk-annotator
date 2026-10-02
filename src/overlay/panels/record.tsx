@@ -96,7 +96,11 @@ function RecordPanel(_props: PanelProps) {
           <Button
             data-testid="pka-record-start"
             disabled={phase === "stopping"}
-            onClick={() => recorder.start()}
+            onClick={() => {
+              // The user records by using the page, which pick and box modes would intercept.
+              ui.set({ picking: null, hover: null, marquee: null });
+              recorder.start();
+            }}
           >
             <CircleIcon className="fill-destructive text-destructive" />
             {phase === "stopping" ? "Saving…" : attached ? "Record again" : "Start recording"}
