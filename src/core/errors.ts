@@ -45,21 +45,22 @@ export interface Fingerprinted {
   topFrame: string | undefined;
 }
 
-// Groups by the top in-app frames when the stack has any, otherwise by the
-// error type and normalized message. Frames use the function name rather than
-// the line when one exists, so an edit above the throw site keeps the group.
+// Groups by error type, normalized message, and the top in-app frames. Frames use
+// the function name rather than the line when one exists, so an edit above the
+// throw site keeps the group; the message separates throws from sibling inline
+// handlers, which share a name such as `onClick`.
 export function fingerprintError(type: string, message: string, stack: string): Fingerprinted {
   const frames = parseFrames(stack).filter(
     (frame) => frame.path !== "" && !NOT_APP.test(frame.path),
   );
   const top = frames[0];
-  const key =
-    top === undefined
-      ? `${type}|${normalizeMessage(message)}`
-      : `${type}|${frames
-          .slice(0, FRAMES_IN_FINGERPRINT)
-          .map((frame) => `${frame.path}:${frame.fn ?? frame.line}`)
-          .join("|")}`;
+  const key = [
+    type,
+    normalizeMessage(message),
+    ...frames
+      .slice(0, FRAMES_IN_FINGERPRINT)
+      .map((frame) => `${frame.path}:${frame.fn ?? frame.line}`),
+  ].join("|");
   return { fingerprint: hash(key), topFrame: top && `${top.path}:${top.line}` };
 }
 

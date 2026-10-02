@@ -104,6 +104,19 @@ describe("error groups", () => {
     expect(first.fingerprint).toBe(second.fingerprint);
     expect(first.topFrame).toBeUndefined();
   });
+
+  it("separates different messages thrown from inline handlers with the same name", () => {
+    const stack = (line: number) =>
+      `Error\n    at onClick (http://localhost:3000/src/routes/lab.tsx?t=1:${line}:19)\n` +
+      "    at executeDispatch (http://localhost:3000/node_modules/.vite/deps/react-dom.js:9906:5)";
+    const thrown = fingerprintError("Error", "lab: click handler threw", stack(70));
+    const rejected = fingerprintError("Error", "lab: unhandled rejection", stack(79));
+    expect(thrown.fingerprint).not.toBe(rejected.fingerprint);
+    // An edit above the throw moves the line but keeps the group.
+    expect(fingerprintError("Error", "lab: click handler threw", stack(74)).fingerprint).toBe(
+      thrown.fingerprint,
+    );
+  });
 });
 
 describe("network capture", () => {
