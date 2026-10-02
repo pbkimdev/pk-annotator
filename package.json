@@ -33,7 +33,8 @@
     "format:check": "oxfmt --check .",
     "typecheck": "tsc --noEmit && tsc --noEmit -p fixtures/app",
     "fixture": "pnpm build && pnpm --filter @srv/pk-annotator-fixture dev",
-    "verify": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm build"
+    "verify": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm build",
+    "prepublishOnly": "pnpm verify"
   },
   "dependencies": {
     "@jridgewell/trace-mapping": "0.3.31",
