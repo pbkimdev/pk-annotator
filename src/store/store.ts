@@ -11,6 +11,7 @@ import {
   rm,
   stat,
   unlink,
+  utimes,
 } from "node:fs/promises";
 import path from "node:path";
 
@@ -307,6 +308,22 @@ export async function createClaim(
   } finally {
     await unlink(temporary);
   }
+}
+
+/** Removes the claim so an agent can take the annotation again. */
+export async function removeClaim(store: string, id: string): Promise<void> {
+  const files = await requireAnnotation(store, id);
+  await rm(files.claim, { force: true });
+}
+
+/**
+ * Updates the annotation directory's times. Watchers of the store root do not
+ * see writes inside an annotation directory, but they do see this.
+ */
+export async function touchAnnotation(store: string, id: string): Promise<void> {
+  const files = await requireAnnotation(store, id);
+  const now = new Date();
+  await utimes(files.dir, now, now);
 }
 
 export async function readClaim(store: string, id: string): Promise<Claim | undefined> {

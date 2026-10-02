@@ -173,7 +173,8 @@ function createServer(store: string): McpServer {
       description:
         "Record progress on an annotation; the human sees it in the overlay. acknowledged claims it for " +
         "this session and fails if another session already claimed it. resolved means the change is done; " +
-        "dismissed means it will not be done. Add a note saying what changed or why it was dismissed.",
+        "dismissed means it will not be done. Add a note saying what changed or why it was dismissed. " +
+        "resolved and dismissed are final: any other status after them fails, and only the human can reopen the annotation.",
       inputSchema: SetStatusInput,
       outputSchema: SetStatusResult,
       annotations: {
@@ -192,7 +193,8 @@ function createServer(store: string): McpServer {
       title: "Reply on an annotation",
       description:
         "Append a message to an annotation's thread; the human sees it in the overlay. Use it to ask a " +
-        "clarifying question or to explain what you changed.",
+        "clarifying question or to explain what you changed. Reply before resolving or dismissing; " +
+        "replies to a resolved or dismissed annotation fail.",
       inputSchema: ReplyInput,
       outputSchema: ReplyResult,
       annotations: {

@@ -27,7 +27,9 @@ import {
   readClaim,
   readJson,
   readJsonLines,
+  removeClaim,
   requireAnnotation,
+  touchAnnotation,
   writeAnnotationDir,
   writeJsonAtomic,
   type StagedFiles,
@@ -251,6 +253,16 @@ export function wait(store: string, options: WaitOptions): Promise<WaitResult> {
   });
 }
 
+function isClosed(status: Status): status is "resolved" | "dismissed" {
+  return status === "resolved" || status === "dismissed";
+}
+
+function closedError(id: string, status: Status): PkaError {
+  return new PkaError(
+    `Annotation ${id} is ${status}; reply before set_status ${status}, or ask the human to reopen it from the overlay.`,
+  );
+}
+
 export async function setStatus(
   store: string,
   input: SetStatusInput,
@@ -260,12 +272,13 @@ export async function setStatus(
   const state = await readJson(store, files.state, State);
   const at = new Date().toISOString();
   let claimedBy: string | undefined;
-  if (input.status === "acknowledged") {
-    if (state.status === "resolved" || state.status === "dismissed") {
-      throw new PkaError(
-        `Annotation ${input.id} is already ${state.status}. List pending annotations to find open work.`,
-      );
+  if (isClosed(state.status)) {
+    if (state.status === input.status) {
+      return { id: input.id, status: state.status, changed: false };
     }
+    throw closedError(input.id, state.status);
+  }
+  if (input.status === "acknowledged") {
     const claim = await createClaim(store, input.id, { by, at });
     claimedBy = claim.claim.by;
     if (!claim.won) {
@@ -279,8 +292,6 @@ export async function setStatus(
         return { id: input.id, status: state.status, changed: false, claimedBy };
       }
     }
-  } else if (state.status === input.status) {
-    return { id: input.id, status: state.status, changed: false };
   }
   const event: StatusEvent = { status: input.status, at, by };
   if (input.note !== undefined) event.note = input.note;
@@ -297,8 +308,23 @@ export async function reply(
   from: ThreadEntry["from"],
 ): Promise<ReplyResult> {
   const files = await requireAnnotation(store, input.id);
+  const state = await readJson(store, files.state, State);
+  const closed = isClosed(state.status);
+  if (closed && from === "agent") throw closedError(input.id, state.status);
   const entry: ThreadEntry = { at: new Date().toISOString(), from, text: input.text };
   await appendJsonLine(store, files.thread, entry);
+  if (closed) {
+    // The old claim belongs to the agent that closed it; the next agent must be able to take it.
+    await removeClaim(store, input.id);
+    await writeJsonAtomic(store, files.state, {
+      status: "pending",
+      history: [
+        ...state.history,
+        { status: "pending", at: entry.at, by: "human", note: "reopened by reply" },
+      ],
+    });
+    await touchAnnotation(store, input.id);
+  }
   return { id: input.id, entry };
 }
 

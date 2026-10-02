@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { AnnotationDraft } from "../shared/schema.ts";
 import { createStore, listIds } from "../store/store.ts";
-import { create, loadAnnotation, wait, type WaitOptions } from "./ops.ts";
+import { create, loadAnnotation, reply, setStatus, wait, type WaitOptions } from "./ops.ts";
 
 const DRAFT: AnnotationDraft = {
   url: "http://localhost:3000/projects",
@@ -98,5 +98,36 @@ describe("create", () => {
     ).rejects.toThrow();
     expect(await listIds(store)).toEqual([id]);
     expect(await readdir(path.join(store, ".staging"))).toEqual([]);
+  });
+});
+
+describe("closed annotations", () => {
+  it("refuse agent changes, and a human reply reopens one for a waiting agent", async () => {
+    const { id } = await create(store, DRAFT);
+    await setStatus(store, { id, status: "acknowledged" }, "agent-a");
+    await setStatus(store, { id, status: "resolved" }, "agent-a");
+
+    await expect(reply(store, { id, text: "late" }, "agent")).rejects.toThrow(
+      `Annotation ${id} is resolved; reply before set_status resolved`,
+    );
+    await expect(setStatus(store, { id, status: "dismissed" }, "agent-a")).rejects.toThrow(
+      /is resolved/,
+    );
+    expect(await setStatus(store, { id, status: "resolved" }, "agent-b")).toEqual({
+      id,
+      status: "resolved",
+      changed: false,
+    });
+    expect((await loadAnnotation(store, id)).state.history).toHaveLength(3);
+
+    const waiting = wait(store, OPTIONS);
+    await sleep(50);
+    await reply(store, { id, text: "Still broken on mobile" }, "human");
+    expect((await waiting).annotation?.id).toBe(id);
+    const record = await loadAnnotation(store, id);
+    expect(record.state.status).toBe("pending");
+    expect(record.state.history.at(-1)).toMatchObject({ by: "human", note: "reopened by reply" });
+    expect(record.claim).toBeUndefined();
+    expect(record.thread.map((entry) => entry.from)).toEqual(["human"]);
   });
 });
