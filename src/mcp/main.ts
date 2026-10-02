@@ -173,7 +173,8 @@ function createServer(store: string): McpServer {
       title: "Set an annotation's status",
       description:
         "Record progress on an annotation; the human sees it in the overlay. acknowledged claims it for " +
-        "this session and fails if another session already claimed it. resolved means the change is done; " +
+        "this session and fails if another session already claimed it; later status changes and replies must " +
+        "come from that session. resolved means the change is done; " +
         "dismissed means it will not be done. Add a note saying what changed or why it was dismissed. " +
         "resolved and dismissed are final: any other status after them fails, and only the human can reopen the annotation.",
       inputSchema: SetStatusInput,
@@ -195,7 +196,8 @@ function createServer(store: string): McpServer {
       description:
         "Append a message to an annotation's thread; the human sees it in the overlay. Use it to ask a " +
         "clarifying question or to explain what you changed. Reply before resolving or dismissing; " +
-        "replies to a resolved or dismissed annotation fail.",
+        "replies to a resolved or dismissed annotation fail, and so do replies to an annotation another " +
+        "session acknowledged.",
       inputSchema: ReplyInput,
       outputSchema: ReplyResult,
       annotations: {
@@ -205,7 +207,7 @@ function createServer(store: string): McpServer {
         openWorldHint: false,
       },
     },
-    (input) => respond(() => reply(store, input, "agent")),
+    (input) => respond(() => reply(store, input, { from: "agent", by: claimant() })),
   );
 
   server.registerTool(

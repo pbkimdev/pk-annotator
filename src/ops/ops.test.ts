@@ -15,8 +15,12 @@ import {
   reply,
   setStatus,
   wait,
+  type Author,
   type WaitOptions,
 } from "./ops.ts";
+
+const AGENT_A: Author = { from: "agent", by: "agent-a" };
+const AGENT_B: Author = { from: "agent", by: "agent-b" };
 
 const DRAFT: AnnotationDraft = {
   url: "http://localhost:3000/projects",
@@ -116,7 +120,7 @@ describe("closed annotations", () => {
     await setStatus(store, { id, status: "acknowledged" }, "agent-a");
     await setStatus(store, { id, status: "resolved" }, "agent-a");
 
-    await expect(reply(store, { id, text: "late" }, "agent")).rejects.toThrow(
+    await expect(reply(store, { id, text: "late" }, AGENT_A)).rejects.toThrow(
       `Annotation ${id} is resolved; reply before set_status resolved`,
     );
     await expect(setStatus(store, { id, status: "dismissed" }, "agent-a")).rejects.toThrow(
@@ -129,22 +133,49 @@ describe("closed annotations", () => {
     });
     const verdict = new TextEncoder().encode("{}\n");
     await expect(
-      attach(store, id, [
-        { kind: "perf", path: "capture/perf/lab.json", summary: "lab", data: verdict },
-      ]),
+      attach(
+        store,
+        id,
+        [{ kind: "perf", path: "capture/perf/lab.json", summary: "lab", data: verdict }],
+        "agent-a",
+      ),
     ).rejects.toThrow(/is resolved/);
     expect((await loadAnnotation(store, id)).annotation.attachments).toEqual([]);
     expect((await loadAnnotation(store, id)).state.history).toHaveLength(3);
 
     const waiting = wait(store, OPTIONS);
     await sleep(50);
-    await reply(store, { id, text: "Still broken on mobile" }, "human");
+    await reply(store, { id, text: "Still broken on mobile" }, { from: "human" });
     expect((await waiting).annotation?.id).toBe(id);
     const record = await loadAnnotation(store, id);
     expect(record.state.status).toBe("pending");
     expect(record.state.history.at(-1)).toMatchObject({ by: "human", note: "reopened by reply" });
     expect(record.claim).toBeUndefined();
     expect(record.thread.map((entry) => entry.from)).toEqual(["human"]);
+  });
+
+  it("leave an acknowledged annotation to the session that claimed it", async () => {
+    const { id } = await create(store, DRAFT);
+    await setStatus(store, { id, status: "acknowledged" }, "agent-a");
+    const claimed = new RegExp(`${id} was claimed by agent-a`);
+    const verdict = new TextEncoder().encode("{}\n");
+    const lab = {
+      kind: "perf" as const,
+      path: "capture/perf/lab.json",
+      summary: "lab",
+      data: verdict,
+    };
+
+    await expect(setStatus(store, { id, status: "resolved" }, "agent-b")).rejects.toThrow(claimed);
+    await expect(reply(store, { id, text: "mine" }, AGENT_B)).rejects.toThrow(claimed);
+    await expect(attach(store, id, [lab], "agent-b")).rejects.toThrow(claimed);
+
+    await reply(store, { id, text: "Fixed the padding" }, AGENT_A);
+    await attach(store, id, [lab], "agent-a");
+    await setStatus(store, { id, status: "resolved" }, "agent-a");
+    const record = await loadAnnotation(store, id);
+    expect(record.state.history.at(-1)).toMatchObject({ status: "resolved", by: "agent-a" });
+    expect(record.thread.map((entry) => entry.text)).toEqual(["Fixed the padding"]);
   });
 });
 
@@ -160,12 +191,14 @@ describe("attach", () => {
       "notes.json",
       "/tmp/x.json",
     ]) {
-      await expect(attach(store, id, [perf(file)])).rejects.toThrow(PkaError);
+      await expect(attach(store, id, [perf(file)], "agent-a")).rejects.toThrow(PkaError);
     }
     const outside = path.join(root, "outside");
     await mkdir(outside);
     await symlink(outside, path.join(store, id, "capture"));
-    await expect(attach(store, id, [perf("capture/perf/lab.json")])).rejects.toThrow(/symlink/);
+    await expect(attach(store, id, [perf("capture/perf/lab.json")], "agent-a")).rejects.toThrow(
+      /symlink/,
+    );
     expect(await readdir(outside)).toEqual([]);
     expect(await readdir(root)).toEqual(["_interim", "outside"]);
     expect((await get(store, { id, detail: "full" })).annotation.attachments).toEqual([]);
@@ -177,12 +210,12 @@ describe("attach", () => {
     await mkdir(perfDir, { recursive: true });
     await writeFile(path.join(perfDir, "old.json"), data);
     await expect(
-      attach(store, id, [perf("capture/perf/new.json"), perf("capture/perf/old.json")]),
+      attach(store, id, [perf("capture/perf/new.json"), perf("capture/perf/old.json")], "agent-a"),
     ).rejects.toThrow(/already exists/);
     expect(await readdir(perfDir)).toEqual(["old.json"]);
     expect((await get(store, { id, detail: "full" })).annotation.attachments).toEqual([]);
 
-    await attach(store, id, [perf("capture/perf/new.json")]);
+    await attach(store, id, [perf("capture/perf/new.json")], "agent-a");
     expect((await readdir(perfDir)).sort()).toEqual(["new.json", "old.json"]);
     expect((await get(store, { id, detail: "full" })).annotation.attachments).toEqual([
       { kind: "perf", path: "capture/perf/new.json", summary: "lab" },

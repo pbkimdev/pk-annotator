@@ -14,6 +14,7 @@ import {
   Timestamp,
   type AnnotationDraft,
   type AttachmentKind,
+  type Claim,
   type ErrorGroup,
   type StatusEvent,
 } from "../shared/schema.ts";
@@ -267,6 +268,18 @@ function closedError(id: string, status: Status): PkaError {
   );
 }
 
+function claimedError(id: string, claim: Claim): PkaError {
+  return new PkaError(
+    `Annotation ${id} was claimed by ${claim.by} at ${claim.at}. Pick another pending annotation.`,
+  );
+}
+
+// Agent writes on an acknowledged annotation belong to the session that claimed it.
+async function requireClaimant(store: string, id: string, by: string): Promise<void> {
+  const claim = await readClaim(store, id);
+  if (claim !== undefined && claim.by !== by) throw claimedError(id, claim);
+}
+
 export async function setStatus(
   store: string,
   input: SetStatusInput,
@@ -286,16 +299,14 @@ export async function setStatus(
     const claim = await createClaim(store, input.id, { by, at });
     claimedBy = claim.claim.by;
     if (!claim.won) {
-      if (claim.claim.by !== by) {
-        throw new PkaError(
-          `Annotation ${input.id} was claimed by ${claim.claim.by} at ${claim.claim.at}. Pick another pending annotation.`,
-        );
-      }
+      if (claim.claim.by !== by) throw claimedError(input.id, claim.claim);
       // Same claimant: finish an acknowledge whose state write did not happen.
       if (state.status !== "pending") {
         return { id: input.id, status: state.status, changed: false, claimedBy };
       }
     }
+  } else {
+    await requireClaimant(store, input.id, by);
   }
   const event: StatusEvent = { status: input.status, at, by };
   if (input.note !== undefined) event.note = input.note;
@@ -306,16 +317,25 @@ export async function setStatus(
   return { id: input.id, status: input.status, changed: true, claimedBy };
 }
 
+export type Author = { from: "human" } | { from: "agent"; by: string };
+
 export async function reply(
   store: string,
   input: ReplyInput,
-  from: ThreadEntry["from"],
+  author: Author,
 ): Promise<ReplyResult> {
   const files = await requireAnnotation(store, input.id);
   const state = await readJson(store, files.state, State);
   const closed = isClosed(state.status);
-  if (closed && from === "agent") throw closedError(input.id, state.status);
-  const entry: ThreadEntry = { at: new Date().toISOString(), from, text: input.text };
+  if (author.from === "agent") {
+    if (closed) throw closedError(input.id, state.status);
+    await requireClaimant(store, input.id, author.by);
+  }
+  const entry: ThreadEntry = {
+    at: new Date().toISOString(),
+    from: author.from,
+    text: input.text,
+  };
   await appendJsonLine(store, files.thread, entry);
   if (closed) {
     // The old claim belongs to the agent that closed it; the next agent must be able to take it.
@@ -447,10 +467,12 @@ export async function attach(
   store: string,
   id: string,
   files: AttachFile[],
+  by: string,
 ): Promise<{ id: string; attachments: Attachment[] }> {
   const paths = await requireAnnotation(store, id);
   const state = await readJson(store, paths.state, State);
   if (isClosed(state.status)) throw closedError(id, state.status);
+  await requireClaimant(store, id, by);
   const annotation = await readJson(store, paths.annotation, Annotation);
   const added = files.map((file) => {
     const parsed = Attachment.safeParse({

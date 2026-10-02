@@ -421,7 +421,7 @@ async function serve(server: ViteDevServer, maxStoreBytes: number): Promise<() =
   });
 
   listen(CHANNEL.reply, ReplyMessage, async (message) => {
-    await reply(store, message, "human");
+    await reply(store, message, { from: "human" });
   });
 
   listen(CHANNEL.sync, SyncMessage, async (message, client) => {

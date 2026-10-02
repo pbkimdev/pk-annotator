@@ -50,6 +50,8 @@ const USAGE = `Usage: pka [--root DIR] [--json] <command>
 
 The store is <root>/_interim/annotations. Without --root or PKA_ROOT, pka uses
 CLAUDE_PROJECT_DIR, then the nearest parent of the working directory that has one.
+status acknowledged claims an annotation as $PKA_CLAIMANT (default pka-cli); later
+status changes, replies, and lab --attach must come from the same claimant.
 pka lab: --flow is a timeline.jsonl file or an annotation id with a recording
 (its timeline.jsonl sits beside capture/summary.md). Budgets left out use the Core Web Vitals "good"
 thresholds. --out defaults to $TMPDIR/pka-lab/<time>. --attach adds the
@@ -97,6 +99,18 @@ const LabInput = z.strictObject({
 
 class UsageError extends Error {
   override name = "UsageError";
+}
+
+// Each shell call is a new process, so the claimant cannot be a pid.
+function cliClaimant(): string {
+  const parsed = z
+    .string()
+    .trim()
+    .min(1)
+    .max(200)
+    .safeParse(process.env.PKA_CLAIMANT ?? "pka-cli");
+  if (!parsed.success) throw new UsageError("PKA_CLAIMANT must be 1 to 200 characters");
+  return parsed.data;
 }
 
 type RawInput = Record<string, string | number | boolean | undefined>;
@@ -354,7 +368,7 @@ async function labCommand(values: Values): Promise<number> {
       summary: summarizeVerdict(verdict),
       data: Buffer.from(`${JSON.stringify(verdict, null, 2)}\n`),
     };
-    await attach(store, input.attach, [attachment]);
+    await attach(store, input.attach, [attachment], cliClaimant());
     attached = { id: input.attach, path: attachment.path };
   }
   if (values.json) line(JSON.stringify({ file, attached, verdict }));
@@ -394,7 +408,7 @@ async function run(command: Command, args: string[], values: Values): Promise<vo
       return watchCommand(store, values, json);
     case "status": {
       const input = parseInput(SetStatusInput, { id: args[0], status: args[1], note: values.note });
-      const result = await setStatus(store, input, `pka-cli:${process.ppid}`);
+      const result = await setStatus(store, input, cliClaimant());
       output(result, () =>
         line(`${result.id}  ${result.status}${result.changed ? "" : " (unchanged)"}`),
       );
@@ -402,7 +416,7 @@ async function run(command: Command, args: string[], values: Values): Promise<vo
     }
     case "reply": {
       const input = parseInput(ReplyInput, { id: args[0], text: args[1] });
-      const result = await reply(store, input, "agent");
+      const result = await reply(store, input, { from: "agent", by: cliClaimant() });
       output(result, () => line(`Replied to ${result.id}.`));
       return;
     }
