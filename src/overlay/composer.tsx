@@ -225,7 +225,7 @@ function ComposerForm() {
   const controller = usePromptInputController();
   const [phase, setPhase] = useState<SendPhase | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const empty = controller.textInput.value.trim() === "" && selection.length === 0;
+  const empty = controller.textInput.value.trim() === "";
 
   const submit = async (message: PromptInputMessage) => {
     setError(null);

@@ -1,7 +1,7 @@
 import { snapdom } from "@zumer/snapdom";
 import type { ViteHotContext } from "vite/types/hot.d.ts";
 
-import { describe, preferredLocator } from "../select/describe.ts";
+import { describe, preferredLocator, type Description } from "../select/describe.ts";
 import { locate } from "../select/source.ts";
 import {
   CHANNEL,
@@ -37,11 +37,27 @@ export function currentViewport(): Viewport {
   };
 }
 
+// Host UI can remove a picked element before Send (a dialog that closes when the composer
+// takes focus), so each element is also described when it is picked.
+const pickedDescriptions = new WeakMap<Element, Description>();
+
+export function remember(elements: readonly Element[]): void {
+  for (const element of elements) pickedDescriptions.set(element, describe(element));
+}
+
+function currentDescription(element: Element, n: number): Description {
+  if (element.isConnected) return describe(element);
+  const remembered = pickedDescriptions.get(element);
+  if (remembered === undefined)
+    throw new Error(`Element ${n} left the page before it was described`);
+  return remembered;
+}
+
 /** Describes and locates each selected element; `n` follows selection order. */
 export async function locateElements(elements: readonly Element[]): Promise<LocatedElement[]> {
   return Promise.all(
     elements.map(async (element, index) => {
-      const description = describe(element);
+      const description = currentDescription(element, index + 1);
       const location = await locate(element);
       const located: LocatedElement = {
         n: index + 1,
@@ -104,6 +120,8 @@ async function capture(elements: LocatedElement[]): Promise<{
     clip: "viewport",
     exclude: [HOST_TAG],
     excludeMode: "remove",
+    // Pixel-exact text wrapping; without it inline text can re-wrap in the capture.
+    reconcile: true,
   });
   const page = await result.toCanvas();
   const crops = new Map<number, Blob>();
@@ -144,7 +162,10 @@ export async function sendAnnotation(
   const located = await locateElements(elements);
   const viewport = currentViewport();
   onPhase({ phase: "capturing" });
-  const { page, crops } = await capture(located);
+  // Elements no longer on the page keep their description but get no crop.
+  const { page, crops } = await capture(
+    located.filter((ref) => elements[ref.n - 1]?.isConnected === true),
+  );
 
   const files: AttachmentFile[] = [{ path: "capture/frames/page.webp", data: page }];
   const attachments: Attachment[] = [

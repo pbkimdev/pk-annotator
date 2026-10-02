@@ -10,6 +10,7 @@ import {
 import { startPicking } from "../select/pick.ts";
 import { COMPOSE, elementKey, nextSelection, useOverlay } from "./context.tsx";
 import { cn } from "./lib/utils.ts";
+import { remember } from "./send.ts";
 import { useStore } from "./store.ts";
 
 /** Re-renders on scroll and resize while `active`, so boxes follow their elements. */
@@ -89,6 +90,7 @@ function HoverBox({ element }: { element: Element }) {
 }
 
 function SelectionBox({ element, n }: { element: Element; n: number }) {
+  if (!element.isConnected) return null;
   const rect = element.getBoundingClientRect();
   return (
     <div
@@ -127,8 +129,10 @@ export function PickLayer() {
     );
     return startPicking(host, layer.current, picking, {
       hover: (element) => ui.set({ hover: element }),
-      select: (elements, how) =>
-        ui.set({ selection: nextSelection(ui.get().selection, elements, how) }),
+      select: (elements, how) => {
+        remember(elements);
+        ui.set({ selection: nextSelection(ui.get().selection, elements, how) });
+      },
       marquee: (box, containment) =>
         ui.set({ marquee: box === null ? null : { box, containment } }),
       escape: () => {
