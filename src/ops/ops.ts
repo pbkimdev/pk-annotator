@@ -30,7 +30,7 @@ import {
   requireAnnotation,
   writeAnnotationDir,
   writeJsonAtomic,
-  type NewFile,
+  type StagedFiles,
 } from "../store/store.ts";
 import {
   AnnotationView,
@@ -347,34 +347,39 @@ export async function upsertErrorGroups(
   return snapshot;
 }
 
-export interface CreateFile {
-  /** Relative to the annotation directory; must be under capture/. */
-  path: string;
-  data: Uint8Array;
-}
-
-/** Writes a new pending annotation with its capture files. Used by the Vite plugin. */
-export async function create(
-  store: string,
-  draft: AnnotationDraft,
-  files: CreateFile[],
-): Promise<{ id: string }> {
-  const paths = new Set<string>();
-  for (const file of files) {
-    if (!file.path.startsWith("capture/")) {
-      throw new PkaError(`Capture file ${file.path} must be under capture/`);
+/**
+ * Checks the capture files an annotation declares: each under capture/, listed
+ * once, and every attachment and crop path among them.
+ */
+export function checkCaptureFiles(draft: AnnotationDraft, paths: readonly string[]): void {
+  const seen = new Set<string>();
+  for (const file of paths) {
+    if (!file.startsWith("capture/")) {
+      throw new PkaError(`Capture file ${file} must be under capture/`);
     }
-    if (paths.has(file.path)) throw new PkaError(`Capture file ${file.path} is listed twice`);
-    paths.add(file.path);
+    if (seen.has(file)) throw new PkaError(`Capture file ${file} is listed twice`);
+    seen.add(file);
   }
   const referenced = [
     ...draft.attachments.map((attachment) => attachment.path),
     ...draft.elements.flatMap((element) => (element.crop === undefined ? [] : [element.crop])),
   ];
-  const missing = referenced.filter((reference) => !paths.has(reference));
+  const missing = referenced.filter((reference) => !seen.has(reference));
   if (missing.length > 0) {
     throw new PkaError(`Annotation references files that were not sent: ${missing.join(", ")}`);
   }
+}
+
+/**
+ * Writes a new pending annotation. Capture files are staged on disk by the
+ * Vite plugin and move into place with the annotation in one directory rename.
+ */
+export async function create(
+  store: string,
+  draft: AnnotationDraft,
+  staged?: StagedFiles,
+): Promise<{ id: string }> {
+  checkCaptureFiles(draft, staged?.paths ?? []);
   const now = new Date();
   const id = newId(now.getTime());
   const annotation = Annotation.parse({ id, createdAt: now.toISOString(), ...draft });
@@ -382,12 +387,15 @@ export async function create(
     status: "pending",
     history: [{ status: "pending", at: now.toISOString() }],
   };
-  const written: NewFile[] = [
-    { path: "annotation.json", data: `${JSON.stringify(annotation, null, 2)}\n` },
-    { path: "state.json", data: `${JSON.stringify(state, null, 2)}\n` },
-    ...files,
-  ];
-  await writeAnnotationDir(store, id, written);
+  await writeAnnotationDir(
+    store,
+    id,
+    [
+      { path: "annotation.json", data: `${JSON.stringify(annotation, null, 2)}\n` },
+      { path: "state.json", data: `${JSON.stringify(state, null, 2)}\n` },
+    ],
+    staged,
+  );
   return { id };
 }
 

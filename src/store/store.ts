@@ -334,16 +334,38 @@ export interface NewFile {
   data: string | Uint8Array;
 }
 
-/** Writes a complete annotation directory in a staging directory and renames it into place. */
+/** Capture files the caller already wrote into a staging directory inside the store. */
+export interface StagedFiles {
+  dir: string;
+  /** Relative to `dir`. */
+  paths: string[];
+}
+
+/**
+ * Writes a complete annotation directory in a staging directory and renames it
+ * into place. With `staged`, that directory already holds the listed capture
+ * files and becomes the annotation directory; otherwise a new one is made.
+ */
 export async function writeAnnotationDir(
   store: string,
   id: string,
   files: NewFile[],
+  staged?: StagedFiles,
 ): Promise<string> {
   const dir = annotationFiles(store, id).dir;
-  const staging = resolveInside(store, `${STAGING_PREFIX}${id}`);
-  await mkdir(staging);
+  const staging = resolveInside(store, staged?.dir ?? `${STAGING_PREFIX}${id}`);
   try {
+    if (staged === undefined) {
+      await mkdir(staging);
+    } else {
+      for (const relative of staged.paths) {
+        const file = resolveInside(staging, relative);
+        await refuseSymlinks(store, file);
+        if (!(await lstat(file)).isFile()) {
+          throw new PkaError(`Staged capture file ${relative} is not a regular file`);
+        }
+      }
+    }
     for (const file of files) {
       const target = resolveInside(staging, file.path);
       await mkdir(path.dirname(target), { recursive: true });

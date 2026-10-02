@@ -50,7 +50,7 @@ afterAll(async () => {
 // Another process writes the annotation, as the Vite plugin would.
 async function createInOtherProcess(): Promise<string> {
   const script = `import { create } from ${JSON.stringify(OPS)};
-const { id } = await create(${JSON.stringify(store)}, ${JSON.stringify(DRAFT)}, []);
+const { id } = await create(${JSON.stringify(store)}, ${JSON.stringify(DRAFT)});
 process.stdout.write(id);`;
   const { stdout } = await promisify(execFile)(process.execPath, [
     "--input-type=module",
