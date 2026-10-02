@@ -131,7 +131,7 @@ function ConsoleRow({ entry }: { entry: ConsoleEntry }) {
           type="button"
           aria-expanded={expanded}
           onClick={() => setExpanded(!expanded)}
-          className="rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+          className="rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {body}
         </button>

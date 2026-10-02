@@ -137,7 +137,7 @@ export function Dock() {
         type="button"
         aria-label="Move dock (drag, or arrow keys)"
         title="Move dock (drag, or arrow keys)"
-        className="grid h-7 w-4 cursor-grab touch-none place-items-center rounded-md text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 active:cursor-grabbing"
+        className="grid h-7 w-4 cursor-grab touch-none place-items-center rounded-md text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
         onPointerDown={onGripDown}
         onPointerMove={onGripMove}
         onPointerUp={onGripUp}

@@ -206,7 +206,7 @@ function RequestList({
                 data-seq={request.seq}
                 aria-label={`${request.method} ${shortUrl(request.url)} ${statusText(request)}`}
                 onClick={() => open(request.seq)}
-                className="col-span-5 grid grid-cols-subgrid items-center rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                className="col-span-5 grid grid-cols-subgrid items-center rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <span className="truncate text-muted-foreground">{request.method}</span>
                 <span className="truncate" title={request.url}>

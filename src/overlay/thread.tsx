@@ -77,7 +77,7 @@ function ThreadItem({ record }: { record: SentRecord }) {
           onChange={(event) => setDraft(event.target.value)}
           aria-label={`Reply to annotation ${record.id.slice(0, 8)}`}
           placeholder="Reply"
-          className="h-7 min-w-0 flex-1 rounded-md border border-input bg-transparent px-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+          className="h-7 min-w-0 flex-1 rounded-md border border-input bg-transparent px-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring"
         />
         <Button
           type="submit"
