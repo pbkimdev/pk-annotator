@@ -1,3 +1,4 @@
+import { NetworkIcon } from "lucide-react";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -6,8 +7,10 @@ import { OverlayContext, useOverlay, type Overlay, type UiState } from "./contex
 import { Dock } from "./dock.tsx";
 import { readCorner, type UiContext, type UiController } from "./launcher.ts";
 import { PanelHost } from "./panel.tsx";
+import { NetworkPanel } from "./panels/network.tsx";
 import { PickLayer } from "./pick-layer.tsx";
 import { PortalContainerContext } from "./portal-container.tsx";
+import { registerPanel } from "./registry.ts";
 import css from "./shadow.css?inline";
 import { createStore, useStore } from "./store.ts";
 import { connectThread } from "./thread-store.ts";
@@ -102,6 +105,10 @@ export function open(context: UiContext): UiController {
     },
   };
 
+  const stopPanels = [
+    registerPanel({ id: "network", label: "Network", icon: NetworkIcon, component: NetworkPanel }),
+  ];
+
   const root = createRoot(appRoot);
   root.render(
     <StrictMode>
@@ -126,6 +133,7 @@ export function open(context: UiContext): UiController {
     },
     unmount() {
       root.unmount();
+      for (const stop of stopPanels) stop();
       stopTheme();
       thread.disconnect();
       restoreActiveElement();
