@@ -64,6 +64,16 @@ function handleApi(request: IncomingMessage, response: ServerResponse, next: Con
     );
     return;
   }
+  // Chunked like Lean's JSON API: no Content-Length.
+  if (route === "GET /chunked") {
+    response.writeHead(200, {
+      "content-type": "application/json",
+      "server-timing": "db;dur=1, total;dur=2",
+    });
+    response.write('{"items":[{"id":1,"name":"alpha"},');
+    setTimeout(() => response.end('{"id":2,"name":"beta"}],"session_token":"secret"}'), 50);
+    return;
+  }
   if (route === "GET /fail") {
     sendJson(response, 500, JSON.stringify({ error: "fixture failure", code: "FIXTURE_FAIL" }));
     return;

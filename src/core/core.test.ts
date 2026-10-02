@@ -232,6 +232,51 @@ describe("network capture", () => {
     }
   });
 
+  it("reads a JSON body of unknown length up to the cap, and never clones NDJSON", async () => {
+    const chunked = (parts: string[], type: string) =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            for (const part of parts) controller.enqueue(new TextEncoder().encode(part));
+            controller.close();
+          },
+        }),
+        { headers: { "content-type": type } },
+      );
+    const ndjson = chunked(['{"n":1}\n'], "application/x-ndjson");
+    const clone = vi.spyOn(ndjson, "clone");
+    const responses = [
+      chunked(['{"ok":true,', '"access_token":"t"}'], "application/json; charset=utf-8"),
+      chunked(["[", `"${"y".repeat(MAX_BODY_BYTES)}"`, "]"], "application/json"),
+      ndjson,
+    ];
+    vi.stubGlobal("fetch", async () => responses.shift());
+    const current = start();
+
+    const small = await fetch("/api/small");
+    const large = await fetch("/api/large");
+    await fetch("/api/feed");
+    await vi.waitFor(() =>
+      expect(current.snapshot().requests.map((request) => request.state)).toEqual([
+        "done",
+        "done",
+        "done",
+      ]),
+    );
+
+    expect(await small.json()).toEqual({ ok: true, access_token: "t" });
+    expect(await large.text()).toHaveLength(MAX_BODY_BYTES + 4);
+    const [smallEntry, largeEntry, feedEntry] = current.snapshot().requests;
+    expect(JSON.parse(smallEntry?.responseBody ?? "")).toEqual({
+      ok: true,
+      access_token: "[redacted]",
+    });
+    expect(smallEntry?.responseSize).toBe(30);
+    expect(largeEntry?.responseBody).toBeUndefined();
+    expect(feedEntry?.responseBody).toBeUndefined();
+    expect(clone).not.toHaveBeenCalled();
+  });
+
   it("never clones or reads an endless event stream", async () => {
     const encoder = new TextEncoder();
     let pulls = 0;

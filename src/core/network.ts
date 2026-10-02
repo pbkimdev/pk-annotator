@@ -13,6 +13,9 @@ const SECRET_JSON_KEY =
   /token|secret|passw(?:or)?d|session|cookie|authorization|api[-_ ]?key|credential/i;
 const TEXT_TYPE = /^\s*(?:text\/(?!event-stream)|application\/(?:[\w.-]+\+)?json\b)/i;
 const EVENT_STREAM = /^\s*text\/event-stream/i;
+// JSON is a finite document, so a body of unknown length is read only when it is
+// JSON and not one of the streaming JSON formats.
+const JSON_DOCUMENT = /^\s*application\/(?!stream\+)(?:[\w.-]+\+)?json\s*(?:;|$)/i;
 // After a request settles, how long to keep looking for its resource timing entry.
 const TIMING_GRACE_MS = 10_000;
 
@@ -276,8 +279,9 @@ export function installNetwork(hooks: NetworkHooks): Network {
     settle(item, aborted ? "aborted" : "failed", String(cause));
   }
 
-  // Event streams and responses without a known small length are never
-  // cloned or read: a tee would buffer an endless body in memory.
+  // Event streams and other streaming types are never cloned: a tee would buffer
+  // an endless body in memory. Other bodies are read from a clone and given up
+  // past the per-body cap, so a body of unknown length costs at most that much.
   function onFetchResponse(item: Tracked, response: Response): void {
     recordResponseHead(item, response.status, response.headers, response.type);
     if (item.entry.stream) {
@@ -290,23 +294,44 @@ export function installNetwork(hooks: NetworkHooks): Network {
       item.bodyAllowed &&
       response.body !== null &&
       TEXT_TYPE.test(type) &&
-      length !== undefined &&
-      length <= MAX_BODY_BYTES;
-    if (!readable) {
+      (length === undefined ? JSON_DOCUMENT.test(type) : length <= MAX_BODY_BYTES);
+    const body = readable ? response.clone().body : null;
+    if (body === null) {
       settle(item, "done");
       return;
     }
     hooks.changed();
-    response
-      .clone()
-      .text()
-      .then(
-        (text) => {
-          storeBody(item, "responseBody", redactBody(text, type));
-          settle(item, "done");
-        },
-        (cause) => settleFailure(item, cause),
-      );
+    readCapped(body).then(
+      (read) => {
+        if (read !== undefined) {
+          if (length === undefined) item.entry.responseSize = read.bytes;
+          storeBody(item, "responseBody", redactBody(read.text, type));
+        }
+        settle(item, "done");
+      },
+      (cause) => settleFailure(item, cause),
+    );
+  }
+
+  // Undefined once the body passes the cap. Cancelling one branch of a tee resolves
+  // only after the other branch ends, so the cancel is not awaited.
+  async function readCapped(
+    body: ReadableStream<Uint8Array>,
+  ): Promise<{ text: string; bytes: number } | undefined> {
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let text = "";
+    let bytes = 0;
+    for (;;) {
+      const chunk = await reader.read();
+      if (chunk.done) return { text: text + decoder.decode(), bytes };
+      bytes += chunk.value.byteLength;
+      if (bytes > MAX_BODY_BYTES) {
+        reader.cancel().catch((cause: unknown) => hooks.fail("response body cancel", cause));
+        return undefined;
+      }
+      text += decoder.decode(chunk.value, { stream: true });
+    }
   }
 
   const originalFetch = globalThis.fetch;
