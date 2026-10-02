@@ -123,7 +123,8 @@ async function resolve(element: Element): Promise<Location> {
   return location;
 }
 
-async function symbolicate(frame: StackFrame): Promise<string | undefined> {
+/** A frame as workspace `file:line:col` through its source map, or undefined when unmapped. */
+export async function symbolicate(frame: StackFrame): Promise<string | undefined> {
   const [resolved] = await symbolicateStack([frame]);
   if (
     resolved?.isSymbolicated !== true ||
