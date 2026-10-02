@@ -89,6 +89,10 @@ function HoverBox({ element }: { element: Element }) {
   );
 }
 
+// The number sits outside the box, above it or, near the viewport top, below it, so it
+// never covers the selected element's own text.
+const BADGE_HEIGHT = 16;
+
 function SelectionBox({ element, n }: { element: Element; n: number }) {
   if (!element.isConnected) return null;
   const rect = element.getBoundingClientRect();
@@ -99,7 +103,12 @@ function SelectionBox({ element, n }: { element: Element; n: number }) {
     >
       <span
         data-testid="pka-selection-badge"
-        className="absolute -top-2.5 -left-2.5 grid size-5 place-items-center rounded-full bg-pick font-sans text-[11px] font-semibold text-pick-foreground shadow-sm ring-2 ring-background"
+        className={cn(
+          "absolute -left-0.5 grid h-4 min-w-4 place-items-center bg-pick px-1 font-sans text-[10px] leading-none font-semibold text-pick-foreground tabular-nums",
+          rect.top < BADGE_HEIGHT + 2
+            ? "top-full mt-0.5 rounded-b-[3px]"
+            : "bottom-full mb-0.5 rounded-t-[3px]",
+        )}
       >
         {n}
       </span>
