@@ -94,6 +94,8 @@ function RecordPanel(_props: PanelProps) {
       ) : (
         <div className="flex items-center gap-3">
           <Button
+            variant="outline"
+            size="sm"
             data-testid="pka-record-start"
             disabled={phase === "stopping"}
             onClick={() => {

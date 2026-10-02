@@ -100,7 +100,7 @@ function Section({
 }) {
   return (
     <section className="space-y-1.5 px-3 py-2.5">
-      <h3 className="flex items-center justify-between text-xs font-medium text-muted-foreground">
+      <h3 className="flex items-center justify-between text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
         {title}
         {aside}
       </h3>
@@ -219,11 +219,11 @@ function Frames() {
           const script = frame.scripts[0];
           return (
             <li key={frame.start} className="space-y-0.5">
-              <p className="flex items-baseline gap-1.5 text-sm">
+              <p className="flex items-baseline gap-1.5 text-xs">
                 <Value suspect={frame.blockingMs >= SUSPECT.frameBlockingMs}>
                   {duration(frame.blockingMs)}
                 </Value>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-muted-foreground">
                   blocking of {duration(frame.durationMs)}
                 </span>
                 {frame.forcedLayoutMs > 0 && (
@@ -293,15 +293,17 @@ function Requests() {
       <ol className="space-y-1.5" data-testid="pka-perf-requests">
         {slow.slice(0, SHOWN).map((request) => (
           <li key={request.seq} className="space-y-0.5">
-            <p className="flex min-w-0 items-baseline gap-1.5 text-sm">
+            <p className="flex min-w-0 items-baseline gap-1.5 text-xs">
               <Value suspect={request.durationMs >= SUSPECT.requestMs}>
                 {duration(request.durationMs)}
               </Value>
-              <span className="truncate font-mono text-xs" title={request.url}>
+              <span className="min-w-0 truncate font-mono" title={request.url}>
                 {request.method} {sameOrigin(request.url)}
               </span>
               {request.status !== undefined && (
-                <span className="text-xs text-muted-foreground">{request.status}</span>
+                <span className="ml-auto shrink-0 font-mono text-muted-foreground tabular-nums">
+                  {request.status}
+                </span>
               )}
             </p>
             {request.serverTiming.length > 0 && (
@@ -356,9 +358,9 @@ function Renders() {
             key={`${spot.name}@${spot.site.fileName}:${spot.site.lineNumber}`}
             className="space-y-0.5"
           >
-            <p className="flex items-baseline gap-1.5 text-sm">
+            <p className="flex items-baseline gap-1.5 text-xs">
               <span className="font-mono">{spot.name}</span>
-              <span className="font-mono text-xs tabular-nums">{spot.renders}×</span>
+              <span className="font-mono tabular-nums">{spot.renders}×</span>
               <HotSpotSource spot={spot} />
             </p>
             <p className="text-xs text-muted-foreground">
