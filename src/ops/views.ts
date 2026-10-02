@@ -158,7 +158,7 @@ export function annotationView(record: AnnotationRecord, detail: Detail): Annota
     attachments: annotation.attachments.map((attachment) => ({
       kind: attachment.kind,
       path: attachment.path,
-      summary: full ? pageText(attachment.summary, CAP.text) : undefined,
+      summary: pageText(attachment.summary, full ? CAP.text : CAP.short),
     })),
     threadCount: record.thread.length,
   };

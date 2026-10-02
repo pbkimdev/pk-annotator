@@ -115,8 +115,8 @@ function createServer(store: string): McpServer {
       description:
         "Get one annotation: the human's prompt and each picked element with its source file:line:col, " +
         "usedAt (the owner component's call site, when it differs), owner components, and selector, " +
-        "plus attachment paths. detail full adds HTML, boxes, nearby text, " +
-        "attachment summaries, status history, and the reply thread. Paths are relative to `dir`; read the " +
+        "plus attachment paths and short summaries. detail full adds HTML, boxes, nearby text, " +
+        "longer attachment summaries, status history, and the reply thread. Paths are relative to `dir`; read the " +
         `files with your file tools. ${UNTRUSTED}`,
       inputSchema: GetInput,
       outputSchema: GetResult,
