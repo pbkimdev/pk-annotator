@@ -237,7 +237,8 @@ test(
     await page.getByTestId("pka-panel").waitFor({ state: "visible" });
     assert.match(await page.getByTestId("pka-prompt").innerText(), /Fixture smoke recording/);
     await page.getByTestId("pka-send").click();
-    await page.getByTestId("pka-thread-item").filter({ hasText: prompt }).waitFor();
+    // A sent mark is cleared and the panel closes; History lists the annotation.
+    await page.getByTestId("pka-panel").waitFor({ state: "detached" });
     // With no agent connected, Send also copies the annotation and says so.
     const copiedPopup = page.getByTestId("pka-copied");
     await copiedPopup.waitFor();
@@ -249,6 +250,8 @@ test(
     );
     await page.getByRole("button", { name: "OK", exact: true }).click();
     await copiedPopup.waitFor({ state: "detached" });
+    await choose("settings", "History", "menuitemcheckbox");
+    await page.getByTestId("pka-thread-item").filter({ hasText: prompt }).waitFor();
 
     const cli = path.join(workspace, "dist/pka.mjs");
     const listed = await exec(process.execPath, [
@@ -401,7 +404,7 @@ test(
     await page.keyboard.press("Control+Home");
     await page.keyboard.type(`${global} `);
     await page.getByTestId("pka-send").click();
-    await page.getByTestId("pka-thread-item").filter({ hasText: global }).waitFor();
+    await page.getByTestId("pka-panel").waitFor({ state: "detached" });
     // The batch copies too; Don't show again hides the pop-up for the rest of the tab session.
     await copiedPopup.waitFor();
     assert.match(
@@ -486,7 +489,7 @@ test(
     const judged = "Practice smoke: judge the submission";
     await page.getByTestId("pka-prompt").fill(judged);
     await page.getByTestId("pka-send").click();
-    await page.getByTestId("pka-thread-item").filter({ hasText: judged }).waitFor();
+    await page.getByTestId("pka-panel").waitFor({ state: "detached" });
     assert.equal(await copiedPopup.count(), 0);
     assert.match(
       await page.evaluate(() => navigator.clipboard.readText()),
@@ -505,7 +508,7 @@ test(
     await page.keyboard.press("Control+End");
     await page.keyboard.type(" to Two Sum II {{mark:abc}}");
     await page.getByTestId("pka-send").click();
-    await page.getByTestId("pka-thread-item").filter({ hasText: "Two Sum II" }).waitFor();
+    await page.getByTestId("pka-panel").waitFor({ state: "detached" });
     const practiceItems = ListResult.parse(
       JSON.parse(
         (
@@ -580,7 +583,7 @@ test(
       await page.keyboard.press("Control+End");
       await page.keyboard.type(connected);
       await page.getByTestId("pka-send").click();
-      await page.getByTestId("pka-thread-item").filter({ hasText: connected }).waitFor();
+      await page.getByTestId("pka-panel").waitFor({ state: "detached" });
       assert.equal(await copiedPopup.count(), 0);
       await hub.click();
       assert.equal(await page.getByTestId("pka-connect").getAttribute("data-open"), null);
@@ -637,7 +640,7 @@ test(
     const stroked = "Scaled stroke";
     await scaled.getByTestId("pka-prompt").fill(stroked);
     await scaled.getByTestId("pka-send").click();
-    await scaled.getByTestId("pka-thread-item").filter({ hasText: stroked }).waitFor();
+    await scaled.getByTestId("pka-panel").waitFor({ state: "detached" });
     await scaled
       .getByTestId("pka-copied")
       .filter({ hasText: "Couldn't copy to clipboard" })

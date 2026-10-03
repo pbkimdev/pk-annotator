@@ -1,4 +1,4 @@
-import { CheckIcon, CopyIcon, SendIcon } from "lucide-react";
+import { CopyIcon, SendIcon } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 
 import {
@@ -6,7 +6,6 @@ import {
   COPIED_HINT_KEY,
   NOTE,
   elementKey,
-  THREAD,
   useOverlay,
   type SavedMark,
   type UiState,
@@ -163,7 +162,6 @@ export function Composer({ batch = false }: { batch?: boolean }) {
   const ready = useStore(ui, (state) => canSubmit(state, batch));
   const [phase, setPhase] = useState<SendPhase | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
   const hasCurrent = selection.length > 0 || extra.length > 0 || ui.get().prompt.trim() !== "";
 
   const save = async () => {
@@ -262,17 +260,8 @@ export function Composer({ batch = false }: { batch?: boolean }) {
       const { id, createdAt } = await sending;
       thread.added({ id, prompt: text, createdAt, elements: elements.length });
       for (const attachment of allAttachments) attachment.sent?.(id);
-      if (batch) ui.set({ marks: [], globalPrompt: "", panel: THREAD });
-      else {
-        attachmentList.clear();
-        ui.set({
-          marks: current.marks.filter((mark) => mark.id !== current.editing),
-          selection: [],
-          prompt: "",
-          editing: null,
-          panel: THREAD,
-        });
-      }
+      if (batch) ui.set({ marks: [], globalPrompt: "", picking: null, panel: null });
+      else flush(current.marks.filter((mark) => mark.id !== current.editing));
       // Not awaited: a clipboard write the browser never settles must not keep Send busy.
       void copied?.then((outcome) => {
         if (outcome !== "ok") {
@@ -286,6 +275,12 @@ export function Composer({ batch = false }: { batch?: boolean }) {
       setPhase(null);
       ui.set({ busy: false });
     }
+  };
+
+  /** Drops the current mark and returns the overlay to idle; `marks` are the saved marks to keep. */
+  const flush = (marks: readonly SavedMark[]) => {
+    attachmentList.clear();
+    ui.set({ marks, selection: [], prompt: "", editing: null, picking: null, panel: null });
   };
 
   const edit = (mark: SavedMark) => {
@@ -319,7 +314,7 @@ export function Composer({ batch = false }: { batch?: boolean }) {
           elements,
         ),
       );
-      setCopied(true);
+      flush(ui.get().marks);
     } catch (cause) {
       setError(`Copy failed: ${cause instanceof Error ? cause.message : String(cause)}`);
     }
@@ -420,11 +415,7 @@ export function Composer({ batch = false }: { batch?: boolean }) {
                   disabled={busy}
                   onClick={() => void copy()}
                 >
-                  {copied ? (
-                    <AgentIcon name="copied" icon={CheckIcon} />
-                  ) : (
-                    <AgentIcon name="copy" icon={CopyIcon} />
-                  )}
+                  <AgentIcon name="copy" icon={CopyIcon} />
                 </Button>
                 <Button
                   variant="outline"
