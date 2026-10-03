@@ -150,12 +150,16 @@ async function keyframe(region: Box | null): Promise<Blob> {
 }
 
 // Request entries are live until stop; the copy freezes them, with the bodies kept at settle.
+// A request that began before the recording arrives when it settles, after later entries,
+// so the copy is sorted back into seq order.
 function frozenEntries(current: Session): TimelineEntry[] {
-  return structuredClone(current.entries).map((entry) => {
-    if (entry.kind !== "request" || !current.bodies.has(entry.seq)) return entry;
-    const { requestBody: _request, responseBody: _response, ...rest } = entry;
-    return { ...rest, ...current.bodies.get(entry.seq) };
-  });
+  return structuredClone(current.entries)
+    .toSorted((left, right) => left.seq - right.seq)
+    .map((entry) => {
+      if (entry.kind !== "request" || !current.bodies.has(entry.seq)) return entry;
+      const { requestBody: _request, responseBody: _response, ...rest } = entry;
+      return { ...rest, ...current.bodies.get(entry.seq) };
+    });
 }
 
 export function createRecorder() {
@@ -231,7 +235,10 @@ export function createRecorder() {
         if (kept) keepBodies(current, entry);
         return;
       }
-      current.requests.set(entry, current.entries.length < MAX_ENTRIES);
+      const keep = current.entries.length < MAX_ENTRIES;
+      current.requests.set(entry, keep);
+      // First seen as it settles: it began before the recording started.
+      if (keep && entry.state !== "pending" && entry.state !== "open") keepBodies(current, entry);
     }
     if (current.entries.length >= MAX_ENTRIES) {
       current.dropped += 1;

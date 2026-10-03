@@ -7,8 +7,12 @@ import {
   RecordingErrors,
   RecordingManifestDraft,
 } from "../../shared/recording.ts";
-import { TimelineEntry } from "../../shared/timeline.ts";
+import { TimelineEntry, type RequestEntry } from "../../shared/timeline.ts";
+import type { Capture } from "../../core/index.ts";
+import { setActive } from "../capture.ts";
+import { attachments } from "../registry.ts";
 import { buildRecording } from "./files.ts";
+import { createRecorder } from "./recorder.ts";
 
 const at = (second: number) => new Date(Date.UTC(2026, 9, 2, 12, 0, second)).toISOString();
 
@@ -127,5 +131,70 @@ describe("buildRecording", () => {
     );
     expect(summary).toContain("GET /api/fail → 500 in 12 ms · after step 2");
     expect(summary.length).toBeLessThan(2500);
+  });
+});
+
+describe("createRecorder", () => {
+  it("keeps the bodies of a request first seen as it settles and writes the timeline in seq order", async () => {
+    let tap: ((entry: TimelineEntry) => void) | undefined;
+    const unused = () => {
+      throw new Error("The recorder does not call this");
+    };
+    const capture: Capture = {
+      tap(listener) {
+        tap = listener;
+        return () => {
+          tap = undefined;
+        };
+      },
+      snapshot: () => ({ console: [], errors: [], groups: [], requests: [], actions: [] }),
+      subscribe: unused,
+      clear: unused,
+      markSent: unused,
+      markResolved: unused,
+      huntContext: unused,
+      applySymbolicated: unused,
+      fetch: unused,
+      reactRootOptions: {},
+      stop: unused,
+    };
+    setActive({
+      mounted: { reactRootOptions: {}, setTheme: unused, unmount: unused },
+      capture,
+    });
+    // Began before the recording, so the tap first sees it when it settles.
+    const request: RequestEntry = {
+      kind: "request",
+      seq: 2,
+      at: at(1),
+      initiator: "fetch",
+      method: "GET",
+      url: `${location.origin}/api/items`,
+      state: "pending",
+      stream: false,
+      serverFn: false,
+      requestHeaders: {},
+      responseHeaders: {},
+    };
+    const recorder = createRecorder();
+    recorder.start();
+    tap?.({ kind: "console", seq: 3, at: at(2), level: "log", args: ["after"] });
+    Object.assign(request, { state: "done", status: 200, responseBody: '{"items":["alpha"]}' });
+    tap?.(request);
+    // The capture may drop a settled request's bodies to keep its own cap.
+    delete request.responseBody;
+    await recorder.stop();
+    setActive(undefined);
+
+    const recording = attachments.get().find((attachment) => attachment.kind === "recording");
+    if (recording === undefined) throw new Error(`No recording: ${recorder.state.get().error}`);
+    const { files } = await recording.collect();
+    attachments.clear();
+    const timeline = (await text(files, RECORDING.timeline)).trim().split("\n");
+    expect(timeline.map((line) => TimelineEntry.parse(JSON.parse(line)).seq)).toEqual([2, 3]);
+    const [line] = (await text(files, RECORDING.network)).trim().split("\n");
+    expect(NetworkLine.parse(JSON.parse(line ?? ""))).toMatchObject({
+      response: { status: 200, content: { text: '{"items":["alpha"]}' } },
+    });
   });
 });
