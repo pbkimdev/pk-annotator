@@ -103,6 +103,9 @@
     line-height: 1.5;
     -webkit-text-size-adjust: 100%;
     tab-size: 4;
+    /* Korean wraps between words, as Korean typesetting does, not between syllables. */
+    word-break: keep-all;
+    overflow-wrap: break-word;
   }
 }
 
@@ -307,10 +310,10 @@
 }
 
 .pka-editor {
-  min-height: 120px;
+  min-height: 84px;
   max-height: 280px;
   overflow-y: auto;
-  padding: 12px;
+  padding: 12px 14px 6px;
   outline: none;
   font-size: 14px;
   line-height: 1.5;
@@ -318,8 +321,12 @@
   white-space: pre-wrap;
   caret-color: var(--primary);
 }
-.pka-editor:focus {
-  box-shadow: inset 0 0 0 2px var(--ring);
+.pka-editor p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: var(--muted-foreground);
+  pointer-events: none;
 }
 .pka-editor ::selection {
   background: var(--accent);

@@ -1,12 +1,16 @@
 import { useText } from "./language.ts";
 import {
+  ArrowDownUpIcon,
+  ArrowRightIcon,
   CheckIcon,
   CopyIcon,
   ImageIcon,
-  NetworkIcon,
+  LayersIcon,
+  MousePointer2Icon,
   TriangleAlertIcon,
   VideoIcon,
   GaugeIcon,
+  PenLineIcon,
   SendIcon,
   Trash2Icon,
   PencilIcon,
@@ -51,12 +55,13 @@ const KIND_ICON = {
   recording: VideoIcon,
   video: VideoIcon,
   errors: TriangleAlertIcon,
-  network: NetworkIcon,
+  network: ArrowDownUpIcon,
   perf: GaugeIcon,
   frame: ImageIcon,
 } satisfies Record<AttachmentKind, LucideIcon>;
 const MAX_MARKS = 50;
 const MAX_DRAFT_BYTES = 256 * 1024 * 1024;
+const SEND_KEY = /Mac|iPhone|iPad/.test(navigator.userAgent) ? "⌘ ↵" : "Ctrl ↵";
 
 function markId(): string {
   return Array.from(crypto.getRandomValues(new Uint8Array(8)), (byte) =>
@@ -98,10 +103,10 @@ function ElementChip({ element, n, remove }: { element: Element; n: number; remo
             title,
           }}
           onRemove={remove}
-          className="h-7 max-w-56 cursor-default pl-1 text-xs"
+          className="h-7 max-w-56 cursor-default rounded-full pl-1 text-xs"
         >
           <AttachmentPreview
-            className="size-4 rounded-[3px] bg-pick text-[10px] font-semibold text-pick-foreground"
+            className="size-5 rounded-full bg-pick text-[10px] font-semibold text-pick-foreground tabular-nums"
             fallbackIcon={<span aria-hidden="true">{n}</span>}
           />
           <AttachmentInfo className="font-mono text-[11px]" />
@@ -141,9 +146,12 @@ function AttachmentChip({ attachment }: { attachment: ComposerAttachment }) {
       onRemove={() => {
         if (!ui.get().busy) attachmentList.remove(attachment.id);
       }}
-      className="h-7 max-w-56 cursor-default pl-1 text-xs"
+      className="h-7 max-w-56 cursor-default rounded-full pl-1 text-xs"
     >
-      <AttachmentPreview fallbackIcon={<Icon className="size-3 text-muted-foreground" />} />
+      <AttachmentPreview
+        className="rounded-full"
+        fallbackIcon={<Icon className="size-3 text-muted-foreground" />}
+      />
       <AttachmentInfo />
       <AttachmentRemove
         label={`Remove ${attachment.label}`}
@@ -158,6 +166,15 @@ function phaseText(phase: SendPhase): string {
   if (phase.phase === "capturing") return "Capturing screenshot…";
   if (phase.phase === "waiting") return "Waiting for the dev server…";
   return `Uploading ${Math.round(phase.sent / 1024)} of ${Math.round(phase.total / 1024)} KB…`;
+}
+
+/** The first line of a Markdown prompt without its markup, for a one-line title. */
+function promptTitle(prompt: string): string {
+  const line = prompt.split("\n").find((candidate) => candidate.trim() !== "") ?? "";
+  return line
+    .replace(/\\(.)/g, "$1")
+    .replace(/[*_`#>~]/g, "")
+    .trim();
 }
 
 function SavedMarks({
@@ -177,60 +194,98 @@ function SavedMarks({
 }) {
   const t = useText();
   return (
-    <>
+    <div className="space-y-2">
       {marks.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          {t("No saved marks. Pick or capture to add one.")}
-        </p>
+        <div className="flex items-center gap-3 rounded-2xl bg-muted/60 px-3.5 py-3 dark:bg-muted/40">
+          <span className="grid size-9 shrink-0 place-items-center rounded-full bg-background text-muted-foreground ring-1 ring-border">
+            <LayersIcon className="size-4" strokeWidth={1.75} />
+          </span>
+          <div className="min-w-0">
+            <p className="text-[13px] font-medium">{t("No saved marks yet")}</p>
+            <p className="text-xs text-muted-foreground">
+              {t("Pick or capture, then Save to collect it here.")}
+            </p>
+          </div>
+        </div>
       ) : (
-        <ol className="divide-y" aria-label={t("Saved marks")}>
+        <ol className="-mx-1.5 space-y-0.5" aria-label={t("Saved marks")}>
           {marks.map((mark, index) => (
-            <li key={mark.id} data-testid="pka-saved-mark" className="flex items-center gap-2 py-2">
-              <span className="grid size-5 shrink-0 place-items-center rounded-sm bg-pick text-xs text-pick-foreground">
+            <li
+              key={mark.id}
+              data-testid="pka-saved-mark"
+              className="group flex items-center gap-2.5 rounded-xl py-1.5 pr-1 pl-1.5 transition-colors focus-within:bg-muted/60 hover:bg-muted/60"
+            >
+              <span className="grid size-6 shrink-0 place-items-center rounded-full bg-pick text-[11px] font-semibold text-pick-foreground tabular-nums">
                 {index + 1}
               </span>
               <button
                 type="button"
                 disabled={busy}
                 onClick={() => edit(mark)}
-                className="min-w-0 flex-1 text-left text-sm focus-visible:outline-ring"
+                className="min-w-0 flex-1 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <span className="block truncate">
-                  {mark.prompt || mark.attachments[0]?.label || "Selected elements"}
+                <span className="block truncate text-[13px]">
+                  {promptTitle(mark.prompt) || mark.attachments[0]?.label || t("Selected elements")}
                 </span>
-                <span className="text-xs text-muted-foreground">
-                  {mark.elements.length} elements · {mark.attachments.length} captures
+                <span className="flex items-center gap-2.5 text-xs text-muted-foreground tabular-nums">
+                  {mark.elements.length > 0 && (
+                    <span className="flex items-center gap-1">
+                      <MousePointer2Icon className="size-3" strokeWidth={1.75} aria-hidden="true" />
+                      <span className="sr-only">{t("Elements")}</span>
+                      {mark.elements.length}
+                    </span>
+                  )}
+                  {mark.attachments.length > 0 && (
+                    <span className="flex items-center gap-1">
+                      <ImageIcon className="size-3" strokeWidth={1.75} aria-hidden="true" />
+                      <span className="sr-only">{t("Captures")}</span>
+                      {mark.attachments.length}
+                    </span>
+                  )}
                 </span>
               </button>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                aria-label={`Edit mark ${index + 1}`}
-                disabled={busy}
-                onClick={() => edit(mark)}
-              >
-                <PencilIcon />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                aria-label={`Remove mark ${index + 1}`}
-                disabled={busy}
-                onClick={() => remove(mark)}
-              >
-                <Trash2Icon />
-              </Button>
+              <div className="flex opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="rounded-full text-muted-foreground"
+                  aria-label={`${t("Edit mark")} ${index + 1}`}
+                  disabled={busy}
+                  onClick={() => edit(mark)}
+                >
+                  <PencilIcon strokeWidth={1.75} />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="rounded-full text-muted-foreground hover:text-destructive"
+                  aria-label={`${t("Remove mark")} ${index + 1}`}
+                  disabled={busy}
+                  onClick={() => remove(mark)}
+                >
+                  <Trash2Icon strokeWidth={1.75} />
+                </Button>
+              </div>
             </li>
           ))}
         </ol>
       )}
       {current && (
-        <Button variant="outline" size="sm" disabled={busy} onClick={resume}>
-          {t("Continue current mark")}
-        </Button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={resume}
+          className="flex w-full items-center gap-2.5 rounded-xl border border-dashed px-3 py-2 text-left text-[13px] outline-none transition-colors hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+        >
+          <PenLineIcon className="size-4 text-muted-foreground" strokeWidth={1.75} />
+          <span className="min-w-0 flex-1 truncate">{t("Current mark in progress")}</span>
+          <span className="flex items-center gap-1 text-xs font-medium text-pick">
+            {t("Continue")}
+            <ArrowRightIcon className="size-3.5" />
+          </span>
+        </button>
       )}
-      <label className="block text-xs font-medium">{t("Global comment")}</label>
-    </>
+    </div>
   );
 }
 
@@ -249,6 +304,7 @@ export function Composer({ batch = false }: { batch?: boolean }) {
   const editing = useStore(ui, (state) => state.editing);
   const prompt = useStore(ui, (state) => (batch ? state.globalPrompt : state.prompt));
   const recording = useStore(ui, (state) => state.recording);
+  const language = useStore(ui, (state) => state.language);
   const busy = useStore(ui, (state) => state.busy);
   const extra = useList(attachmentList);
   const ready = useStore(ui, (state) => canSubmit(state, batch));
@@ -420,7 +476,7 @@ export function Composer({ batch = false }: { batch?: boolean }) {
   };
 
   return (
-    <div className="space-y-3 p-3">
+    <div className="space-y-3 p-4">
       {batch ? (
         <SavedMarks
           marks={marks}
@@ -431,7 +487,7 @@ export function Composer({ batch = false }: { batch?: boolean }) {
           resume={() => ui.set({ panel: NOTE })}
         />
       ) : (
-        <Attachments variant="inline" className="gap-1.5">
+        <Attachments variant="inline" className="gap-1.5 empty:hidden">
           {selection.map((element, index) => (
             <ElementChip
               key={elementKey(element)}
@@ -448,51 +504,68 @@ export function Composer({ batch = false }: { batch?: boolean }) {
         </Attachments>
       )}
       <PromptEditor
-        key={batch ? "global" : (editing ?? "current")}
+        // The placeholder and label are set when the editor is created; the prompt itself
+        // lives in the store, so a language switch remounts the editor without losing it.
+        key={`${batch ? "global" : (editing ?? "current")}-${language}`}
         value={prompt}
         onChange={(value) => ui.set(batch ? { globalPrompt: value } : { prompt: value })}
         label={t(batch ? "Global comment" : "Prompt")}
+        placeholder={t(batch ? "Add a note for all marks (optional)" : "Describe the change…")}
         disabled={busy}
         onSend={() => void submit()}
         {...(batch ? {} : { onPasteImage: pasteImage })}
+        actions={
+          <>
+            {!batch && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="rounded-full text-muted-foreground"
+                  aria-label={t("Copy as Markdown")}
+                  data-testid="pka-copy"
+                  disabled={busy}
+                  onClick={() => void copy()}
+                >
+                  {copied ? <CheckIcon strokeWidth={1.75} /> : <CopyIcon strokeWidth={1.75} />}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="rounded-full"
+                  data-testid="pka-save"
+                  disabled={busy || recording || !hasCurrent || selection.length > MAX_ELEMENTS}
+                  onClick={() => void save()}
+                >
+                  {t("Save")}
+                </Button>
+              </>
+            )}
+            <Button
+              size="sm"
+              className="rounded-full pr-1.5 disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100"
+              data-testid="pka-send"
+              aria-keyshortcuts="Control+Enter Meta+Enter"
+              disabled={!ready}
+              onClick={() => void submit()}
+            >
+              <SendIcon strokeWidth={1.75} />
+              {t(batch ? "Send all" : "Send")}
+              <kbd className="rounded-full bg-current/15 px-1.5 font-sans text-[10px] leading-4 font-medium">
+                {SEND_KEY}
+              </kbd>
+            </Button>
+          </>
+        }
       />
-      <div className="flex items-center gap-2">
-        {!batch && (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={t("Copy as Markdown")}
-            data-testid="pka-copy"
-            disabled={busy}
-            onClick={() => void copy()}
-          >
-            {copied ? <CheckIcon /> : <CopyIcon />}
-          </Button>
-        )}
-        <span className="mr-auto text-xs text-muted-foreground">{t("Ctrl / ⌘ Enter sends")}</span>
-        {!batch && (
-          <Button
-            variant="outline"
-            size="sm"
-            data-testid="pka-save"
-            disabled={busy || recording || !hasCurrent || selection.length > MAX_ELEMENTS}
-            onClick={() => void save()}
-          >
-            {t("Save")}
-          </Button>
-        )}
-        <Button size="sm" data-testid="pka-send" disabled={!ready} onClick={() => void submit()}>
-          <SendIcon />
-          {t(batch ? "Send all" : "Send")}
-        </Button>
-      </div>
       {recording && (
         <p className="text-xs text-muted-foreground">Stop recording before saving or sending.</p>
       )}
       {selection.length > MAX_ELEMENTS && (
         <p className="text-xs text-destructive">Select at most {MAX_ELEMENTS} elements.</p>
       )}
-      <div aria-live="polite" className="text-xs">
+      {/* Empty, it cancels the gap above it; it stays mounted so changes are announced. */}
+      <div aria-live="polite" className="text-xs empty:-mt-3">
         {error !== null ? (
           <p role="alert" className="text-destructive">
             {error}
