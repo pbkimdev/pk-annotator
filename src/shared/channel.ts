@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { AgentPresence } from "./agent.ts";
 import { AnnotationDraft, ErrorGroup, Id, RelativePath, State, ThreadEntry } from "./schema.ts";
 
 // Vite HMR custom events between the overlay (import.meta.hot.send) and the
@@ -22,6 +23,12 @@ import { AnnotationDraft, ErrorGroup, Id, RelativePath, State, ThreadEntry } fro
 // Resuming after a reload:
 //   overlay  pka:sync    {ids} the annotations this tab sent earlier
 //   plugin   pka:synced  {annotations[{id, state, thread}]} for the ids that still exist
+//
+// Agent presence:
+//   overlay  pka:presence  {} when the launcher mounts
+//   plugin   pka:agent     {agent, cause} the most recently connected live pka-mcp client, or
+//                          null: the reply to pka:presence while one is connected, and a
+//                          broadcast whenever it changes
 export const CHANNEL = {
   create: "pka:create",
   file: "pka:file",
@@ -36,6 +43,8 @@ export const CHANNEL = {
   synced: "pka:synced",
   symbolicate: "pka:symbolicate",
   symbolicated: "pka:symbolicated",
+  presence: "pka:presence",
+  agent: "pka:agent",
 } as const;
 
 export const MAX_CHUNK_BYTES = 512 * 1024;
@@ -86,6 +95,8 @@ export const SymbolicateMessage = z.strictObject({
   stacks: z.array(z.string().max(16_100)).max(MAX_SYMBOLICATE_STACKS),
 });
 
+export const PresenceMessage = z.strictObject({});
+
 // plugin -> overlay
 
 export const CreatedMessage = z.strictObject({
@@ -133,6 +144,12 @@ export const SyncedMessage = z.strictObject({
   ),
 });
 
+export const AgentMessage = z.strictObject({
+  agent: AgentPresence.pick({ name: true, version: true, connectedAt: true }).nullable(),
+  // "presence" answers a page that just mounted; "change" is a session connecting or leaving.
+  cause: z.enum(["presence", "change"]),
+});
+
 export type CreateMessage = z.infer<typeof CreateMessage>;
 export type FileChunkMessage = z.infer<typeof FileChunkMessage>;
 export type ErrorsMessage = z.infer<typeof ErrorsMessage>;
@@ -146,6 +163,8 @@ export type SyncMessage = z.infer<typeof SyncMessage>;
 export type SyncedMessage = z.infer<typeof SyncedMessage>;
 export type SymbolicateMessage = z.infer<typeof SymbolicateMessage>;
 export type SymbolicatedMessage = z.infer<typeof SymbolicatedMessage>;
+export type PresenceMessage = z.infer<typeof PresenceMessage>;
+export type AgentMessage = z.infer<typeof AgentMessage>;
 
 export interface ChannelEvents {
   [CHANNEL.create]: CreateMessage;
@@ -161,4 +180,6 @@ export interface ChannelEvents {
   [CHANNEL.synced]: SyncedMessage;
   [CHANNEL.symbolicate]: SymbolicateMessage;
   [CHANNEL.symbolicated]: SymbolicatedMessage;
+  [CHANNEL.presence]: PresenceMessage;
+  [CHANNEL.agent]: AgentMessage;
 }

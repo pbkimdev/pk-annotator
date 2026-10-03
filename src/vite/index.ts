@@ -16,14 +16,17 @@ import {
 import { z } from "zod";
 
 import { checkCaptureFiles, create, loadAnnotation, reply, upsertErrorGroups } from "../ops/ops.ts";
+import { agentsDir, liveAgents } from "../ops/presence.ts";
 import {
   CHANNEL,
   CreateMessage,
   ErrorsMessage,
   FileChunkMessage,
+  PresenceMessage,
   ReplyMessage,
   SymbolicateMessage,
   SyncMessage,
+  type AgentMessage,
   type ErrorsAckMessage,
   type SymbolicatedMessage,
   type SyncedMessage,
@@ -471,6 +474,51 @@ async function serve(
   hot.on("vite:client:disconnect", onDisconnect);
   listeners.push(["vite:client:disconnect", onDisconnect]);
 
+  // The active agent is the most recently connected pka-mcp session whose process lives.
+  let agentPushed = "";
+  let agentQueue = Promise.resolve();
+  let agentScheduled = false;
+
+  async function readAgent(): Promise<AgentMessage["agent"]> {
+    const { agents, invalid } = await liveAgents(store);
+    for (const { file, reason } of invalid) warn(`ignored agent presence ${file}: ${reason}`);
+    const latest = agents[0];
+    return latest === undefined
+      ? null
+      : { name: latest.name, version: latest.version, connectedAt: latest.connectedAt };
+  }
+
+  /** Broadcasts the active agent when it differs from the last broadcast. */
+  function pushAgent(agent: AgentMessage["agent"]): void {
+    const text = JSON.stringify(agent);
+    if (text === agentPushed || closed) return;
+    agentPushed = text;
+    const message: AgentMessage = { agent, cause: "change" };
+    hot.send(CHANNEL.agent, message);
+  }
+
+  function refreshAgent(): void {
+    agentScheduled = false;
+    agentQueue = agentQueue
+      .then(async () => pushAgent(await readAgent()))
+      .catch((cause: unknown) => error(`reading agent presence failed: ${describeError(cause)}`));
+  }
+
+  // A page with no agent connected gets no answer, so it never loads the agent theme.
+  // Reads share the watcher's queue, so an older read never broadcasts after a newer one.
+  listen(CHANNEL.presence, PresenceMessage, async (_message, client) => {
+    const answered = agentQueue.then(async () => {
+      const agent = await readAgent();
+      pushAgent(agent);
+      if (agent !== null) {
+        const message: AgentMessage = { agent, cause: "presence" };
+        client.send(CHANNEL.agent, message);
+      }
+    });
+    agentQueue = answered.catch(() => undefined);
+    await answered;
+  });
+
   function schedule(id: string): void {
     changed.add(id);
     if (flushScheduled) return;
@@ -554,9 +602,19 @@ async function serve(
   storeWatcher.on("error", (cause) => error(`store watcher failed: ${describeError(cause)}`));
   for (const id of await listIds(store)) schedule(id);
 
+  await mkdir(agentsDir(store), { recursive: true });
+  const agentWatcher = watch(agentsDir(store), () => {
+    if (agentScheduled) return;
+    agentScheduled = true;
+    setImmediate(refreshAgent);
+  });
+  agentWatcher.on("error", (cause) => error(`agent watcher failed: ${describeError(cause)}`));
+  agentPushed = JSON.stringify(await readAgent());
+
   return async () => {
     closed = true;
     storeWatcher.close();
+    agentWatcher.close();
     for (const watcher of annotationWatchers.values()) watcher.close();
     annotationWatchers.clear();
     for (const [event, listener] of listeners) hot.off(event, listener);
