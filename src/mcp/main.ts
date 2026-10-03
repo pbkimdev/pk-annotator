@@ -51,8 +51,8 @@ type ToolOutput =
   | ReplyResult
   | ErrorsResult;
 
-// Claude Code passes only structuredContent to the model when both are present;
-// other clients read the text block, so both carry the same JSON.
+// Claude Code and Codex pass only structuredContent to the model when both are present;
+// clients on older SDKs read the text block, so both carry the same JSON.
 function ok(value: ToolOutput): CallToolResult {
   return { content: [{ type: "text", text: JSON.stringify(value) }], structuredContent: value };
 }

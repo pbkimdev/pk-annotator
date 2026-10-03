@@ -94,6 +94,8 @@ Pi 1.0.0's bundled MCP documentation and the [upstream tool-exposure reference](
 
 The tools are `list_annotations`, `get_annotation`, `wait_for_annotation`, `set_status`, `reply`, and `get_errors`.
 
+Codex stops a tool call after `tool_timeout_sec`, 300 seconds by default, and progress does not extend it. Raise it in `[mcp_servers.pka]` if agents should wait longer than that for an annotation.
+
 ## CLI
 
 ```text
