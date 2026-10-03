@@ -93,6 +93,11 @@ pka lab --url URL --flow ID                                       replay a recor
 
 Every command takes `--json` and `--root DIR`. `pka status <id> acknowledged` claims an annotation as `$PKA_CLAIMANT` (default `pka-cli`); later status changes, replies, and `lab --attach` must use the same claimant. If a claimant stops before the acknowledge is written, another claimant may take over the claim once it is 60 seconds old and the annotation is still `pending`. A CLI claim names no process, so it is never released because its claimant exited; continue it from another shell with the same `$PKA_CLAIMANT`. `pka lab` needs Playwright; it writes `verdict.json` and exits 3 when the verdict fails a budget or is incomplete.
 
+`get` and `list` default to `--detail concise`, which bounds the annotation view or list page to 20,000 UTF-8 bytes of JSON before operation and MCP envelopes.
+A shortened `get` says what it left out, and a shortened `list` page ends with a cursor; `--detail full` returns everything.
+`pka lab` takes its metrics from `--runs` untraced replays, then runs one diagnostic trace for insights that never changes a metric.
+With `--attach`, it checks the annotation and claimant before the runs.
+
 ## Resource budget
 
-Mount starts bounded capture and one resource-timing observer. Opening the hub's menu loads the UI; opening Perf starts its additional observers, and recording starts on request. `pka-mcp` holds no timers or watchers between calls. The dev-only integration excludes the package from production builds. [DESIGN.md](DESIGN.md#resource-budget) owns the detailed limits and lifecycle.
+Mount starts bounded capture and one resource-timing observer. Opening the hub's menu loads the UI; screenshots, drawings, recordings, and Send load snapdom when they capture; opening Perf starts its additional observers, and recording starts on request. `pka-mcp` holds no timers or watchers between calls. The dev-only integration excludes the package from production builds. [DESIGN.md](DESIGN.md#resource-budget) owns the detailed limits and lifecycle.

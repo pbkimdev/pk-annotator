@@ -4,7 +4,7 @@ Point at your running app, say what should change, and your coding agent gets th
 
 [Website](https://pk-annotator.paulbkim.dev) · [한국어](README.ko.md) · MIT
 
-pk-annotator is a dev-only overlay for Vite and React apps. Anyone reviewing the dev build can pick elements, draw, screenshot, or record, then write a prompt and press Send. The annotation lands in a local file store that Claude Code, Codex, or Pi read through the bundled `pka-mcp` server, and the agent's replies appear on the page. Nothing ships in a production build, and nothing runs while the overlay is idle.
+pk-annotator is a dev-only overlay for Vite and React apps. Anyone reviewing the dev build can pick elements, draw, screenshot, or record, then write a prompt and press Send. The annotation lands in a local file store that Claude Code, Codex, or Pi read through the bundled `pka-mcp` server, and the agent's replies appear on the page. Nothing ships in a production build. While the overlay is closed, the page keeps bounded console, error, and network capture and, after this tab sends an annotation, follows its status and replies; the overlay UI and performance observers load when you use them.
 
 ## Install
 

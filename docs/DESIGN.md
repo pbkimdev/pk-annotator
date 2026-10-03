@@ -102,6 +102,11 @@ The menu follows the ARIA menu pattern. Enter or Space on the hub opens it with 
 
 Panels enter with a 150 ms transform and opacity animation. Panels and the menu readout contain their layout and styles; the readout enters in 100 ms. Menu, readout, and panel motion is disabled under `prefers-reduced-motion: reduce`. Picking, a screenshot, or a recording opens the prompt editor immediately. Enter creates a block; Ctrl/Cmd+Enter sends. The editor has no formatting toolbar; Markdown input rules and keyboard shortcuts create headings, lists, quotes, code blocks, and inline formatting. Nothing is listed above the editor: each picked element and each capture (drawing, screenshot, recording, pasted image, error groups, requests, perf snapshot) is an inline badge in the text, so the prompt can point at it. An element badge shows the element's pick number and name, with its source and owners in a card beside the panel; a capture badge shows its kind icon and label. A new badge goes to the cursor while the editor has focus, else to the end. Badges can be dragged between words and blocks, × removes the element or capture, and text editing never deletes a badge. Removing the element or capture elsewhere removes its badge, and an element or capture without a badge gets one at the end. A mark can be sent immediately or saved in this tab; Save stacks it for the Send panel. Send and Copy as Markdown end the current mark once they succeed: its prompt, elements, and captures are cleared, picking stops, and the panel closes. When either fails, the mark stays as it was and the editor shows the error. A Send from the Send panel likewise clears the saved marks and the global comment and closes the panel. Saved marks retain their prompts with badges, elements, and capture snapshots until they are sent; reload or Exit discards unsent marks. The Send panel holds the optional global comment, in which each saved mark is an inline badge (#1, #2, …, numbered in save order); clicking it edits its mark and × deletes the mark. Send creates one annotation from the global text with each mark badge replaced by its mark's numbered section and one deduplicated element list. Capture paths are unique per attachment, so multiple recordings cannot overwrite each other.
 
+Save copies the requests a Network attachment chose and the error groups a Hunt attachment chose into the saved mark.
+The copies outlast the capture's ring buffers and live error groups, which can evict the originals before Send.
+Adding requests or errors while editing a saved mark merges with that mark's own copies; only the new choices are read from the capture at Send.
+Deleting the mark being edited from the Send panel keeps its draft open as a new unsaved mark, which Save stacks again.
+
 In the stored Markdown a badge is `[[mark:<id>]]`, `[[element:<key>]]`, or `[[attachment:<id>]]`. Tiptap's Markdown serializer backslash-escapes `[` and `]` in typed text, so typed text never becomes a badge and text such as `{{mark:abc}}` is sent as typed. On Send, an element badge becomes `[element n]`, where n is the element's `n` in the sent element list, and a capture badge becomes `[attachment n: label]`, where the capture's files are under `capture/attachments/<n>/`. In a batch Send, element numbers follow the combined deduplicated element list and capture numbers run across the marks in order, so the references inside each mark's section resolve against the one annotation. A reference touching a word gets a space so it stays apart from it.
 
 While no agent is connected, as the latest `pka:agent` message reports, Send also copies the annotation to the clipboard: the Copy as Markdown text with references resolved, followed by `Annotation files: <dir>`. `<dir>` is the stored annotation's directory from `pka:created`, relative to the workspace root when the store is inside it. Safari and Firefox accept a clipboard write only during the user activation of the click or key press, so Send calls `navigator.clipboard.write` before its first await with a `ClipboardItem` whose text is a promise that resolves when `pka:created` arrives. A browser without `ClipboardItem` gets `writeText` after the send. A pop-up then opens where panels open beside the hub, titled "Copied to clipboard" with the one line "Connect an agent over MCP for live replies" and OK; OK or Escape closes it, and "Don't show again" hides it for the tab session in `sessionStorage`. When the write fails, the pop-up is titled "Couldn't copy to clipboard" and always shows. While an agent is connected, Send does not copy.
@@ -157,14 +162,15 @@ The store is the only shared state. The plugin writes annotations and the live e
 
 ## Resource budget
 
-Nothing runs that you are not using, and production carries zero bytes.
+Capture uses bounded buffers and event callbacks.
+The UI and Perf observers load on use; production carries zero bytes.
 
 | Piece | Idle (menu closed, not recording) | In use |
 |---|---|---|
-| Launcher | One DOM button in a shadow root; React, AI Elements, and Tailwind not loaded. It asks the plugin once for the connected agent | UI chunk loads on first open by dynamic import. The agent theme chunk loads with the first `pka:agent` message; its working animations run only while an annotation from this tab is acknowledged |
-| Console and errors | Wrappers append to fixed ring buffers (500 entries). Arguments are serialized at capture time with depth and length caps, so the buffer never holds app objects. An error group that is new, recurs, or changes status is sent to the plugin for the live error snapshot, at most once per second; the timer exists only while a group waits. An error whose stack, or whose `console.error` call site, runs through the overlay's lazy chunks (`pka-overlay-*`) and no app file is the overlay's own: it stays in the console buffer but forms no error group, because agents read the groups as the page's errors | Panels subscribe to the in-page buffers and read them directly. A recording copies each new entry through a tap, so the ring cap cannot drop it. Nothing else reaches the plugin until you send an annotation |
-| Network | Request metadata only, same ring-buffer cap. One PerformanceObserver for `resource` entries keeps the timings of up to 500 fetch and XHR requests, so Server-Timing and transfer sizes survive a full resource timing buffer (Chromium holds 250 entries, and a Vite dev page fills it with module scripts). Its callback runs only when a request completes, it never resizes or reads the page's buffer, and stopping the capture disconnects it. Bodies are captured only for allowlisted same-origin paths, 64 KB each, 8 MB total. A JSON response without Content-Length is read from a clone until it ends or passes 64 KB, when the clone is cancelled. Event streams, NDJSON, and other streaming types are never cloned; only open, close, and byte count are recorded. The overlay's own requests (source maps for symbolication, images and fonts snapdom inlines) use the unwrapped fetch and are never recorded | Same |
-| Performance | No observers beyond the Network one. Opening the Perf panel starts PerformanceObserver with `buffered: true`, which still returns LCP, CLS, and earlier long animation frames | `react-scan/lite` runs only while the Perf panel is open |
+| Launcher | One DOM button in a shadow root; the React UI, AI Elements, and Tailwind are not loaded. It asks the plugin once for the connected agent. After this tab sends an annotation, reload loads the thread store and channel schemas to follow status and replies without mounting the UI | UI chunk loads on first open by dynamic import; opening once does not restore it on reload. The agent theme chunk loads with the first `pka:agent` message; its working animations run only while an annotation from this tab is acknowledged |
+| Console and errors | Wrappers append to fixed ring buffers (500 entries). Arguments are serialized at capture time, so the buffer never holds app objects. One call keeps at most 50 arguments and 8,000 characters of `JSON.stringify` output, escapes and overflow notes included; each value keeps at most depth 3, 50 items or keys, and 2,000 characters per string. A cut ends in a note that counts what was left out, and kept strings are copies that hold no reference to a larger page string. An error group that is new, recurs, or changes status is sent to the plugin for the live error snapshot, at most once per second; the timer exists only while a group waits. An error whose stack, or whose `console.error` call site, runs through the overlay's lazy chunks (`pka-overlay-*`) and no app file is the overlay's own: it stays in the console buffer but forms no error group, because agents read the groups as the page's errors | Panels subscribe to the in-page buffers and read them directly. A recording copies each new entry through a tap, so the ring cap cannot drop it. Nothing else reaches the plugin until you send an annotation |
+| Network | Request metadata only, same ring-buffer cap. Request URLs and failed resource URLs lose their credentials and secret query and hash parameters, and only then are cut to 2,000 characters, so a `data:` URL cannot hold megabytes in the ring. One PerformanceObserver for `resource` entries keeps the timings of up to 500 fetch and XHR requests, so Server-Timing and transfer sizes survive a full resource timing buffer (Chromium holds 250 entries, and a Vite dev page fills it with module scripts). Its callback runs only when a request completes, it never resizes or reads the page's buffer, and stopping the capture disconnects it. Bodies are captured only for allowlisted same-origin paths, 64 KB each, 8 MB total. Credential-like keys in any JSON object or array body are redacted regardless of its declared content type. A JSON response without Content-Length is read from a clone until it ends or passes 64 KB, when the clone is cancelled. Event streams, NDJSON, and other streaming types are never cloned; only open, close, and byte count are recorded. The overlay's own requests (source maps for symbolication, images and fonts snapdom inlines) use the unwrapped fetch and are never recorded | Same |
+| Performance | No active observers beyond the Network one. Closing Perf pauses its observers and unsubscribes render tracking; web-vitals listeners remain registered once per page | Opening Perf resumes its buffered observers. bippy tracks only fibers React rendered, without a whole-tree scan or a 5,000-fiber cutoff; component source lookups are cached |
 | Recording | Off | Keyframes only at actions, navigations, and errors (one per error group). GIF/video are opt-in; frame callbacks run only during recording. GIF encoding loads on demand, with at most 120 frames, a 480 px longest edge and 32 MB. WebM is capped at 256 MB and a 1920 px longest edge |
 | Saved marks | At most 50 marks and 256 MB of saved captures; no timers | Each Save freezes attachment data. A current mark holds at most 50 pasted and screenshot image captures |
 | Drawings | No listeners while no drawing is kept | One passive `scroll` listener moves the kept drawings; route changes come from the capture's own navigation notifications. Dictation holds one recognition session only while its button is on |
@@ -175,7 +181,8 @@ Nothing runs that you are not using, and production carries zero bytes.
 | Store | `pka prune` removes resolved and dismissed annotations older than 7 days; new video is refused above a size cap (default 500 MB) | n/a |
 | Production | Absent from a consumer production build: serve-only plugins and the consumer's `import.meta.env.DEV` import guard enforce the boundary. Verify the consumer bundle in its own build check | n/a |
 
-The one standing cost is MCP itself: each agent session keeps one idle Node process alive for its lifetime. Using only the CLI avoids even that.
+Each MCP agent session also keeps one idle Node process alive for its lifetime.
+Using only the CLI avoids that process.
 
 The numeric caps are starting defaults to tune. This repo's `pnpm verify` checks the package; it does not build consumer applications. Consumer checks belong to the owning repositories.
 
@@ -202,13 +209,48 @@ It uses tools and nothing else. Resources and prompts are not used. Roots, sampl
 
 All tools set `openWorldHint: false`. Input schemas are Zod `strictObject`, which the SDK turns into `additionalProperties: false`; a validation failure returns `isError` and the handler never runs. Every tool returns `structuredContent` and the same JSON as text, as the specification recommends: Claude Code and Codex pass only `structuredContent` to the model when both are present, and clients built on older SDKs read only the text. Every tool declares `outputSchema`. Codex skips approval for `readOnlyHint` tools; Claude Code treats a missing `destructiveHint` as false while the specification's default is true, so the write tools set `destructiveHint` and `idempotentHint` explicitly. Errors say what to do next, for example "No annotation `x`; call list_annotations".
 
-**Lifecycle.** `pending → acknowledged → resolved | dismissed`. Acknowledging claims the annotation: later status changes, agent replies, and attachments must come from the same claimant, which is `<client name>:<pid>` for an MCP session and `$PKA_CLAIMANT` (default `pka-cli`) for the CLI, whose shell calls are separate processes. A claim is orphaned when its claimant can no longer finish it. `pka-mcp` records its process in `claim.json`: the pid, the PID namespace (`linux:<boot id>:<the /proc/self/ns/pid link>`, or `<platform>:<hostname>` without `/proc`), and on Linux the process start time from `/proc/<pid>/stat`. A reader in the same namespace judges the claimant gone when that pid has exited or now belongs to a process with another start time, and the claim is then orphaned whatever the open status. This covers a session that acknowledged and then ended: a client reconnect, resume, or restart starts a new `pka-mcp` process with a new claimant. Every Linux host gives its initial namespace the same inode, so the boot id tells hosts apart. A reader in another namespace or on another host cannot judge the pid and uses the age rule alone: a claim older than 60 seconds on an annotation that is still `pending` was left by a claimant that stopped between the claim and the state write. CLI claims record no process, because each shell call is a separate process; they are never judged gone, and another shell continues one by setting the same `$PKA_CLAIMANT`. `wait_for_annotation` offers an annotation with an orphaned claim again, and another claimant may replace the claim. A claimant's exit writes nothing to the store, so a wait already in progress does not wake for it; the next call offers it. A takeover lock per orphaned claim lets one caller at a time remove it, and only after rereading `state.json` and `claim.json` shows the same claim, still orphaned, so one of several concurrent claimants wins and a newer claim is never removed. After winning, the replacing claimant reads `state.json` again; if a stalled claimant that is still running has acknowledged meanwhile, it puts the old claim back with one rename and fails as claimed. The stalled claimant's state write is unconditional, so one window remains: if it lands after that last read of `state.json`, one of the two acknowledge events is overwritten, and `claim.json` names the replacing claimant or, when an ordinary claimant raced the takeover and then backed off, no claimant at all. In the first case the stalled claimant's next write fails as claimed; in the second, any session may write. A write refused because the claimant is gone says so and tells the agent to take the annotation over with `set_status acknowledged`. Resolved and dismissed are final: `reply` and `set_status` on a closed annotation fail and tell the agent to reply before resolving; repeating the same final status is a no-op. Only agents write to the thread; the overlay shows their replies and offers no reply field, because an annotation is a single request. The plugin watches the store root plus each open annotation's directory, so watch count follows open annotations, never capture files.
+**Lifecycle.** `pending → acknowledged → resolved | dismissed`.
+Acknowledging claims the annotation.
+Later status changes, agent replies, and attachments belong to the same claimant: `<client name>:<pid>` for MCP or `$PKA_CLAIMANT` (default `pka-cli`) for CLI calls.
+An unclaimed pending annotation can also be resolved or dismissed directly.
+Resolved and dismissed are final; repeating the same final status is a no-op, and other writes fail with the next step.
+Only agents write to the thread; the overlay shows replies without a reply field.
+
+`claim.json` records an MCP claimant's pid, PID namespace, and Linux process start time.
+The namespace is `linux:<boot id>:<the /proc/self/ns/pid link>`, or `<platform>:<hostname>` without `/proc`.
+In the same namespace, a claim is orphaned when its process exits or its pid has another start time, whatever the open status.
+A client reconnect starts another MCP process and claimant.
+When the process cannot be judged, a claim older than 60 seconds is orphaned only while its annotation remains pending.
+CLI claims have no process identity because shell calls are separate processes; another shell continues the claim with the same `$PKA_CLAIMANT`.
+`wait_for_annotation` offers orphaned claims, and `set_status acknowledged` can replace one.
+A claimant's exit changes no file, so an existing wait does not wake for it; the next call offers the annotation.
+
+`state.lock` serializes status, reply, and attachment mutations across processes.
+Each operation rereads state and claim while holding the lock.
+The lock owner records its pid, namespace, start time, and a unique token before an exclusive hard link publishes it.
+Recovery removes a lock only after proving that its process has exited; another lock serializes competing recoveries of the same token.
+Active waiters use `fs.watch` and one 10-second deadline timer, without polling.
+A live or foreign-namespace owner is never removed because of lock age; timeout reports the lock file and recovery instructions.
+If a holder exits without changing a file during a wait, the waiter checks process exit at the deadline; a later call can recover immediately.
+Older MCP processes must restart to participate in this serialization.
+Old `claim.json.*.takeover` files are ignored, not deleted.
+
+The plugin watches the store root and each open annotation directory, never capture files.
+Status and thread synchronization reads only their strictly validated files.
+The tab's retained sent ids synchronize in sequential batches of at most 200 without discarding other batches.
 
 **Presence.** The SDK reports the client's name only after `initialize`, so `pka-mcp` reads it from the first message that carries it: `initialize`'s `clientInfo`, or the `io.modelcontextprotocol/clientInfo` entry of a 2026-07-28 request envelope. That name forms the claimant. Once the name and the store are both known, `pka-mcp` writes `live/agents/<name>-<pid>.json` (`name`, `version`, `pid`, `connectedAt`; strict schema; temporary file and rename), and a process `exit` handler removes it on stdin EOF and on SIGINT, SIGTERM, and SIGHUP, which exit with 128 plus the signal number. A killed session leaves its file; the plugin removes any file whose pid is gone when it next reads the directory. The plugin reads the directory on each change and on each page's `pka:presence`, and pushes `pka:agent` with the most recently connected live session, or null. A page receives an answer to `pka:presence` only while an agent is connected; every change is broadcast. A file that fails the schema is reported in the dev server log and left in place.
 
 **Waiting.** `wait_for_annotation` defaults to 50 seconds so it finishes inside Pi's 60-second request timeout. It sends a progress notification every 15 seconds when the client supplied a progress token. Progress resets Pi's timeout and Claude Code's 30-minute idle timeout for stdio servers. Codex 0.160 ignores progress and stops a call after `tool_timeout_sec`, 300 seconds by default (`codex-rs/rmcp-client` at `rust-v0.160.0`), so a longer wait there needs `tool_timeout_sec` in `[mcp_servers.pka]` above the longest `timeoutSec` agents request; the Codex examples in README and REFERENCE set it. The tool description tells agents that a long wait needs a client timeout above the requested duration. The watcher closes on result, on `ctx.mcpReq.signal` abort, or when the connection closes. In Claude Code, `pka watch --once --json` run under the Monitor tool re-invokes the agent the moment you press Send, with no process left afterwards.
 
-**Responses.** `detail: "concise"` is the default and stays well under Claude Code's 10k-token warning. Frames, video, and traces are returned as paths, never inline.
+**Responses.** `detail: "concise"` is the default and stays well under Claude Code's 10k-token warning.
+A concise annotation view is at most 20,000 UTF-8 bytes of JSON, excluding the operation and MCP envelopes.
+Its prompt takes at most 10,000 of those bytes, and the leading elements and attachments that still fit are kept, so `[element n]` and `[attachment n]` keep their numbers.
+`omitted` then counts the elements, attachments, and prompt characters left out and tells the agent to request `detail: "full"`.
+The claimant, URL, and route are capped, but the directory path is not; when these fixed fields alone pass the budget, the call fails with an error that asks for `detail: "full"`.
+A concise `list_annotations` page ends before the item that would pass 20,000 bytes, keeps at least one item, and returns a `nextCursor` after the last item it kept.
+`detail: "full"` has no budget.
+Frames, video, and traces are returned as paths, never inline.
 
 **Project root.** `--root` or `PKA_ROOT`, then `CLAUDE_PROJECT_DIR`, then walk up from cwd to `_interim/annotations`. A fresh checkout has no store until its dev server first runs, so the server starts without one and answers `tools/list`. Until a store is found, each tool call looks again and fails with the paths it checked and the next step: start the app's Vite dev server once, or pass `--root`. The first lookup that finds the store prints it to stderr and writes the presence file, and later calls reuse it, so no restart is needed.
 
@@ -250,6 +292,7 @@ marquee end(rect)
   hits = drop any hit that contains another hit
   hits = replace with the component root when every child of that root is hit
   selection = Shift ? selection ∪ hits : hits
+  over 100   → refuse before describing, locating, or badging any element; keep the selection and show the count
 lasso end(points)
   select candidates whose centers are inside the polygon, then apply the same ancestor pruning
   bound the stroke to 512 points; picking opens the editor without ending multi-selection
@@ -310,22 +353,44 @@ capture/attachments/<n>/capture/
 
 Each recording attachment points to its own summary; the manifest, timeline, network, and errors files are siblings. `capture/summary.md` links all attachments. The plugin stamps every recording manifest. The lab replays the first recording attachment.
 
+`timeline.jsonl` lists entries in `seq` order.
+A request that began before the recording reaches the recording's tap only when it settles, after later entries, so the timeline sorts it back into place.
+The recording keeps the bodies that request carried when it settled, even if the capture later drops them to stay within its body cap.
+Requests carry `performanceMs`, their start on the `performance.now()` clock, and actions carry the event's `timeStamp` as `performanceMs`.
+A merged run of typing in one field also carries `durationMs`, from its first to its latest keystroke.
+Recordings made before these fields existed lack them and remain valid; readers use the wall-clock `at` for those entries.
+
 Redaction happens in the page: keyframe inputs are masked, auth and cookie headers dropped, bodies kept only for allowlisted same-origin API paths, and storage never read. Video and GIF pixels are not redacted; the capture controls say so.
 
 **Overlay exclusion.** The video is restricted to body, and the `<pk-annotator>` host is a child of `<html>` from mount on, so the video never contains the overlay. This placement is safe when a consumer hydrates the whole document. React 19 starts hydrating a document at body's first child and resolves html, head, and body by reference, so it never visits another child of `<html>` (react-dom 19.3.0, `beginWork` for the root and for host singletons). It also skips, without an error, an unexpected element that is a direct child of head or body. In the fixture on 2026-10-03, neither placement produced a hydration error in at least 60 loads each. Those loads covered fresh contexts, 4x and 6x CPU throttling, a cold Vite dependency cache, navigation between `/` and `/lab`, reloads with the overlay open, and clicks before hydration ended. An injected mismatch was reported every time.
 
 **Content Security Policy.** Keyframes and selection crops come from snapdom, which renders the page as an SVG `<foreignObject>` image and draws it into a canvas. Chromium lets such a canvas be exported only when the image loads from a `data:` URL. Loaded from a `blob:` URL, the image taints the canvas and `toBlob` throws; `createImageBitmap` cannot decode it, and `OffscreenCanvas` is tainted the same way (probed in Playwright 1.63 Chromium on 2026-10-03). A page CSP must therefore allow `img-src data:`, and `blob:` for images pasted into the composer. Without `data:`, sending fails with an error that names the CSP. The fixture's dev server sends `img-src 'self' blob: data:` so that this minimum stays tested.
+snapdom loads by dynamic import when a screenshot, drawing, keyframe, or Send capture first runs, so opening the menu does not download it.
 
 ## Performance
 
 | Live in the overlay (dev build, labeled as such) | Lab run (`pka lab`, production build) |
 |---|---|
-| web-vitals 6.2.2 attribution with soft navigations: LCP subparts, INP breakdown with element, CLS culprit | The recorded flow replayed N times at 4x CPU and Slow 4G |
+| web-vitals 6.2.2 attribution with soft navigations: LCP subparts, INP breakdown with element, CLS culprit | The recorded flow replayed N times untraced at 4x CPU and Slow 4G, then once traced for diagnosis |
 | Long animation frames, top N by blocking time, grouped by script and function, layout thrashing flagged | Chrome DevTools trace insights (LCPBreakdown, INPBreakdown, ForcedReflow, RenderBlocking) |
 | Slow requests with the `Server-Timing` breakdown, joined to the interaction that caused them | `react-dom/profiling` render tracks |
-| `react-scan/lite` render hot spots with file:line and changed props | Verdict JSON: value, budget, pass/fail, culprit, conditions, noise band, trace path |
+| bippy render hot spots with file:line and changed props | Verdict JSON: value, budget, pass/fail, culprit, conditions, noise band, trace path |
 
 The overlay names suspects; pass/fail claims come only from lab verdicts on production builds.
+A vitals target carries its own source location, so a source-less target cannot inherit another element's location through a shared selector.
+Requests and long animation frames join to actions on the monotonic clock and across a merged typing interval.
+Older action or request entries without monotonic timing use their wall-clock `at` value.
+
+`pka lab` replays the flow N times without tracing, each run in a fresh browser context, and the verdict's metrics come only from these runs.
+Tracing slows the page near a budget, so after at least one of them completes, one more run replays the flow under a DevTools trace and writes `trace.json.gz`.
+That diagnostic run supplies the insights and the hot function, and its metrics never enter the verdict.
+When it fails, `unavailable` gains a `trace` entry with the reason, and no metric or status changes.
+The hot function joins the INP culprit only when the trace's longest interaction is the interaction the traced run reported as INP, and its element and page path match the measurement culprit.
+Otherwise `unavailable` names `hotFunction` and the reason.
+The verdict's conditions record `measurementTracing: false` and `diagnosticRuns`, which is 1 when the diagnostic run was attempted and 0 when no measurement run completed.
+The CLI's stderr progress labels that run `diagnostic trace`.
+With `--attach`, the CLI checks before the runs that the annotation exists, is open, and is unclaimed or claimed by the CLI's claimant.
+If attaching still fails afterwards, the error names the `verdict.json` path that was already written.
 
 ## AI Elements inside the shadow root
 
