@@ -286,6 +286,50 @@ describe("network capture", () => {
     }
   });
 
+  it("keeps later wrappers on stop and records a kept fetch reference only in the running capture", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const native = vi.fn(async () => new Response("ok"));
+    vi.stubGlobal("fetch", native);
+    // Lets restoreAllMocks put back the prototype's own send after this test replaces it.
+    vi.spyOn(XMLHttpRequest.prototype, "send");
+    const first = start();
+    const held = globalThis.fetch;
+    const downstream = (...args: Parameters<typeof fetch>) => held(...args);
+    globalThis.fetch = downstream;
+    const log = console.log;
+    const laterLog = (...args: unknown[]) => log(...args);
+    console.log = laterLog;
+    const send = XMLHttpRequest.prototype.send;
+    const laterSend = function (
+      this: XMLHttpRequest,
+      body?: Document | XMLHttpRequestBodyInit | null,
+    ) {
+      send.call(this, body);
+    };
+    XMLHttpRequest.prototype.send = laterSend;
+    first.stop();
+    expect(globalThis.fetch).toBe(downstream);
+    expect(console.log).toBe(laterLog);
+    expect(XMLHttpRequest.prototype.send).toBe(laterSend);
+
+    await held("/api/stopped");
+    console.log("stopped");
+    expect(first.snapshot().requests).toHaveLength(0);
+    expect(first.snapshot().console).toHaveLength(0);
+
+    const second = createCapture({ send: () => {}, bodies: [] });
+    capture = second;
+    await held("/api/items");
+    await fetch("/api/global");
+    await second.fetch("/api/untracked");
+    expect(native).toHaveBeenCalledTimes(4);
+    expect(first.snapshot().requests).toHaveLength(0);
+    expect(second.snapshot().requests.map((request) => new URL(request.url).pathname)).toEqual([
+      "/api/items",
+      "/api/global",
+    ]);
+  });
+
   it("reads a JSON body of unknown length up to the cap, and never clones NDJSON", async () => {
     const chunked = (parts: string[], type: string) =>
       new Response(

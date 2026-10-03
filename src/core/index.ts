@@ -423,9 +423,10 @@ export function createCapture(options: CaptureOptions): Capture {
   }
 
   let insideConsole = false;
+  const consoleWrappers = { ...originalConsole };
   for (const level of LEVELS) {
     const original = originalConsole[level];
-    console[level] = function (...args: unknown[]) {
+    consoleWrappers[level] = function (...args: unknown[]) {
       original.apply(console, args);
       if (insideConsole || stopped) return;
       insideConsole = true;
@@ -437,9 +438,13 @@ export function createCapture(options: CaptureOptions): Capture {
         insideConsole = false;
       }
     };
+    console[level] = consoleWrappers[level];
   }
+  // A wrapper that another library has wrapped since stays in place and records nothing.
   cleanups.push(() => {
-    for (const level of LEVELS) console[level] = originalConsole[level];
+    for (const level of LEVELS) {
+      if (console[level] === consoleWrappers[level]) console[level] = originalConsole[level];
+    }
   });
 
   // Errors
@@ -593,19 +598,21 @@ export function createCapture(options: CaptureOptions): Capture {
     cleanups.push(() => navigation.removeEventListener("navigate", onNavigate));
   } else {
     const { pushState, replaceState } = history;
-    history.pushState = function (...args: Parameters<History["pushState"]>) {
+    const pushWrapper = function (...args: Parameters<History["pushState"]>) {
       pushState.apply(history, args);
       if (!stopped) recordNavigation("push", location.href);
     };
-    history.replaceState = function (...args: Parameters<History["replaceState"]>) {
+    const replaceWrapper = function (...args: Parameters<History["replaceState"]>) {
       replaceState.apply(history, args);
       if (!stopped) recordNavigation("replace", location.href);
     };
+    history.pushState = pushWrapper;
+    history.replaceState = replaceWrapper;
     const onPop = (): void => recordNavigation("traverse", location.href);
     addEventListener("popstate", onPop);
     cleanups.push(() => {
-      history.pushState = pushState;
-      history.replaceState = replaceState;
+      if (history.pushState === pushWrapper) history.pushState = pushState;
+      if (history.replaceState === replaceWrapper) history.replaceState = replaceState;
       removeEventListener("popstate", onPop);
     });
   }

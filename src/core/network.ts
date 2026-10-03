@@ -47,6 +47,34 @@ interface Tracked {
   timingUntil: number | undefined;
 }
 
+type FetchRecorder = (
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+  underlying: typeof fetch,
+) => Promise<Response>;
+
+// One capture records at a time. A fetch wrapper outlives its capture when the page keeps a
+// reference to it or another library wraps it, so every wrapper sends its calls to the
+// recording capture, or straight to the fetch it wrapped when none records.
+let recordFetch: FetchRecorder | undefined;
+// Set while a wrapper calls the fetch it wrapped, so an older wrapper further down that
+// chain passes the same request through instead of recording it again.
+let forwarding = false;
+
+function forward(
+  underlying: typeof fetch,
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+): Promise<Response> {
+  const outer = forwarding;
+  forwarding = true;
+  try {
+    return underlying(input, init);
+  } finally {
+    forwarding = outer;
+  }
+}
+
 type AnyBody = BodyInit | Document | null | undefined;
 type XhrBody = Document | XMLHttpRequestBodyInit | null | undefined;
 type HeaderRecord = RequestEntry["requestHeaders"];
@@ -346,7 +374,9 @@ export function installNetwork(hooks: NetworkHooks): Network {
   }
 
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = function fetch(input: RequestInfo | URL, init?: RequestInit) {
+  let stopped = false;
+
+  const recorder: FetchRecorder = (input, init, underlying) => {
     let item: Tracked;
     let nextInit = init;
     try {
@@ -358,23 +388,38 @@ export function installNetwork(hooks: NetworkHooks): Network {
       recordRequestBody(item, init?.body, headers.get("content-type"));
     } catch (cause) {
       hooks.fail("fetch capture", cause);
-      return originalFetch(input, init);
+      return forward(underlying, input, init);
     }
-    return originalFetch(input, nextInit).then(
-      (response) => {
+    let response: Promise<Response>;
+    try {
+      response = forward(underlying, input, nextInit);
+    } catch (cause) {
+      settleFailure(item, cause);
+      throw cause;
+    }
+    return response.then(
+      (value) => {
         try {
-          onFetchResponse(item, response);
+          onFetchResponse(item, value);
         } catch (cause) {
           hooks.fail("fetch response capture", cause);
         }
-        return response;
+        return value;
       },
-      (cause) => {
+      (cause: unknown) => {
         settleFailure(item, cause);
         throw cause;
       },
     );
   };
+  // Calls through this wrapper go to the fetch it replaced, never to a later global, so a
+  // library that wrapped it and is called from it cannot loop.
+  const fetchWrapper = function fetch(input: RequestInfo | URL, init?: RequestInit) {
+    const record = forwarding ? undefined : recordFetch;
+    return record === undefined ? originalFetch(input, init) : record(input, init, originalFetch);
+  };
+  recordFetch = recorder;
+  globalThis.fetch = fetchWrapper;
 
   const proto = XMLHttpRequest.prototype;
   const originalOpen = proto.open;
@@ -384,7 +429,7 @@ export function installNetwork(hooks: NetworkHooks): Network {
 
   const inFlight = new WeakMap<XMLHttpRequest, () => void>();
 
-  proto.open = function open(
+  const open = function open(
     this: XMLHttpRequest,
     method: string,
     url: string | URL,
@@ -392,19 +437,22 @@ export function installNetwork(hooks: NetworkHooks): Network {
     username?: string | null,
     password?: string | null,
   ) {
-    // Reopening an in-flight request aborts it without an abort event.
-    inFlight.get(this)?.();
-    opened.set(this, { method, url: String(url), headers: new Headers() });
+    if (!stopped) {
+      // Reopening an in-flight request aborts it without an abort event.
+      inFlight.get(this)?.();
+      opened.set(this, { method, url: String(url), headers: new Headers() });
+    }
     // Omitted arguments take the defaults the two-argument form uses.
     originalOpen.call(this, method, url, async ?? true, username ?? null, password ?? null);
   };
 
-  proto.setRequestHeader = function setRequestHeader(
+  const setRequestHeader = function setRequestHeader(
     this: XMLHttpRequest,
     name: string,
     value: string,
   ) {
     originalSetRequestHeader.call(this, name, value);
+    if (stopped) return;
     try {
       opened.get(this)?.headers.append(name, value);
     } catch (cause) {
@@ -412,8 +460,8 @@ export function installNetwork(hooks: NetworkHooks): Network {
     }
   };
 
-  proto.send = function send(this: XMLHttpRequest, body?: XhrBody) {
-    const request = opened.get(this);
+  const send = function send(this: XMLHttpRequest, body?: XhrBody) {
+    const request = stopped ? undefined : opened.get(this);
     if (request !== undefined) {
       try {
         trackXhr(this, request, body);
@@ -423,6 +471,10 @@ export function installNetwork(hooks: NetworkHooks): Network {
     }
     originalSend.call(this, body);
   };
+
+  proto.open = open;
+  proto.setRequestHeader = setRequestHeader;
+  proto.send = send;
 
   function trackXhr(
     xhr: XMLHttpRequest,
@@ -505,14 +557,19 @@ export function installNetwork(hooks: NetworkHooks): Network {
   return {
     list: () => tracked.map((item) => ({ ...item.entry })),
     resolveTimings,
-    // Called as a method of another object, the native fetch throws "Illegal invocation".
-    untracked: (input, init) => originalFetch(input, init),
+    untracked: (input, init) => forward(originalFetch, input, init),
+    // A wrapper that another library has wrapped since stays in place, passing calls
+    // through: putting the original back would drop that library's wrapper.
     restore() {
+      stopped = true;
       timingObserver.disconnect();
-      globalThis.fetch = originalFetch;
-      proto.open = originalOpen;
-      proto.send = originalSend;
-      proto.setRequestHeader = originalSetRequestHeader;
+      if (recordFetch === recorder) recordFetch = undefined;
+      if (globalThis.fetch === fetchWrapper) globalThis.fetch = originalFetch;
+      if (proto.open === open) proto.open = originalOpen;
+      if (proto.send === send) proto.send = originalSend;
+      if (proto.setRequestHeader === setRequestHeader) {
+        proto.setRequestHeader = originalSetRequestHeader;
+      }
     },
   };
 }
