@@ -80,7 +80,7 @@ function StatusCell({ request }: { request: RequestEntry }) {
   return (
     <span
       className={cn(
-        "text-right tabular-nums",
+        "truncate text-right tabular-nums",
         isFailed(request) && "text-destructive",
         (request.state === "pending" || request.state === "open" || request.state === "aborted") &&
           "text-muted-foreground",
@@ -91,8 +91,7 @@ function StatusCell({ request }: { request: RequestEntry }) {
   );
 }
 
-const ROW =
-  "grid grid-cols-[1rem_2.75rem_minmax(0,1fr)_2.25rem_3.25rem_3.5rem] items-center gap-x-1.5";
+const ROW = "grid grid-cols-[1rem_3.5rem_minmax(0,1fr)_3.5rem] items-center gap-x-2";
 
 type ListState = { failedOnly: boolean; selected: ReadonlySet<number>; focus: number | null };
 
@@ -172,15 +171,13 @@ function RequestList({
           aria-hidden="true"
           className={cn(
             ROW,
-            "h-6 border-t px-2 text-[10px] font-medium tracking-wide text-muted-foreground uppercase",
+            "h-6 border-t px-2 text-[10px] font-medium tracking-wide whitespace-nowrap text-muted-foreground uppercase",
           )}
         >
           <span />
-          <span>Method</span>
-          <span>Path</span>
-          <span className="text-right">Status</span>
-          <span className="text-right">Time</span>
-          <span className="text-right">Size</span>
+          <span className="truncate">Method</span>
+          <span className="truncate">Path</span>
+          <span className="truncate text-right">Status</span>
         </div>
       </div>
       {shown.length === 0 ? (
@@ -207,19 +204,13 @@ function RequestList({
                 data-seq={request.seq}
                 aria-label={`${request.method} ${shortUrl(request.url)} ${statusText(request)}`}
                 onClick={() => open(request.seq)}
-                className="col-span-5 grid grid-cols-subgrid items-center rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="col-span-3 grid grid-cols-subgrid items-center rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <span className="truncate text-muted-foreground">{request.method}</span>
                 <span className="truncate" title={request.url}>
                   {shortUrl(request.url)}
                 </span>
                 <StatusCell request={request} />
-                <span className="text-right text-muted-foreground tabular-nums">
-                  {request.state === "open" ? "open" : formatMs(request.durationMs)}
-                </span>
-                <span className="text-right text-muted-foreground tabular-nums">
-                  {formatBytes(request.responseSize)}
-                </span>
               </button>
             </li>
           ))}
