@@ -32,16 +32,20 @@ The plugin runs only under `vite dev` and adds nothing under Vitest, which also 
 
 ## Client mount
 
-Mount from the client entry in development only, before React hydrates, and pass the returned root options to React:
+Mount from the client entry in development only, before React hydrates, and pass the returned root options to React. Catch a failed import so the page still hydrates: a dev server can reload the page while the package is being reinstalled or rebuilt.
 
 ```tsx
 let rootOptions = {};
 if (import.meta.env.DEV) {
-  const { mount } = await import("@srv/pk-annotator/overlay");
-  const annotator = mount({ hot: import.meta.hot!, theme: "system" });
-  rootOptions = annotator.reactRootOptions;
-  // When the app's own theme setting loads or changes:
-  // annotator.setTheme("dark");
+  try {
+    const { mount } = await import("@srv/pk-annotator/overlay");
+    const annotator = mount({ hot: import.meta.hot!, theme: "system" });
+    rootOptions = annotator.reactRootOptions;
+    // When the app's own theme setting loads or changes:
+    // annotator.setTheme("dark");
+  } catch (cause) {
+    console.error("pk-annotator did not load; the page runs without it", cause);
+  }
 }
 hydrateRoot(document, <App />, rootOptions);
 ```

@@ -39,7 +39,7 @@ pk-annotator/
 │   ├── app/           # TanStack SSR fixture: picker examples, /lab, API routes
 │   └── smoke.ts       # browser → annotation store → CLI integration check
 ├── tools/oxlint/      # vendored anti-slop rules
-├── tsdown.config.ts   # entry points, shadow CSS compilation, fetch/observer injection
+├── tsdown.config.ts   # entry points, shadow CSS compilation, fetch/observer injection, staged dist/ swap
 ├── components.json    # shadcn config
 └── package.json       # exports ./vite and ./overlay; bins pka, pka-mcp
 ```
@@ -73,7 +73,7 @@ function mount(options: MountOptions): Mounted;
 
 The theme sets `data-theme` on the host element and `.dark` on `.pka-root`. A consumer whose theme setting loads after mount calls `setTheme` when it loads and whenever it changes. The launcher keeps the setting, so a call made before the UI chunk loads still applies when the UI opens.
 
-The consumer passes `import.meta.hot` because a pre-bundled dependency has no HMR context of its own; the app's client entry does. Consumer-specific proxy setup is recorded in [INTEGRATION-HISTORY.md](INTEGRATION-HISTORY.md#lean-changes).
+The consumer passes `import.meta.hot` because a pre-bundled dependency has no HMR context of its own; the app's client entry does. The client entry catches a failed overlay import or `mount()`, reports it with `console.error`, and hydrates without the overlay, because a dev server can reload the page while the package is reinstalled or rebuilt. The build never exposes a partial `dist/`: every tsdown config writes to `node_modules/.cache/pk-annotator-dist/`, and when all have finished each file is renamed into `dist/`, chunks before entries, after which files the build did not produce are removed. Consumer-specific proxy setup is recorded in [INTEGRATION-HISTORY.md](INTEGRATION-HISTORY.md#lean-changes).
 
 ## Overlay component tree
 
