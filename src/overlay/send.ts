@@ -226,7 +226,7 @@ export async function sendAnnotation(
   elements: readonly Element[],
   composerAttachments: readonly ComposerAttachment[],
   onPhase: (phase: SendPhase) => void,
-): Promise<{ id: string; createdAt: string }> {
+): Promise<{ id: string; dir: string; createdAt: string }> {
   if (elements.length > MAX_ELEMENTS) {
     throw new Error(`Select at most ${MAX_ELEMENTS} elements; ${elements.length} are selected`);
   }
@@ -271,7 +271,7 @@ export async function sendAnnotation(
     files: files.map((file) => ({ path: file.path, bytes: file.data.size })),
   });
 
-  let reply: { id: string } | { failure: string } | undefined;
+  let reply: { id: string; dir: string } | { failure: string } | undefined;
   let settle = () => {};
   const replied = new Promise<void>((resolve) => {
     settle = resolve;
@@ -279,7 +279,7 @@ export async function sendAnnotation(
   const stops = [
     listen(hot, CHANNEL.created, CreatedMessage, (message) => {
       if (message.requestId !== requestId) return;
-      reply = { id: message.id };
+      reply = { id: message.id, dir: message.dir };
       settle();
     }),
     listen(hot, CHANNEL.createFailed, CreateFailedMessage, (message) => {
@@ -325,5 +325,5 @@ export async function sendAnnotation(
     throw new Error("No reply from the dev server within 30 s. Is annotator() in the Vite config?");
   }
   if ("failure" in reply) throw new Error(reply.failure);
-  return { id: reply.id, createdAt: new Date().toISOString() };
+  return { id: reply.id, dir: reply.dir, createdAt: new Date().toISOString() };
 }
