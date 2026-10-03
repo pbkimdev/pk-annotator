@@ -215,7 +215,9 @@ function hotFunction(parsed: Trace.TraceModel.ParsedTrace, sets: InsightSet[]) {
   let top: HotFunction | undefined;
   for (const total of totals.values())
     if (top === undefined || total.selfMs > top.selfMs) top = total;
-  return top === undefined ? undefined : { ...top, selfMs: Math.round(top.selfMs) };
+  // Under half a millisecond of self time names no culprit, only the last frame sampled.
+  if (top === undefined || Math.round(top.selfMs) === 0) return undefined;
+  return { ...top, selfMs: Math.round(top.selfMs) };
 }
 
 /** Parses one trace with the DevTools trace engine and reduces its insights to short summaries. */
