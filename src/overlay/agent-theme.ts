@@ -45,10 +45,10 @@ const AGENT_CSS = `
   --pka-pick: #bf502b !important;
   --pka-pick-foreground: #ffffff !important;
   --pka-hub-mark: #d97757;
-  --pka-status-pending: #d97757;
-  --pka-status-acknowledged: #6a9bcc;
+  --pka-status-pending: #bf502b;
+  --pka-status-acknowledged: #3e7ab6;
   --pka-status-resolved: #788c5d;
-  --pka-status-dismissed: #b0aea5;
+  --pka-status-dismissed: #87867f;
   --pka-shadow: 20 20 19;
   --font-sans: "pka Poppins", Arial, system-ui, sans-serif !important;
   --font-heading: "pka Poppins", Arial, system-ui, sans-serif !important;
@@ -74,6 +74,9 @@ const AGENT_CSS = `
   --ring: #6a9bcc !important;
   --pka-pick: #d97757 !important;
   --pka-pick-foreground: #141413 !important;
+  --pka-status-pending: #d97757;
+  --pka-status-acknowledged: #6a9bcc;
+  --pka-status-dismissed: #b0aea5;
   --pka-shadow: 0 0 0;
 }
 :host([data-agent="codex"]) {
@@ -98,10 +101,10 @@ const AGENT_CSS = `
   --pka-pick: #3566f0 !important;
   --pka-pick-foreground: #ffffff !important;
   --pka-hub-mark: var(--pka-hub-ink);
-  --pka-status-pending: #8f8f8f;
+  --pka-status-pending: #5d5d5d;
   --pka-status-acknowledged: #3566f0;
   --pka-status-resolved: #0d0d0d;
-  --pka-status-dismissed: #cdcdcd;
+  --pka-status-dismissed: #8f8f8f;
   --pka-shadow: 0 0 0;
   /* OpenAI Sans is proprietary; this is the system stack chatgpt.com falls back to. */
   --font-sans: ui-sans-serif, -apple-system, system-ui, "Segoe UI", Inter, Helvetica, Arial, sans-serif !important;
@@ -127,8 +130,10 @@ const AGENT_CSS = `
   --ring: #6e9bff !important;
   --pka-pick: #6e9bff !important;
   --pka-pick-foreground: #0d0d0d !important;
+  --pka-status-pending: #afafaf;
+  --pka-status-acknowledged: #6e9bff;
   --pka-status-resolved: #ffffff;
-  --pka-status-dismissed: #5d5d5d;
+  --pka-status-dismissed: #8f8f8f;
 }
 
 /* Type and icons. Claude: Poppins for labels and titles, Lora for prompts and replies, and
