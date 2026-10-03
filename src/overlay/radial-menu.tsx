@@ -1,19 +1,14 @@
 import {
-  ApertureIcon,
   BugIcon,
   CameraIcon,
   CircleDotIcon,
   CircleIcon,
-  CropIcon,
-  FocusIcon,
   HistoryIcon,
   LanguagesIcon,
   LassoSelectIcon,
   LayersIcon,
-  LineSquiggleIcon,
-  MousePointer2Icon,
   MousePointerClickIcon,
-  PenToolIcon,
+  PencilIcon,
   PowerIcon,
   RectangleHorizontalIcon,
   Settings2Icon,
@@ -60,6 +55,11 @@ const BRANCH_STEP = ((ITEM + 8) / BRANCH) * (180 / Math.PI);
 const STEM_MS = 100;
 const SWEEP_MS = 300;
 const HOVER_INTENT_MS = 140;
+const TOOL_GROUPS = ["pick", "capture", "annotate"] as const;
+const TOOL_KEY = "pka:tool:";
+type ToolGroup = (typeof TOOL_GROUPS)[number];
+/** Each tool group's remembered tool id, kept for this tab session. */
+type Tools = Readonly<Partial<Record<string, string>>>;
 
 type Icon = ComponentType<{ className?: string; strokeWidth?: number }>;
 type Leaf = {
@@ -74,7 +74,15 @@ type Leaf = {
   stay?: boolean;
   run(): void;
 };
-type Group = { id: string; label: string; icon: Icon; active: boolean; children: Leaf[] };
+type Group = {
+  id: string;
+  label: string;
+  icon: Icon;
+  active: boolean;
+  children: Leaf[];
+  /** A tool group shows, and on click runs, its remembered tool instead of opening. */
+  tool?: Leaf;
+};
 type Entry = Leaf | Group;
 type Hint = { id: string; label: string; shortcut?: string };
 
@@ -114,7 +122,16 @@ function branchAngles(start: number, parent: number, count: number): number[] {
   return Array.from({ length: count }, (_, index) => first + index * step);
 }
 
-function useEntries(): Entry[] {
+function readTools(): Tools {
+  return Object.fromEntries(
+    TOOL_GROUPS.flatMap((group) => {
+      const id = sessionStorage.getItem(TOOL_KEY + group);
+      return id === null ? [] : [[group, id]];
+    }),
+  );
+}
+
+function useEntries(tools: Tools): Entry[] {
   const t = useText();
   const { ui, thread, exit } = useOverlay();
   const picking = useStore(ui, (state) => state.picking);
@@ -134,49 +151,50 @@ function useEntries(): Entry[] {
   const togglePanel = (id: string) => ui.set({ panel: panel === id ? null : id });
   const toggleGesture = (mode: NonNullable<UiState["gesture"]>) =>
     ui.set({ gesture: gesture === mode ? null : mode, picking: null, panel: null });
+  // A stored id from another version names no tool; the group's first tool is its default.
+  const toolGroup = (id: ToolGroup, label: string, active: boolean, children: Leaf[]): Group => {
+    const tool = children.find((child) => child.id === tools[id]) ?? children[0];
+    if (tool === undefined) throw new Error(`Tool group ${id} has no tools`);
+    return { id, label, icon: tool.icon, active, children, tool };
+  };
 
   return [
-    {
-      id: "pick",
-      label: t("Pick elements"),
-      icon: MousePointer2Icon,
-      active: picking !== null,
-      children: [
+    toolGroup("pick", t("Pick elements"), picking !== null, [
+      {
+        id: "select",
+        label: t("Select"),
+        icon: MousePointerClickIcon,
+        checked: picking === "pick",
+        shortcut: SHORTCUT_LABEL,
+        run: () => togglePick("pick"),
+      },
+      {
+        id: "box",
+        label: t("Box"),
+        icon: SquareDashedMousePointerIcon,
+        checked: picking === "box",
+        run: () => togglePick("box"),
+      },
+      {
+        id: "lasso",
+        label: t("Lasso"),
+        icon: LassoSelectIcon,
+        checked: picking === "lasso",
+        run: () => togglePick("lasso"),
+      },
+    ]),
+    toolGroup(
+      "capture",
+      t("Capture"),
+      recording || panel === "record" || gesture === "screenshot" || gesture === "record-area",
+      [
         {
-          id: "single",
-          label: t("Single"),
-          icon: MousePointerClickIcon,
-          checked: picking === "pick",
-          shortcut: SHORTCUT_LABEL,
-          run: () => togglePick("pick"),
+          id: "screenshot",
+          label: t("Screenshot"),
+          icon: CameraIcon,
+          checked: gesture === "screenshot",
+          run: () => toggleGesture("screenshot"),
         },
-        {
-          id: "box",
-          label: t("Box"),
-          icon: SquareDashedMousePointerIcon,
-          checked: picking === "box",
-          run: () => togglePick("box"),
-        },
-        {
-          id: "lasso",
-          label: t("Lasso"),
-          icon: LassoSelectIcon,
-          checked: picking === "lasso",
-          run: () => togglePick("lasso"),
-        },
-      ],
-    },
-    {
-      id: "capture",
-      label: t("Capture"),
-      icon: ApertureIcon,
-      active:
-        recording ||
-        panel === "record" ||
-        panel === "snapshot" ||
-        gesture === "screenshot" ||
-        gesture === "record-area",
-      children: [
         {
           id: "record",
           label: t("Record"),
@@ -184,34 +202,20 @@ function useEntries(): Entry[] {
           checked: panel === "record",
           run: () => togglePanel("record"),
         },
-        {
-          id: "screenshot",
-          label: t("Screenshot"),
-          icon: CameraIcon,
-          run: () => ui.set({ panel: "snapshot", picking: null }),
-        },
-        {
-          id: "crop",
-          label: t("Crop screenshot"),
-          icon: CropIcon,
-          checked: gesture === "screenshot",
-          run: () => toggleGesture("screenshot"),
-        },
-        {
-          id: "area",
-          label: t("Recording area"),
-          icon: FocusIcon,
-          checked: gesture === "record-area",
-          run: () => toggleGesture("record-area"),
-        },
       ],
-    },
-    {
-      id: "annotate",
-      label: t("Annotate"),
-      icon: PenToolIcon,
-      active: gesture === "rectangle" || gesture === "ellipse" || gesture === "freehand",
-      children: [
+    ),
+    toolGroup(
+      "annotate",
+      t("Annotate"),
+      gesture === "rectangle" || gesture === "ellipse" || gesture === "freehand",
+      [
+        {
+          id: "freehand",
+          label: t("Freehand"),
+          icon: PencilIcon,
+          checked: gesture === "freehand",
+          run: () => toggleGesture("freehand"),
+        },
         {
           id: "rectangle",
           label: t("Rectangle"),
@@ -226,15 +230,8 @@ function useEntries(): Entry[] {
           checked: gesture === "ellipse",
           run: () => toggleGesture("ellipse"),
         },
-        {
-          id: "freehand",
-          label: t("Freehand"),
-          icon: LineSquiggleIcon,
-          checked: gesture === "freehand",
-          run: () => toggleGesture("freehand"),
-        },
       ],
-    },
+    ),
     {
       id: "debug",
       label: t("Debug"),
@@ -250,7 +247,7 @@ function useEntries(): Entry[] {
     },
     {
       id: "compose",
-      label: t("Composer"),
+      label: t("Send"),
       icon: LayersIcon,
       checked: panel === COMPOSE,
       badge: pending,
@@ -311,11 +308,12 @@ function Node({
   const enter = Math.round(STEM_MS + (order / Math.max(count - 1, 1)) * (SWEEP_MS - 120));
   const leave = (count - 1 - order) * 18;
   const tick = polar(15, angle);
+  const face = "tool" in entry && entry.tool !== undefined ? entry.tool : entry;
   return (
     <button
       type="button"
       tabIndex={shown ? 0 : -1}
-      aria-label={entry.label}
+      aria-label={face.label}
       data-open={shown ? "" : undefined}
       className="pka-node"
       style={{
@@ -328,7 +326,7 @@ function Node({
       }}
       {...props}
     >
-      <entry.icon className="size-[18px]" strokeWidth={1.75} />
+      <face.icon className="size-[18px]" strokeWidth={1.75} />
       {"children" in entry && (
         <span
           aria-hidden="true"
@@ -415,7 +413,8 @@ export function RadialMenu() {
   const mode = useStore(ui, (state) =>
     state.recording ? "record" : state.picking !== null || state.gesture !== null ? "pick" : null,
   );
-  const entries = useEntries();
+  const [tools, setTools] = useState(readTools);
+  const entries = useEntries(tools);
   const [branch, setBranch] = useState<string | null>(null);
   const [hint, setHint] = useState<Hint | null>(null);
   const root = useRef<HTMLDivElement>(null);
@@ -458,8 +457,12 @@ export function RadialMenu() {
     flushSync(() => setBranch(id));
     if (focusFirst) root.current?.querySelector<HTMLElement>(`[data-parent="${id}"]`)?.focus();
   };
-  const choose = (leaf: Leaf) => {
+  const choose = (leaf: Leaf, group?: Group) => {
     if (busy) return;
+    if (group?.tool !== undefined && group.tool.id !== leaf.id) {
+      sessionStorage.setItem(TOOL_KEY + group.id, leaf.id);
+      setTools((current) => ({ ...current, [group.id]: leaf.id }));
+    }
     leaf.run();
     if (leaf.stay !== true) close();
   };
@@ -597,6 +600,9 @@ export function RadialMenu() {
               );
             const angles = groups.find((candidate) => candidate.group === entry)?.angles ?? [];
             const expanded = open && branch === entry.id;
+            const { tool } = entry;
+            const face: Hint = { id: entry.id, label: tool?.label ?? entry.label };
+            if (tool?.shortcut !== undefined) face.shortcut = tool.shortcut;
             return (
               <div key={entry.id} role="none">
                 <Node
@@ -609,13 +615,16 @@ export function RadialMenu() {
                   data-level="1"
                   data-active={entry.active ? "" : undefined}
                   data-group={entry.id}
-                  onClick={(event) => openBranch(entry.id, event.detail === 0)}
+                  aria-disabled={(tool !== undefined && busy) || undefined}
+                  onClick={(event) =>
+                    tool === undefined ? openBranch(entry.id, event.detail === 0) : choose(tool)
+                  }
                   onPointerEnter={() => {
                     hover(entry.id);
-                    setHint({ id: entry.id, label: entry.label });
+                    setHint(face);
                   }}
                   onPointerLeave={() => window.clearTimeout(intent.current)}
-                  {...describe({ id: entry.id, label: entry.label })}
+                  {...describe(face)}
                 />
                 <div
                   id={`${MENU_ID}-${entry.id}`}
@@ -641,7 +650,7 @@ export function RadialMenu() {
                         data-level="2"
                         data-parent={entry.id}
                         data-active={child.checked === true ? "" : undefined}
-                        onClick={() => choose(child)}
+                        onClick={() => choose(child, entry)}
                         onPointerEnter={() => {
                           window.clearTimeout(intent.current);
                           setHint(next);

@@ -96,13 +96,26 @@ test(
     await page.locator("html[data-fixture-ready]").waitFor({ state: "attached" });
     assert.equal(await page.evaluate(() => navigator.webdriver), false);
     const hub = page.locator("pk-annotator .pka-launcher");
-    // Opens the hub's menu unless it is open, sweeps out a group, and chooses one of its items.
-    const choose = async (group: string, item: string, role: "menuitem" | "menuitemcheckbox") => {
+    const group = (id: string) => page.locator(`.pka-node[data-group="${id}"]`);
+    const focused = (locator: ReturnType<typeof group>) =>
+      locator.evaluate((element) => {
+        const root = element.getRootNode();
+        return root instanceof ShadowRoot && root.activeElement === element;
+      });
+    // Opens the hub's menu unless it is open, hovers a group to sweep out its ring, and
+    // chooses one of its items. Clicking a tool group would run its remembered tool instead.
+    const choose = async (id: string, item: string, role: "menuitem" | "menuitemcheckbox") => {
       if ((await hub.getAttribute("aria-expanded")) !== "true") await hub.click();
-      await page.getByRole("menuitem", { name: group, exact: true }).click();
+      await group(id).hover();
       await page.getByRole(role, { name: item, exact: true }).click();
     };
-    await choose("Capture", "Record", "menuitemcheckbox");
+    // Runs a tool group's remembered tool with one click on the group.
+    const runRemembered = async (id: string, name: string) => {
+      if ((await hub.getAttribute("aria-expanded")) !== "true") await hub.click();
+      assert.equal(await group(id).getAttribute("aria-label"), name);
+      await group(id).click();
+    };
+    await choose("capture", "Record", "menuitemcheckbox");
     await page.getByTestId("pka-record-start").click();
     await page.getByTestId("lab-fetch-items").click();
     await page.getByTestId("lab-output").filter({ hasText: "alpha" }).waitFor();
@@ -164,7 +177,20 @@ test(
 
     const fetchBox = await page.getByTestId("lab-fetch-items").boundingBox();
     assert.ok(fetchBox);
-    await choose("Pick elements", "Single", "menuitemcheckbox");
+    // Keyboard: Enter on the hub focuses the Pick group, which shows its remembered tool;
+    // Right opens its ring, Left returns, and Enter on the group runs Select.
+    await hub.focus();
+    await page.keyboard.press("Enter");
+    assert.equal(await group("pick").getAttribute("aria-label"), "Select");
+    assert.ok(await focused(group("pick")));
+    await page.keyboard.press("ArrowRight");
+    assert.equal(await group("pick").getAttribute("aria-expanded"), "true");
+    assert.ok(await focused(page.getByRole("menuitemcheckbox", { name: "Select", exact: true })));
+    await page.keyboard.press("ArrowLeft");
+    assert.ok(await focused(group("pick")));
+    await page.keyboard.press("Enter");
+    assert.equal(await hub.getAttribute("aria-expanded"), "false");
+    assert.equal(await hub.getAttribute("data-mode"), "pick");
     await page.mouse.click(fetchBox.x + fetchBox.width / 2, fetchBox.y + fetchBox.height / 2);
     await page.getByTestId("pka-prompt").fill("Change this button");
     await page.getByRole("button", { name: "Bold", exact: true }).click();
@@ -175,7 +201,8 @@ test(
     await page.getByTestId("pka-prompt").fill("Edited button mark");
     await page.getByTestId("pka-save").click();
 
-    await choose("Capture", "Crop screenshot", "menuitemcheckbox");
+    // Lane capture replaces this drag with its area/full screenshot and crop flow.
+    await choose("capture", "Screenshot", "menuitemcheckbox");
     await page.mouse.move(20, 20);
     await page.mouse.down();
     await page.mouse.move(260, 140, { steps: 5 });
@@ -183,7 +210,7 @@ test(
     await page.getByTestId("pka-prompt").fill("Cropped screenshot mark");
     await page.getByTestId("pka-save").click();
 
-    await choose("Annotate", "Circle", "menuitemcheckbox");
+    await choose("annotate", "Circle", "menuitemcheckbox");
     await page.mouse.move(25, 25);
     await page.mouse.down();
     await page.mouse.move(220, 130, { steps: 5 });
@@ -192,7 +219,8 @@ test(
     await page.getByTestId("pka-save").click();
 
     for (const attempt of [1, 2]) {
-      await choose("Capture", "Record", "menuitemcheckbox");
+      if (attempt === 1) await choose("capture", "Record", "menuitemcheckbox");
+      else await runRemembered("capture", "Record");
       if (attempt === 1) {
         await page.getByTestId("pka-record-gif").check();
         await page.getByTestId("pka-record-video").check();
@@ -218,6 +246,7 @@ test(
       await page.getByTestId("pka-save").click();
     }
     assert.equal(await page.getByTestId("pka-saved-mark").count(), 5);
+    assert.equal(await page.evaluate(() => sessionStorage.getItem("pka:tool:capture")), "record");
     const global = "Fix these marks together";
     await page.getByTestId("pka-prompt").fill(global);
     await page.getByTestId("pka-send").click();
@@ -273,7 +302,7 @@ test(
     await page.getByTestId("practice-editor").waitFor();
     const hubBox = await hub.boundingBox();
     assert.deepEqual([hubBox?.width, hubBox?.height], [44, 44]);
-    await choose("Capture", "Record", "menuitemcheckbox");
+    await runRemembered("capture", "Record");
     await page.getByTestId("pka-record-start").click();
     await page.getByTestId("practice-submit").click();
     await page.getByTestId("practice-result").getByText("Accepted").waitFor();
@@ -284,7 +313,7 @@ test(
     await page.getByTestId("pka-thread-item").filter({ hasText: judged }).waitFor();
     const titleBox = await page.getByTestId("practice-title").boundingBox();
     assert.ok(titleBox);
-    await choose("Pick elements", "Single", "menuitemcheckbox");
+    await choose("pick", "Select", "menuitemcheckbox");
     await page.mouse.click(titleBox.x + titleBox.width / 2, titleBox.y + titleBox.height / 2);
     const picked = "Practice smoke: rename the problem";
     await page.getByTestId("pka-prompt").fill(picked);
@@ -354,14 +383,14 @@ test(
     assert.match(pickedAnnotation.elements[0]?.source ?? "", /routes\/practice\.tsx:\d+:\d+$/);
 
     // Language switches in place, so the menu stays open on the Settings group.
-    await choose("Settings", "Language: English", "menuitem");
+    await choose("settings", "Language: English", "menuitem");
     await page.getByRole("menuitem", { name: "설정", exact: true }).waitFor();
     await page.getByRole("menuitem", { name: "언어: 한국어", exact: true }).click();
     await page.getByRole("menuitem", { name: "Exit annotator", exact: true }).click();
     await page.locator("pk-annotator").waitFor({ state: "detached" });
     assert.deepEqual(errors, []);
     t.diagnostic(
-      "Direct send, saved marks, editing, cropped/drawn captures, two region GIF/WebM recordings, batch send, the practice page, language, Exit and CLI artifacts passed.",
+      "Direct send, keyboard menu, remembered tools, saved marks, editing, screenshot and drawn captures, two region GIF/WebM recordings, batch send, the practice page, language, Exit and CLI artifacts passed.",
     );
   },
 );

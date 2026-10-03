@@ -66,7 +66,7 @@ Declarations on `pk-annotator` win over the overlay's defaults in both themes.
 
 ## Mark and send
 
-Open the launcher, then use Pick (single, box, lasso), Capture (screenshot/crop or area GIF/video), or Annotate (rectangle, circle, freehand). Each opens a Tiptap prompt editor. Send immediately or Save a mark; Composer lets you edit saved marks, add a global comment, and send one combined annotation. Unsent marks stay in this tab until reload or Exit.
+Open the launcher, then use Pick (select, box, lasso), Capture (screenshot or area GIF/video), or Annotate (freehand, rectangle, circle). Each group shows its last-used tool and runs it on click; hover it to choose another. Each tool opens a Tiptap prompt editor. Send immediately or Save a mark; the Send entry lets you edit saved marks, add a global comment, and send one combined annotation. Unsent marks stay in this tab until reload or Exit.
 
 Debug groups Console, Network, and Performance. Settings holds History, English/Korean language, and Exit.
 

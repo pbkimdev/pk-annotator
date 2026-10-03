@@ -4,14 +4,12 @@ import { useStore } from "./store.ts";
 const korean = new Map<string, string>(
   Object.entries({
     "Pick elements": "요소 선택",
-    Single: "하나 선택",
+    Select: "선택",
     Box: "영역 선택",
     Lasso: "올가미",
     Capture: "캡처",
     Record: "녹화",
     Screenshot: "스크린샷",
-    "Crop screenshot": "스크린샷 자르기",
-    "Recording area": "녹화 영역",
     Annotate: "그리기",
     Rectangle: "사각형",
     Circle: "원",
