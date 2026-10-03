@@ -20,7 +20,6 @@ const MAX_FRAMES = 10;
 const MAX_GROUPS = 100;
 const MAX_SCRIPTS_PER_FRAME = 3;
 const MAX_HOT_SPOTS = 200;
-const MAX_TARGETS = 100;
 const TARGET_DEPTH = 4;
 const OVERLAY_TARGET = `${HOST_TAG} (this overlay)`;
 
@@ -107,10 +106,6 @@ export const perf = createStore<PerfState>(EMPTY);
 
 const ms = (value: number): number => Math.round(value);
 
-// web-vitals asks for a target string while the node still exists; its source is kept by
-// selector so the views can name file:line.
-const targetSources = new Map<string, string>();
-
 function selectorOf(element: Element, depth: number): string {
   const testId = element.getAttribute("data-testid");
   if (testId !== null) return `${element.localName}[data-testid="${testId}"]`;
@@ -120,28 +115,27 @@ function selectorOf(element: Element, depth: number): string {
   return `${selectorOf(parent, depth + 1)} > ${element.localName}`;
 }
 
+// web-vitals asks for a target string while the node still exists and keeps only that
+// string, so the element's own source travels inside it: a short selector is not unique,
+// and a source looked up by selector could name another element's file:line.
 function generateTarget(node: Node | null): string | undefined {
   const element = node instanceof Element ? node : (node?.parentElement ?? null);
   if (element === null) return undefined;
   // Events inside the shadow root are retargeted to the host.
   if (element.localName === HOST_TAG) return OVERLAY_TARGET;
-  const selector = selectorOf(element, 0);
+  const target: Target = { selector: selectorOf(element, 0) };
   const source = element.getAttribute(SOURCE_ATTRIBUTE);
-  if (source !== null) {
-    targetSources.delete(selector);
-    targetSources.set(selector, source);
-    if (targetSources.size > MAX_TARGETS) {
-      const oldest = targetSources.keys().next().value;
-      if (oldest !== undefined) targetSources.delete(oldest);
-    }
-  }
-  return selector;
+  if (source !== null) target.source = source;
+  return JSON.stringify(target);
 }
 
-function targetOf(selector: string | undefined): Target | undefined {
-  if (selector === undefined) return undefined;
-  const source = targetSources.get(selector);
-  return source === undefined ? { selector } : { selector, source };
+// A target web-vitals took from the entry instead (a node already removed) is the
+// browser's CSS selector, which cannot start with "{".
+function targetOf(value: string | undefined): Target | undefined {
+  if (value === undefined) return undefined;
+  if (!value.startsWith("{")) return { selector: value };
+  // SAFETY: generateTarget wrote this JSON from a Target.
+  return JSON.parse(value) as Target;
 }
 
 function navigationOf(metric: MetricWithAttribution): string {
@@ -350,6 +344,5 @@ export function stopAll(): void {
   observing = false;
   groups.clear();
   hotSpots.clear();
-  targetSources.clear();
   perf.set(EMPTY);
 }
