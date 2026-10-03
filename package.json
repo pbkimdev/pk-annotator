@@ -14,6 +14,10 @@
   ],
   "homepage": "https://pk-annotator.paulbkim.dev",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pbkimdev/pk-annotator.git"
+  },
   "bin": {
     "pka": "./dist/pka.mjs",
     "pka-mcp": "./dist/pka-mcp.mjs"

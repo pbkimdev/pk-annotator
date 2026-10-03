@@ -64,3 +64,14 @@ Use the returned `annotation.dir` and attachment paths. A recording attachment p
 Run `pnpm verify` for lint, format checking, typechecking, unit tests, and package build. Run `pnpm fixture:smoke` for the browser integration paths above. Neither command builds Lean or another consumer: check production exclusion in the consumer's build workflow.
 
 When behavior changes, update its DESIGN section and any affected README, README.ko.md, or REFERENCE example in the same change. Keep examples in one place and link to them. Record the source, version/date, and validation level for external integrations; a checked schema does not prove an interactive session worked. Move dated migration instructions and runtime observations to integration history.
+
+## Release
+
+Forgejo `srv/pk-annotator` is the only writable source. GitHub `pbkimdev/pk-annotator` is its publication replica, because npm trusted publishing accepts only GitHub-hosted runners. Never push to GitHub directly.
+
+1. Bump `version` in `package.json` and `VERSION` in `site/src/content.ts` on `main`, and push.
+2. Tag that commit `v<version>` and push the tag to Forgejo.
+3. `.forgejo/workflows/publish-github.yml` fast-forwards GitHub `main` and pushes the tag, without force.
+4. On GitHub, `.github/workflows/publish.yml` checks that the tag matches the package version and runs `npm publish`. `prepublishOnly` runs `pnpm verify` first. npm authenticates the workflow through OIDC and records provenance, so no npm token is involved.
+
+The Forgejo Actions secret `GH_PUBLISH_TOKEN` comes from Infisical `/platform/git/github` `GITHUB_PERSONAL_TOKEN`.

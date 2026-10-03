@@ -1,0 +1,61 @@
+name: Publish to GitHub
+
+# GitHub pbkimdev/pk-annotator is a publication replica: Forgejo stays the only
+# writable source, and npm's trusted publishing accepts only GitHub-hosted runners.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-github
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: ${{ github.repository == 'srv/pk-annotator' }}
+    runs-on: archbox-build
+    timeout-minutes: 10
+    steps:
+      - name: Validate the executing Forgejo instance
+        shell: bash
+        env:
+          DELIVERY_SERVER_URL: ${{ github.server_url }}
+        run: test "$DELIVERY_SERVER_URL" = https://git.paulbkim.dev
+
+      - name: Check out main and tags with full history
+        # yamllint disable-line rule:line-length
+        uses: https://data.forgejo.org/actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          repository: srv/pk-annotator
+          github-server-url: https://git.paulbkim.dev
+          ref: main
+          token: ${{ github.token }}
+          fetch-depth: 0
+          fetch-tags: true
+          clean: true
+          persist-credentials: false
+
+      # Without force, a divergent GitHub main or a moved tag fails the run.
+      - name: Fast-forward GitHub main and push a release tag
+        shell: bash
+        env:
+          PUBLISH_TOKEN: ${{ secrets.GH_PUBLISH_TOKEN }}
+          GITHUB_REMOTE: https://github.com/pbkimdev/pk-annotator.git
+          PUSHED_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          test -n "$PUBLISH_TOKEN"
+          refs=(HEAD:refs/heads/main)
+          if [[ "$PUSHED_REF" == refs/tags/v* ]]; then
+            git merge-base --is-ancestor "$PUSHED_REF" HEAD
+            refs+=("$PUSHED_REF:$PUSHED_REF")
+          fi
+          auth=$(printf 'x-access-token:%s' "$PUBLISH_TOKEN" | base64 -w0)
+          header="AUTHORIZATION: basic $auth"
+          git -c "http.https://github.com/.extraheader=$header" \
+            push "$GITHUB_REMOTE" "${refs[@]}"
