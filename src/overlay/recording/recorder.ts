@@ -1,5 +1,3 @@
-import { snapdom } from "@zumer/snapdom";
-
 import { MAX_BODY_TOTAL_BYTES, redactUrl, utf8Length } from "../../core/network.ts";
 import { framePath } from "../../shared/recording.ts";
 import type { Box, Viewport } from "../../shared/schema.ts";
@@ -111,6 +109,7 @@ function maskFields(clone: Element): void {
 
 /** The viewport without the overlay and with every field value masked. */
 async function keyframe(region: Box | null): Promise<Blob> {
+  const { snapdom } = await import("@zumer/snapdom");
   const result = await snapdom(document.documentElement, {
     clip: "viewport",
     exclude: [HOST_TAG],

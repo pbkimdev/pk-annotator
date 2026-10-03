@@ -1,4 +1,3 @@
-import { snapdom } from "@zumer/snapdom";
 import { CheckIcon, XIcon } from "lucide-react";
 import {
   useEffect,
@@ -63,6 +62,7 @@ function viewportBox(): Box {
 }
 
 async function capturePage(): Promise<HTMLCanvasElement> {
+  const { snapdom } = await import("@zumer/snapdom");
   const result = await snapdom(document.documentElement, {
     clip: "viewport",
     exclude: [HOST_TAG],

@@ -1,4 +1,4 @@
-import { snapdom, type CaptureResult } from "@zumer/snapdom";
+import type { CaptureResult } from "@zumer/snapdom";
 import type { ViteHotContext } from "vite/types/hot.d.ts";
 import { z } from "zod";
 
@@ -149,6 +149,7 @@ async function capture(elements: LocatedElement[]): Promise<{
   page: Blob;
   crops: Map<number, Blob>;
 }> {
+  const { snapdom } = await import("@zumer/snapdom");
   const result = await snapdom(document.documentElement, {
     clip: "viewport",
     exclude: [HOST_TAG],
