@@ -437,9 +437,9 @@ p {
   display: grid;
   grid-template-columns: minmax(0, 1.9fr) minmax(0, 1fr);
   grid-template-areas:
-    "label label"
     "drawing terminal"
-    "revisions revisions";
+    "revisions revisions"
+    "label label";
   gap: 14px;
 }
 
@@ -632,8 +632,13 @@ p {
 }
 
 .terminal-lines .cmd::before {
-  content: "● ";
-  color: var(--line-soft);
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin: 0 calc(1.6em - 6px) 1px 0;
+  border-radius: 50%;
+  background: var(--line-soft);
 }
 
 .terminal-lines .out,
@@ -1739,10 +1744,10 @@ html[data-picking] .mark-editor button {
   .hero-figure {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
-      "label"
       "drawing"
       "terminal"
-      "revisions";
+      "revisions"
+      "label";
   }
   .zones {
     display: none;
