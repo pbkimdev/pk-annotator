@@ -58,6 +58,17 @@ const Submission = z.strictObject({
   total: z.number().int().positive(),
 });
 
+const GameScore = z.strictObject({
+  player: z.string().trim().min(1).max(20),
+  score: z.number().int().nonnegative(),
+  level: z.number().int().positive(),
+});
+const scores: z.infer<typeof GameScore>[] = [
+  { player: "ada", score: 420, level: 3 },
+  { player: "linus", score: 260, level: 2 },
+  { player: "grace", score: 120, level: 1 },
+];
+
 function handleApi(request: IncomingMessage, response: ServerResponse, next: Connect.NextFunction) {
   const route = `${request.method} ${request.url?.split("?")[0]}`;
   if (route === "GET /items") {
@@ -102,6 +113,27 @@ function handleApi(request: IncomingMessage, response: ServerResponse, next: Con
         setTimeout(
           () => sendJson(response, 200, JSON.stringify({ status, passed, total, runtimeMs: 52 })),
           400,
+        );
+      })
+      .catch(next);
+    return;
+  }
+  if (route === "GET /scores") {
+    sendJson(response, 200, JSON.stringify(scores.slice(0, 5)));
+    return;
+  }
+  // The game's leaderboard; bounded so a long demo session cannot grow it.
+  if (route === "POST /score") {
+    readBody(request)
+      .then((body) => {
+        const entry = GameScore.parse(JSON.parse(body));
+        scores.push(entry);
+        scores.sort((left, right) => right.score - left.score);
+        scores.splice(50);
+        const rank = scores.indexOf(entry) + 1;
+        setTimeout(
+          () => sendJson(response, 200, JSON.stringify({ rank, top: scores.slice(0, 5) })),
+          300,
         );
       })
       .catch(next);
