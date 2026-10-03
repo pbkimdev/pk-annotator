@@ -295,9 +295,18 @@ describe("network capture", () => {
     "keeps later wrappers on stop and records a kept fetch reference only in the running capture, with a %s library wrapper",
     async (mode) => {
       vi.spyOn(console, "log").mockImplementation(() => {});
-      const native = vi.fn(
-        async (_input: RequestInfo | URL, _init?: RequestInit) => new Response("ok"),
-      );
+      // What the browser would send, read through the same init conversion fetch uses.
+      const sent: { path: string; method: string; body: string; traceparent: boolean }[] = [];
+      const native = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const request = new Request(input, init);
+        sent.push({
+          path: new URL(request.url).pathname,
+          method: request.method,
+          body: await request.text(),
+          traceparent: request.headers.has("traceparent"),
+        });
+        return new Response("ok");
+      });
       vi.stubGlobal("fetch", native);
       // Lets restoreAllMocks put back the prototype's own send after this test replaces it.
       vi.spyOn(XMLHttpRequest.prototype, "send");
@@ -334,24 +343,19 @@ describe("network capture", () => {
       await held("/api/items");
       await fetch("/api/global");
       await second.fetch("/api/untracked");
-      // A page may reuse one init for concurrent calls, or pass a Request as the init.
-      const shared = { method: "POST" };
-      // Cross-origin calls get no traceparent, so the init reaches the wrapped fetch unchanged.
-      await Promise.all([
-        fetch("https://example.com/a", shared),
-        fetch("https://example.com/b", shared),
-      ]);
-      const request = new Request("https://example.com/x", { method: "PUT" });
-      await fetch("https://example.com/x", request);
-      expect(native).toHaveBeenCalledTimes(7);
-      expect(native.mock.calls.at(-1)?.[1]).toBe(request);
+      // The page reuses the init of an overlay request still on its way to the kept wrapper.
+      const shared = { method: "POST", body: "shared" };
+      await Promise.all([second.fetch("/api/overlay", shared), held("/api/page", shared)]);
+      await Promise.all([fetch("/api/a", shared), fetch("/api/b", shared)]);
       expect(first.snapshot().requests).toHaveLength(0);
-      expect(second.snapshot().requests.map((entry) => new URL(entry.url).pathname)).toEqual([
-        "/api/items",
-        "/api/global",
-        "/a",
-        "/b",
-        "/x",
+      const recorded = second.snapshot().requests.map((entry) => new URL(entry.url).pathname);
+      expect(recorded).toEqual(["/api/items", "/api/global", "/api/page", "/api/a", "/api/b"]);
+      const byPath = (a: { path: string }, b: { path: string }) => a.path.localeCompare(b.path);
+      expect(sent.slice(4).toSorted(byPath)).toEqual([
+        { path: "/api/a", method: "POST", body: "shared", traceparent: true },
+        { path: "/api/b", method: "POST", body: "shared", traceparent: true },
+        { path: "/api/overlay", method: "POST", body: "shared", traceparent: false },
+        { path: "/api/page", method: "POST", body: "shared", traceparent: true },
       ]);
     },
   );

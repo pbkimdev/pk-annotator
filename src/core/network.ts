@@ -62,13 +62,28 @@ type FetchRecorder = (
 // reference to it or another library wraps it, so every wrapper sends its calls to the
 // recording capture, or straight to the fetch it wrapped when none records.
 let recordFetch: FetchRecorder | undefined;
-// While a wrapper calls the fetch it wrapped, this flag is set and its init is counted
-// here until the call settles, so an older wrapper further down that chain passes the
-// request through instead of recording it again. The init marks a call that a library
-// forwards after an await; the flag marks one whose library replaced the init. The init
-// is passed as it is: fetch also reads a dictionary member from a getter, which a copy loses.
-const forwarded = new WeakMap<RequestInit, number>();
+// A wrapper calls the fetch it wrapped with a view of the init made for that one call,
+// kept here, and with this flag set while the call runs, so an older wrapper further down
+// that chain passes the request through instead of recording it again. The view marks a
+// call that a library forwards after an await; the flag marks one whose library replaced
+// the init. A page call that reuses the same init object is not marked.
+const forwarded = new WeakSet<RequestInit>();
 let forwarding = false;
+
+// fetch reads each init member with [[Get]], own or inherited, so a Request or class
+// instance passed as the init supplies its method, body, and signal through getters. A
+// copy of such an init loses them; a proxy that runs its getters on the original keeps them.
+function initView(init: RequestInit | undefined): RequestInit {
+  if (init === undefined) return {};
+  return new Proxy(init, { get: memberOf });
+}
+
+// Reads a member with the original init as the receiver of its getter.
+function memberOf(init: RequestInit, key: string | symbol): RequestInit[keyof RequestInit] {
+  // SAFETY: fetch reads any key it knows, including members newer than this lib's
+  // RequestInit; a key the init lacks reads as undefined, as it would on the init.
+  return init[key as keyof RequestInit];
+}
 
 function forward(
   underlying: typeof fetch,
@@ -76,22 +91,12 @@ function forward(
   init: RequestInit | undefined,
 ): Promise<Response> {
   // An empty init leaves a Request input as it is.
-  const marked = init ?? {};
-  forwarded.set(marked, (forwarded.get(marked) ?? 0) + 1);
-  const release = (): void => {
-    const count = (forwarded.get(marked) ?? 1) - 1;
-    if (count === 0) forwarded.delete(marked);
-    else forwarded.set(marked, count);
-  };
+  const view = initView(init);
+  forwarded.add(view);
   const outer = forwarding;
   forwarding = true;
   try {
-    const response = underlying(input, marked);
-    Promise.resolve(response).then(release, release);
-    return response;
-  } catch (cause) {
-    release();
-    throw cause;
+    return underlying(input, view);
   } finally {
     forwarding = outer;
   }
@@ -438,9 +443,7 @@ export function installNetwork(hooks: NetworkHooks): Network {
   // Calls through this wrapper go to the fetch it replaced, never to a later global, so a
   // library that wrapped it and is called from it cannot loop.
   const fetchWrapper = function fetch(input: RequestInfo | URL, init?: RequestInit) {
-    // The running capture's own wrapper records a page call that reuses a pending init.
-    const own = recordFetch === recorder;
-    const passed = forwarding || (!own && init !== undefined && forwarded.has(init));
+    const passed = forwarding || (init !== undefined && forwarded.has(init));
     const record = passed ? undefined : recordFetch;
     return record === undefined ? originalFetch(input, init) : record(input, init, originalFetch);
   };
