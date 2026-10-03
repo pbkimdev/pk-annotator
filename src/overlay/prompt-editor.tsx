@@ -457,8 +457,12 @@ export function PromptEditor({
           }
           event.preventDefault();
           const at = view.posAtCoords({ left: event.clientX, top: event.clientY });
-          if (at !== null)
-            view.dispatch(view.state.tr.insertText(data.getData("text/plain"), at.pos));
+          view.dispatch(
+            view.state.tr.insertText(
+              data.getData("text/plain"),
+              at?.pos ?? view.state.selection.from,
+            ),
+          );
           return true;
         },
       },
