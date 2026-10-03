@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { constants, watch, type FSWatcher } from "node:fs";
-import { lstat, mkdir, open, readFile, readdir, rm } from "node:fs/promises";
+import { lstat, mkdir, open, readFile, readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -50,6 +50,7 @@ import { symbolicate } from "./symbolicate.ts";
 const AnnotatorOptions = z.strictObject({
   bodies: z.array(z.string().startsWith("/")).optional(),
   maxStoreBytes: z.number().int().positive().optional(),
+  storeRoot: z.string().min(1).optional(),
 });
 export type AnnotatorOptions = z.input<typeof AnnotatorOptions>;
 
@@ -156,9 +157,24 @@ async function headSha(cwd: string): Promise<string | null> {
 }
 
 /** Opens the store, serves the overlay's channel events, and pushes store changes. Returns the closer. */
-async function serve(server: ViteDevServer, maxStoreBytes: number): Promise<() => Promise<void>> {
+async function serve(
+  server: ViteDevServer,
+  maxStoreBytes: number,
+  storeRoot: string | undefined,
+): Promise<() => Promise<void>> {
   const workspaceRoot = normalizePath(searchForWorkspaceRoot(server.config.root));
-  const store = await createStore(workspaceRoot);
+  let projectRoot = workspaceRoot;
+  if (storeRoot !== undefined) {
+    projectRoot = normalizePath(path.resolve(server.config.root, storeRoot));
+    const info = await stat(projectRoot).catch((cause: unknown) => {
+      if (isErrno(cause, "ENOENT")) return undefined;
+      throw cause;
+    });
+    if (!info?.isDirectory()) {
+      throw new PkaError(`storeRoot ${projectRoot} is not an existing directory`);
+    }
+  }
+  const store = await createStore(projectRoot);
   const stagingRoot = resolveInside(store, STAGING_DIR);
   // Several dev servers in one workspace share the store, so each stages under its own directory.
   const serverStaging = resolveInside(
@@ -550,7 +566,11 @@ async function serve(server: ViteDevServer, maxStoreBytes: number): Promise<() =
   };
 }
 
-function channelPlugin(maxStoreBytes: number, bodies: string[]): Plugin {
+function channelPlugin(
+  maxStoreBytes: number,
+  bodies: string[],
+  storeRoot: string | undefined,
+): Plugin {
   let close: (() => Promise<void>) | undefined;
   return {
     name: "pk-annotator:channel",
@@ -559,7 +579,7 @@ function channelPlugin(maxStoreBytes: number, bodies: string[]): Plugin {
       return { define: { [BODIES_GLOBAL]: JSON.stringify(bodies) } };
     },
     async configureServer(server) {
-      close = await serve(server, maxStoreBytes);
+      close = await serve(server, maxStoreBytes, storeRoot);
     },
     // Vite calls buildEnd once, for the client environment, when the dev server closes.
     async buildEnd() {
@@ -577,6 +597,10 @@ export function annotator(options: AnnotatorOptions = {}): Plugin[] {
   if (process.env.VITEST) return [];
   return [
     sourcePlugin(),
-    channelPlugin(parsed.maxStoreBytes ?? DEFAULT_SIZE_CAP_BYTES, parsed.bodies ?? []),
+    channelPlugin(
+      parsed.maxStoreBytes ?? DEFAULT_SIZE_CAP_BYTES,
+      parsed.bodies ?? [],
+      parsed.storeRoot,
+    ),
   ];
 }

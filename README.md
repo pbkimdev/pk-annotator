@@ -28,7 +28,7 @@ export default defineConfig({
 });
 ```
 
-The plugin runs only under `vite dev` and adds nothing under Vitest, which also serves through Vite, so tests need no exclusion. `bodies` lists same-origin path prefixes whose JSON or text bodies are captured; `maxStoreBytes` caps the store (default 500 MB). Annotations go to `_interim/annotations/` in the project root.
+The plugin runs only under `vite dev` and adds nothing under Vitest, which also serves through Vite, so tests need no exclusion. `bodies` lists same-origin path prefixes whose JSON or text bodies are captured; `maxStoreBytes` caps the store (default 500 MB). Annotations go to `_interim/annotations/` in the workspace root that Vite's `searchForWorkspaceRoot` finds from the Vite root. `storeRoot` moves the store to `<storeRoot>/_interim/annotations/`; a relative path resolves against the Vite root and must name an existing directory. An app in `apps/ui` with its own `pnpm-workspace.yaml` uses `annotator({ storeRoot: "../.." })` to keep the store at the repository root, where `pka-mcp` finds it without `--root`.
 
 ## Client mount
 

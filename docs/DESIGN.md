@@ -53,6 +53,7 @@ Tests sit beside the code they exercise as `*.test.ts`. [DEVELOPING.md](DEVELOPI
 type AnnotatorOptions = {
   bodies?: string[];        // same-origin path prefixes whose JSON or text bodies are captured
   maxStoreBytes?: number;   // store size cap; new video is refused above it (default 500 MB)
+  storeRoot?: string;       // directory that holds _interim/annotations, relative to Vite's root or absolute (default: Vite's workspace root)
 };
 function annotator(options?: AnnotatorOptions): Plugin[];   // [] under Vitest
 

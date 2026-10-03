@@ -50,7 +50,7 @@ This is a browser integration check, separate from `pnpm verify`. It does not es
 
 ## Find a manual capture
 
-The Vite plugin calls `searchForWorkspaceRoot` and creates `<workspace>/_interim/annotations`. For this fixture that is the repository root, not `fixtures/app`. Each Git worktree has its own store. From the repository root, while or after the fixture runs:
+Without a `storeRoot` option, the Vite plugin calls `searchForWorkspaceRoot` and creates `<workspace>/_interim/annotations`. For this fixture that is the repository root, not `fixtures/app`. Each Git worktree has its own store. From the repository root, while or after the fixture runs:
 
 ```sh
 node dist/pka.mjs --root . --json list --status all
