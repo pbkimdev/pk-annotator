@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { constants, watch, type FSWatcher } from "node:fs";
-import { lstat, mkdir, open, readFile, readdir, rm, stat } from "node:fs/promises";
+import { lstat, mkdir, open, readFile, readdir, realpath, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -178,6 +178,12 @@ async function serve(
     }
   }
   const store = await createStore(projectRoot);
+  // Where a pasted agent finds an annotation: relative to the workspace when it can be.
+  const fromWorkspace = path.relative(await realpath(workspaceRoot), store);
+  const storeDisplay =
+    fromWorkspace.startsWith("..") || path.isAbsolute(fromWorkspace)
+      ? normalizePath(store)
+      : normalizePath(fromWorkspace);
   const stagingRoot = resolveInside(store, STAGING_DIR);
   // Several dev servers in one workspace share the store, so each stages under its own directory.
   const serverStaging = resolveInside(
@@ -310,7 +316,11 @@ async function serve(
     upload.done = true;
     uploads.delete(upload.requestId);
     seen.set(id, { history: 1, thread: 0 });
-    upload.client.send(CHANNEL.created, { requestId: upload.requestId, id });
+    upload.client.send(CHANNEL.created, {
+      requestId: upload.requestId,
+      id,
+      dir: path.posix.join(storeDisplay, id),
+    });
   }
 
   async function prepare(upload: Upload, declaredBytes: number): Promise<void> {

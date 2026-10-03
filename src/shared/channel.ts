@@ -102,6 +102,8 @@ export const PresenceMessage = z.strictObject({});
 export const CreatedMessage = z.strictObject({
   requestId: Id,
   id: Id,
+  // The annotation's directory, relative to the workspace root when the store is inside it.
+  dir: z.string().min(1).max(4096),
 });
 
 export const CreateFailedMessage = z.strictObject({
