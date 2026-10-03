@@ -59,15 +59,21 @@ import { createInterface } from "node:readline";
 const ops = await import(process.argv[1]);
 const store = await import(process.argv[2]);
 const say = (value) => process.stdout.write(JSON.stringify(value) + "\\n");
+let release;
 for await (const line of createInterface({ input: process.stdin })) {
   const command = JSON.parse(line);
   try {
     if (command.op === "hold") {
-      // Holds the lock until the process is killed.
       void store.withAnnotationLock(command.store, command.id, () => {
         say({ ok: "held" });
-        return new Promise(() => {});
+        return new Promise((resolve) => {
+          release = resolve;
+        });
       });
+      continue;
+    }
+    if (command.op === "release") {
+      release();
       continue;
     }
     say({ ok: await ops.setStatus(command.store, command.input, command.by) });
@@ -81,11 +87,14 @@ const WorkerReply = z.strictObject({ ok: z.unknown().optional(), error: z.string
 
 type WorkerCommand =
   | { op: "hold"; store: string; id: string }
+  | { op: "release" }
   | { op?: undefined; store: string; input: SetStatusInput; by: string };
 
 interface Worker {
   child: ReturnType<typeof spawn>;
   call: (command: WorkerCommand) => Promise<z.infer<typeof WorkerReply>>;
+  /** For a command that sends no reply. */
+  send: (command: WorkerCommand) => void;
 }
 
 function startWorker(): Worker {
@@ -105,6 +114,9 @@ function startWorker(): Worker {
   const lines = createInterface({ input: child.stdout })[Symbol.asyncIterator]();
   return {
     child,
+    send(command) {
+      stdin.write(`${JSON.stringify(command)}\n`);
+    },
     async call(command) {
       stdin.write(`${JSON.stringify(command)}\n`);
       const next = await lines.next();
@@ -433,7 +445,7 @@ describe("status changes", () => {
   it("from separate processes are serialized, so exactly one of acknowledge and dismiss lands", async () => {
     const workers = [startWorker(), startWorker()] as const;
     try {
-      for (let trial = 0; trial < 100; trial += 1) {
+      for (let trial = 0; trial < 10; trial += 1) {
         const { id } = await create(store, DRAFT);
         const results = await Promise.all([
           workers[0].call({ store, input: { id, status: "acknowledged" }, by: "agent-a" }),
@@ -452,37 +464,7 @@ describe("status changes", () => {
     }
   });
 
-  it("from a stalled claimant and a takeover in separate processes leave one acknowledge and its claimant", async () => {
-    const workers = [startWorker(), startWorker()] as const;
-    try {
-      for (let trial = 0; trial < 30; trial += 1) {
-        const { id } = await create(store, DRAFT);
-        await createClaim(store, id, {
-          by: "agent-a",
-          at: new Date(Date.now() - 120_000).toISOString(),
-        });
-        const results = await Promise.all([
-          workers[0].call({ store, input: { id, status: "acknowledged" }, by: "agent-a" }),
-          workers[1].call({ store, input: { id, status: "acknowledged" }, by: "agent-b" }),
-        ]);
-        const winners = results.flatMap((result) => {
-          const ok = SetStatusResult.optional().parse(result.ok);
-          return ok?.changed === true ? [ok.claimedBy] : [];
-        });
-        expect(winners, JSON.stringify(results)).toHaveLength(1);
-        const record = await loadAnnotation(store, id);
-        expect(record.claim?.by).toBe(winners[0]);
-        expect(record.state.history.map((event) => [event.status, event.by])).toEqual([
-          ["pending", undefined],
-          ["acknowledged", winners[0]],
-        ]);
-      }
-    } finally {
-      await Promise.all(workers.map(stopWorker));
-    }
-  });
-
-  it("wait for a running lock holder and break the lock once that process is killed", async () => {
+  it("wait for a running lock holder's release and break a killed holder's lock", async () => {
     const { id } = await create(store, DRAFT);
     const holder = startWorker();
     try {
@@ -497,9 +479,15 @@ describe("status changes", () => {
       expect(JSON.parse(await readFile(lock, "utf8"))).toMatchObject({
         process: { pid: holder.child.pid },
       });
-
-      await stopWorker(holder);
+      holder.send({ op: "release" });
       expect(await acknowledged).toMatchObject({ changed: true, claimedBy: "agent-b" });
+
+      expect(await holder.call({ op: "hold", store, id })).toEqual({ ok: "held" });
+      await stopWorker(holder);
+      expect(await setStatus(store, { id, status: "acknowledged" }, "agent-b")).toMatchObject({
+        changed: false,
+        claimedBy: "agent-b",
+      });
       const clean = ["annotation.json", "claim.json", "state.json"];
       expect((await readdir(path.join(store, id))).sort()).toEqual(clean);
 

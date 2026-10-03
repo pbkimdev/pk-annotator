@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { constants, readFileSync, readlinkSync } from "node:fs";
+import { constants, readFileSync, readlinkSync, watch } from "node:fs";
 import {
   link,
   lstat,
@@ -14,7 +14,6 @@ import {
 } from "node:fs/promises";
 import { hostname } from "node:os";
 import path from "node:path";
-import { setTimeout as sleep } from "node:timers/promises";
 
 import { z } from "zod";
 
@@ -425,36 +424,76 @@ async function readLockOwner(store: string, lock: string): Promise<LockOwner | u
 }
 
 /**
+ * Resolves when the directory entry `lock` changes or at `deadline`, whichever comes first.
+ * Start it before rechecking the lock, so a release in between still wakes the caller.
+ */
+interface LockWake {
+  changed: Promise<void>;
+  close: () => void;
+}
+
+function lockChange(lock: string, deadline: number): LockWake {
+  const name = path.basename(lock);
+  let close = (): void => {};
+  const changed = new Promise<void>((resolve, reject) => {
+    const watcher = watch(path.dirname(lock), (_event, changedName) => {
+      if (changedName === null || changedName === name) finish();
+    });
+    const timer = setTimeout(finish, Math.max(0, deadline - Date.now()));
+    watcher.on("error", (cause) => {
+      close();
+      reject(cause);
+    });
+    close = () => {
+      watcher.close();
+      clearTimeout(timer);
+    };
+    function finish(): void {
+      close();
+      resolve();
+    }
+  });
+  return { changed, close };
+}
+
+/**
  * Takes the lock file `lock` and returns its token. The owner record is complete before the
- * link makes it visible. A lock whose owner has exited is broken; a lock whose owner runs, or
- * cannot be judged from this PID namespace, is waited for until `deadline` and then reported,
- * never removed.
+ * link makes it visible. A lock whose owner has exited is broken. A caller waits for a lock
+ * whose owner runs, or cannot be judged from this PID namespace, by watching for its removal
+ * until `deadline`; it then checks the owner once more and reports a lock that is still held,
+ * never removing it. A killed owner writes nothing, so a caller already waiting finds it
+ * dead only at the deadline.
  */
 async function acquireLock(store: string, lock: string, deadline: number): Promise<string> {
   const token = randomBytes(8).toString("hex");
   const temporary = temporaryName(lock);
   await writeExclusive(temporary, `${JSON.stringify({ token, process: thisProcess() })}\n`);
   try {
-    for (let attempt = 0; ; attempt += 1) {
+    for (;;) {
+      const wake = lockChange(lock, deadline);
       try {
-        await link(temporary, lock);
-        return token;
-      } catch (thrown) {
-        if (!isErrno(thrown, "EEXIST")) throw thrown;
+        try {
+          await link(temporary, lock);
+          return token;
+        } catch (thrown) {
+          if (!isErrno(thrown, "EEXIST")) throw thrown;
+        }
+        const owner = await readLockOwner(store, lock);
+        if (owner === undefined) continue;
+        if (processExited(owner.process)) {
+          await breakLock(store, lock, owner, deadline);
+          continue;
+        }
+        if (Date.now() >= deadline) {
+          throw new PkaError(
+            `${lock} is held by process ${owner.process.pid} (${owner.process.namespace}); retry later. ` +
+              "A process in another PID namespace cannot be checked from here: remove the file only after that process has exited.",
+          );
+        }
+        await wake.changed;
+      } finally {
+        wake.close();
       }
-      const owner = await readLockOwner(store, lock);
-      if (owner === undefined) continue;
-      if (processExited(owner.process)) {
-        await breakLock(store, lock, owner, deadline);
-        continue;
-      }
-      if (Date.now() >= deadline) {
-        throw new PkaError(
-          `${lock} is held by process ${owner.process.pid} (${owner.process.namespace}); retry later. ` +
-            "A process in another PID namespace cannot be checked from here: remove the file only after that process has exited.",
-        );
-      }
-      await sleep(Math.min(100, 2 ** attempt) * (0.5 + Math.random()));
     }
   } finally {
     await unlink(temporary);
