@@ -16,7 +16,7 @@ import {
 } from "vite";
 import { z } from "zod";
 
-import { checkCaptureFiles, create, loadAnnotation, upsertErrorGroups } from "../ops/ops.ts";
+import { checkCaptureFiles, create, loadAnnotationUpdates, upsertErrorGroups } from "../ops/ops.ts";
 import { agentsDir, liveAgents } from "../ops/presence.ts";
 import {
   CHANNEL,
@@ -494,7 +494,7 @@ async function serve(
     const synced: SyncedMessage = { annotations: [] };
     for (const id of message.ids) {
       try {
-        const record = await loadAnnotation(store, id);
+        const record = await loadAnnotationUpdates(store, id);
         synced.annotations.push({ id, state: record.state, thread: record.thread });
       } catch (thrown) {
         if (!(thrown instanceof MissingAnnotationError)) throw thrown;
@@ -579,7 +579,7 @@ async function serve(
   async function sync(id: string): Promise<void> {
     let record;
     try {
-      record = await loadAnnotation(store, id);
+      record = await loadAnnotationUpdates(store, id);
     } catch (thrown) {
       if (!(thrown instanceof MissingAnnotationError)) throw thrown;
       unwatch(id);
