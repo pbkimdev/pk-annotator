@@ -272,13 +272,13 @@ export function Composer({ batch = false }: { batch?: boolean }) {
           panel: THREAD,
         });
       }
-      if (copied !== null) {
-        const outcome = await copied;
+      // Not awaited: a clipboard write the browser never settles must not keep Send busy.
+      void copied?.then((outcome) => {
         if (outcome !== "ok") {
           console.error("[pk-annotator] copying the sent annotation failed", outcome.cause);
           ui.set({ copied: "failed" });
         } else if (sessionStorage.getItem(COPIED_HINT_KEY) === null) ui.set({ copied: "ok" });
-      }
+      });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {

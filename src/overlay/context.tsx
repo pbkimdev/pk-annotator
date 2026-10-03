@@ -12,7 +12,6 @@ import type { ThreadStore } from "./thread-store.ts";
 export const COMPOSE = "compose";
 export const THREAD = "thread";
 export const NOTE = "note";
-/** sessionStorage key set when the user turns off the clipboard pop-up for this tab. */
 export const COPIED_HINT_KEY = "pka:copied-hint";
 
 export type SavedMark = {
