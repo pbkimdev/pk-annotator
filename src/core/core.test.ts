@@ -432,6 +432,94 @@ describe("request metadata", () => {
     expect(error?.resource?.url.length).toBeLessThan(MAX_URL + 20);
     expect(error?.message.length).toBeLessThan(MAX_URL + 40);
   });
+
+  it("gives each resource timing to the request sent closest before it", async () => {
+    let clock = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => clock);
+    const queued: object[] = [];
+    class Timing {
+      initiatorType = "fetch";
+      responseEnd = 1;
+      transferSize = 300;
+      decodedBodySize = 120;
+      serverTiming = [];
+      constructor(
+        readonly name: string,
+        readonly startTime: number,
+        readonly duration: number,
+      ) {}
+    }
+    vi.stubGlobal("PerformanceResourceTiming", Timing);
+    vi.stubGlobal(
+      "PerformanceObserver",
+      class {
+        observe(): void {}
+        disconnect(): void {}
+        takeRecords(): object[] {
+          return queued.splice(0);
+        }
+      },
+    );
+    let release: (response: Response) => void = () => {};
+    vi.stubGlobal("fetch", async (input: string) =>
+      input.includes("slow")
+        ? new Promise<Response>((resolve) => (release = resolve))
+        : new Response("ok"),
+    );
+    const current = start();
+    const url = `${location.origin}/api/same`;
+
+    clock = 100;
+    await fetch("/api/same");
+    clock = 200;
+    await fetch("/api/same");
+    // Only the later request's timing arrives; the earlier one keeps waiting.
+    queued.push(new Timing(url, 200.2, 7));
+    clock = 210;
+    expect(current.snapshot().requests.map((request) => request.durationMs)).toEqual([0, 7]);
+
+    clock = 300;
+    const slow = fetch("/api/slow");
+    const slowUrl = `${location.origin}/api/slow`;
+    queued.push(new Timing(slowUrl, 300.1, 40));
+    clock = 320;
+    expect(current.snapshot().requests[2]).toMatchObject({ state: "pending" });
+    release(new Response("late"));
+    await slow;
+    clock = 345;
+    const [early, later, settled] = current.snapshot().requests;
+    expect(settled).toMatchObject({ durationMs: 40, performanceMs: 300, responseSize: 120 });
+    expect(later).toMatchObject({ durationMs: 7, performanceMs: 200, transferSize: 300 });
+    expect(early).toMatchObject({ durationMs: 0, performanceMs: 100 });
+    expect(early?.transferSize).toBeUndefined();
+  });
+
+  it("settles a synchronous XMLHttpRequest whose send throws, and reads no body it cannot keep", () => {
+    const proto = XMLHttpRequest.prototype;
+    vi.spyOn(proto, "open").mockImplementation(() => {});
+    vi.spyOn(proto, "setRequestHeader").mockImplementation(() => {});
+    const sendSpy = vi.spyOn(proto, "send");
+    const text = vi.spyOn(proto, "responseText", "get").mockReturnValue("x".repeat(100));
+    const current = start();
+
+    sendSpy.mockImplementation(() => {
+      throw new DOMException("Failed to load", "NetworkError");
+    });
+    const failing = new XMLHttpRequest();
+    failing.open("POST", "/api/sync", false);
+    expect(() => failing.send("{}")).toThrow("Failed to load");
+
+    sendSpy.mockImplementation(() => {});
+    const outside = new XMLHttpRequest();
+    outside.open("GET", "/other/report");
+    outside.send();
+    outside.dispatchEvent(new Event("load"));
+
+    const [sync, report] = current.snapshot().requests;
+    expect(sync).toMatchObject({ state: "failed", error: expect.stringContaining("NetworkError") });
+    expect(report).toMatchObject({ state: "done" });
+    expect(text).not.toHaveBeenCalled();
+  });
 });
 
 describe("actions", () => {

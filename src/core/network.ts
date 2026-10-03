@@ -44,7 +44,10 @@ interface Tracked {
   start: number;
   bodyAllowed: boolean;
   bodyBytes: number;
+  // Set once the request settles or opens a stream; until then its timing is not applied.
   timingUntil: number | undefined;
+  // It received its timing or stopped waiting for one.
+  timed: boolean;
 }
 
 type FetchRecorder = (
@@ -240,6 +243,7 @@ export function installNetwork(hooks: NetworkHooks): Network {
       bodyAllowed: sameOrigin && hooks.bodies.some((prefix) => url.pathname.startsWith(prefix)),
       bodyBytes: 0,
       timingUntil: undefined,
+      timed: false,
     };
     tracked.push(item);
     if (tracked.length > MAX_REQUESTS) bodyTotal -= tracked.shift()?.bodyBytes ?? 0;
@@ -462,25 +466,33 @@ export function installNetwork(hooks: NetworkHooks): Network {
 
   const send = function send(this: XMLHttpRequest, body?: XhrBody) {
     const request = stopped ? undefined : opened.get(this);
+    let sendFailed: ((cause: unknown) => void) | undefined;
     if (request !== undefined) {
       try {
-        trackXhr(this, request, body);
+        sendFailed = trackXhr(this, request, body);
       } catch (cause) {
         hooks.fail("XMLHttpRequest capture", cause);
       }
     }
-    originalSend.call(this, body);
+    try {
+      originalSend.call(this, body);
+    } catch (cause) {
+      sendFailed?.(cause);
+      throw cause;
+    }
   };
 
   proto.open = open;
   proto.setRequestHeader = setRequestHeader;
   proto.send = send;
 
+  // Returns what settles the entry when send throws: a synchronous request reports its
+  // network error that way, before any event.
   function trackXhr(
     xhr: XMLHttpRequest,
     request: { method: string; url: string; headers: Headers },
     body: XhrBody,
-  ): void {
+  ): (cause: unknown) => void {
     const item = begin("xhr", request.method, request.url, request.headers);
     if (item.entry.traceparent !== undefined) {
       originalSetRequestHeader.call(xhr, "traceparent", item.entry.traceparent);
@@ -493,62 +505,96 @@ export function installNetwork(hooks: NetworkHooks): Network {
       recordResponseHead(item, xhr.status, parseRawHeaders(xhr), xhr.responseType || "text");
       hooks.changed();
     };
-    const end = (outcome: string): void => {
+    const abortOnReopen = (): void => end("abort");
+    function stopListening(): void {
       listening.abort();
-      inFlight.delete(xhr);
+      if (inFlight.get(xhr) === abortOnReopen) inFlight.delete(xhr);
+    }
+    function end(outcome: string): void {
+      stopListening();
       try {
         finishXhr(xhr, item, outcome);
       } catch (cause) {
         hooks.fail("XMLHttpRequest response capture", cause);
       }
-    };
+    }
     const onEnd = (event: Event): void => end(event.type);
-    inFlight.set(xhr, () => end("abort"));
+    inFlight.set(xhr, abortOnReopen);
     xhr.addEventListener("readystatechange", onHeaders, { signal: listening.signal });
     for (const type of ["load", "error", "abort", "timeout"]) {
       xhr.addEventListener(type, onEnd, { signal: listening.signal });
     }
+    return (cause) => {
+      if (listening.signal.aborted) return;
+      stopListening();
+      settleFailure(item, cause);
+    };
   }
 
+  // Only a body that may be kept is read: serializing or counting a response of megabytes
+  // takes milliseconds. Its size otherwise comes from Content-Length or its resource timing.
   function finishXhr(xhr: XMLHttpRequest, item: Tracked, outcome: string): void {
     if (outcome === "abort") return settle(item, "aborted");
     if (outcome !== "load") return settle(item, "failed", outcome);
     if (item.entry.status === undefined) {
       recordResponseHead(item, xhr.status, parseRawHeaders(xhr), xhr.responseType || "text");
     }
-    const text = xhrText(xhr);
-    if (item.entry.responseSize === undefined && text !== undefined) {
-      item.entry.responseSize = utf8Length(text);
-    }
     const type = item.entry.contentType ?? "";
     if (
       item.bodyAllowed &&
-      text !== undefined &&
       TEXT_TYPE.test(type) &&
       (item.entry.responseSize ?? 0) <= MAX_BODY_BYTES
     ) {
-      storeBody(item, "responseBody", redactBody(text));
+      const text = xhrText(xhr);
+      // UTF-8 takes at least one byte per UTF-16 code unit, so a longer text is over the cap.
+      if (text !== undefined && text.length <= MAX_BODY_BYTES) {
+        item.entry.responseSize ??= utf8Length(text);
+        storeBody(item, "responseBody", redactBody(text));
+      }
     }
     settle(item, "done");
   }
 
+  // A resource timing entry starts when its request is sent, so it belongs to the
+  // same-URL request sent closest before it; a request still waiting for a timing that
+  // never came cannot take a later request's one. A timing whose owner has not settled
+  // yet stays for that owner.
   function resolveTimings(): boolean {
     collectTimings(timingObserver.takeRecords());
-    const pending = tracked.filter((item) => item.timingUntil !== undefined);
-    if (pending.length === 0) return false;
-    const now = performance.now();
+    if (!tracked.some((item) => item.timingUntil !== undefined)) return false;
+    const byUrl = new Map<string, Tracked[]>();
+    for (const item of tracked) {
+      if (item.timed) continue;
+      const sameUrl = byUrl.get(item.entry.url);
+      if (sameUrl === undefined) byUrl.set(item.entry.url, [item]);
+      else sameUrl.push(item);
+    }
     let changed = false;
-    for (const item of pending) {
-      const match = timings.find(
-        ({ name, timing }) => timing.startTime >= item.start - 1 && name === item.entry.url,
-      );
-      if (match === undefined) {
-        if (now > (item.timingUntil ?? 0)) item.timingUntil = undefined;
+    let index = 0;
+    while (index < timings.length) {
+      const candidate = timings[index];
+      if (candidate === undefined) throw new Error(`No resource timing at index ${index}`);
+      const { name, timing } = candidate;
+      let owner: Tracked | undefined;
+      for (const item of byUrl.get(name) ?? []) {
+        // Clocks are coarsened, so a request can appear to start just after its timing.
+        if (item.timed || item.start > timing.startTime + 1) continue;
+        const gap = Math.abs(timing.startTime - item.start);
+        if (owner === undefined || gap < Math.abs(timing.startTime - owner.start)) owner = item;
+      }
+      if (owner?.timingUntil === undefined) {
+        index += 1;
         continue;
       }
-      timings.splice(timings.indexOf(match), 1);
-      applyTiming(item, match.timing);
+      timings.splice(index, 1);
+      applyTiming(owner, timing);
       changed = true;
+    }
+    const now = performance.now();
+    for (const item of tracked) {
+      if (item.timingUntil === undefined || now <= item.timingUntil) continue;
+      item.timingUntil = undefined;
+      item.timed = true;
     }
     if (changed) hooks.changed();
     return changed;
@@ -577,8 +623,12 @@ export function installNetwork(hooks: NetworkHooks): Network {
 function applyTiming(item: Tracked, timing: PerformanceResourceTiming): void {
   const { entry } = item;
   item.timingUntil = undefined;
+  item.timed = true;
   if (timing.responseEnd > 0) entry.durationMs = Math.round(timing.duration);
   if (timing.transferSize > 0) entry.transferSize = timing.transferSize;
+  if (entry.responseSize === undefined && timing.decodedBodySize > 0) {
+    entry.responseSize = timing.decodedBodySize;
+  }
   if (timing.serverTiming.length > 0) {
     entry.serverTiming = timing.serverTiming.map(({ name, duration, description }) => ({
       name,
