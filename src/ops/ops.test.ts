@@ -107,9 +107,10 @@ describe("create", () => {
     const { id } = await create(store, draft, { dir: staging, paths: ["capture/video.webm"] });
     const record = await loadAnnotation(store, id);
     expect(record.state.status).toBe("pending");
-    expect(new Uint8Array(await readFile(path.join(record.dir, "capture", "video.webm")))).toEqual(
-      video,
-    );
+    // Element-wise toEqual on 3 MB takes seconds.
+    expect(
+      Buffer.compare(await readFile(path.join(record.dir, "capture", "video.webm")), video),
+    ).toBe(0);
     expect(await readdir(path.join(store, ".staging"))).toEqual([]);
 
     const missing = path.join(store, ".staging", "request-2");
