@@ -28,17 +28,15 @@ const ATTACHMENT_ID = "network";
 const NETWORK_PATH = "capture/network.jsonl";
 
 // Entries as they were when attached, so a later Clear does not drop them from the attachment.
-let attached: ReadonlyMap<number, RequestEntry> = new Map();
-
 function attach(requests: readonly RequestEntry[]): void {
-  const present = attachments.get().some((attachment) => attachment.id === ATTACHMENT_ID);
-  const chosen = new Map(present ? attached : []);
+  const present = attachments.get().find((attachment) => attachment.id === ATTACHMENT_ID);
+  const chosen = new Map(present?.requests);
   for (const request of requests) chosen.set(request.seq, request);
-  attached = chosen;
   addAttachment({
     id: ATTACHMENT_ID,
     kind: "network",
     label: chosen.size === 1 ? `1 request` : `${chosen.size} requests`,
+    requests: chosen,
     async collect() {
       const latest = new Map(
         getCapture()

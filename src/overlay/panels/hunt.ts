@@ -20,8 +20,6 @@ const SUMMARY_BEFORE = 8;
 const SUMMARY_MESSAGE = 300;
 const SYMBOLICATE_TIMEOUT_MS = 10_000;
 
-let hunted: readonly string[] = [];
-
 function oneLine(text: string, max: number): string {
   const line = text.replace(/\s+/g, " ").trim();
   return line.length > max ? `${line.slice(0, max)}…` : line;
@@ -176,15 +174,15 @@ async function collect(hot: ViteHotContext, fingerprints: readonly string[]) {
  * earlier while that attachment is still in the composer.
  */
 export function hunt(hot: ViteHotContext, fingerprints: readonly string[]): void {
-  const present = attachments.get().some((attachment) => attachment.id === ATTACHMENT_ID);
-  const chosen = [...new Set([...(present ? hunted : []), ...fingerprints])];
-  hunted = chosen;
+  const present = attachments.get().find((attachment) => attachment.id === ATTACHMENT_ID);
+  const chosen = [...new Set([...(present?.fingerprints ?? []), ...fingerprints])];
   const groups = getCapture().snapshot().groups;
   const only = chosen.length === 1 ? groups.find((g) => g.fingerprint === chosen[0]) : undefined;
   addAttachment({
     id: ATTACHMENT_ID,
     kind: "errors",
     label: only === undefined ? `${chosen.length} errors` : oneLine(only.message, 60),
+    fingerprints: chosen,
     collect: () => collect(hot, chosen),
     sent(id) {
       getCapture().markSent(chosen);

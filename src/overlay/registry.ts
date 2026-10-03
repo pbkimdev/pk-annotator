@@ -1,6 +1,7 @@
 import type { ComponentType } from "react";
 
 import type { AttachmentKind } from "../shared/schema.ts";
+import type { RequestEntry } from "../shared/timeline.ts";
 
 // Extension points for later lanes. This module is part of the launcher chunk, so it
 // holds plain data and listeners only; components are rendered by the UI chunk.
@@ -41,6 +42,12 @@ export type ComposerAttachment = {
   collect(): Promise<CollectedAttachment>;
   /** Runs after the dev server has stored the annotation. */
   sent?(id: string): void;
+  // A saved mark keeps these with its frozen attachment, so attaching more while editing
+  // that mark merges with its own choice rather than another mark's.
+  /** The Network panel's requests by seq, as they were when attached. */
+  requests?: ReadonlyMap<number, RequestEntry>;
+  /** The error groups Hunt attached. */
+  fingerprints?: readonly string[];
 };
 
 type Listener = () => void;
