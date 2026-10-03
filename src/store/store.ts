@@ -321,10 +321,11 @@ export async function createClaim(
 }
 
 /**
- * Replaces `orphan` with `claim`. One caller at a time holds the takeover lock
- * for this orphan and removes claim.json only while it still is the orphan, so
- * a newer claim is never removed. The claim link in createClaim then decides
- * between the callers, including those that found the lock taken.
+ * Replaces `orphan` with `claim` while the annotation is still pending. One
+ * caller at a time holds the takeover lock for this orphan, and it removes
+ * claim.json only after rereading state.json and claim.json, so a newer claim
+ * or an acknowledged annotation's claim is never removed. A caller that finds
+ * the lock taken loses.
  */
 export async function replaceClaim(
   store: string,
@@ -339,14 +340,31 @@ export async function replaceClaim(
     await writeExclusive(lock, "");
   } catch (thrown) {
     if (!isErrno(thrown, "EEXIST")) throw thrown;
-    return createClaim(store, id, claim);
+    return { won: false, claim: (await readClaim(store, id)) ?? orphan };
   }
   try {
+    const state = await readJson(store, files.state, State);
     const current = await readClaim(store, id);
-    if (current?.by === orphan.by && current.at === orphan.at) await unlink(files.claim);
+    if (state.status !== "pending" || current?.by !== orphan.by || current.at !== orphan.at) {
+      return { won: false, claim: current ?? orphan };
+    }
+    await unlink(files.claim);
     return await createClaim(store, id, claim);
   } finally {
     await unlink(lock);
+  }
+}
+
+/** Puts `claim` back over the caller's own claim with one rename, so claim.json never goes missing. */
+export async function restoreClaim(store: string, id: string, claim: Claim): Promise<void> {
+  const files = await requireAnnotation(store, id);
+  const temporary = temporaryName(files.claim);
+  try {
+    await writeExclusive(temporary, `${JSON.stringify(claim)}\n`);
+    await rename(temporary, files.claim);
+  } catch (thrown) {
+    await rm(temporary, { force: true });
+    throw thrown;
   }
 }
 

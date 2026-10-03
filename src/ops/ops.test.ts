@@ -6,7 +6,15 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { AnnotationDraft } from "../shared/schema.ts";
-import { PkaError, createClaim, createStore, listIds, removeClaim } from "../store/store.ts";
+import {
+  PkaError,
+  createClaim,
+  createStore,
+  listIds,
+  removeClaim,
+  replaceClaim,
+  writeJsonAtomic,
+} from "../store/store.ts";
 import {
   attach,
   create,
@@ -200,7 +208,7 @@ describe("claims", () => {
     expect(won).toHaveLength(1);
     const winner = won[0]?.value.claimedBy;
     expect(results.find((result) => result.status === "rejected")?.reason).toMatchObject({
-      message: expect.stringContaining(`${id} was claimed by ${winner}`),
+      message: expect.stringContaining(`${id} was claimed by`),
     });
     expect((await loadAnnotation(store, id)).claim?.by).toBe(winner);
     expect((await readdir(path.join(store, id))).filter((name) => name.includes("claim"))).toEqual([
@@ -212,6 +220,28 @@ describe("claims", () => {
     await expect(setStatus(store, { id, status: "acknowledged" }, "agent-d")).rejects.toThrow(
       `${id} was claimed by agent-a`,
     );
+  });
+
+  it("keep an acknowledge that a stalled claimant writes after another session found its claim orphaned", async () => {
+    const { id } = await create(store, DRAFT);
+    const orphan = { by: "agent-a", at: new Date(Date.now() - 120_000).toISOString() };
+    await createClaim(store, id, orphan);
+    const { state } = await loadAnnotation(store, id);
+    await writeJsonAtomic(store, path.join(store, id, "state.json"), {
+      status: "acknowledged",
+      history: [...state.history, { status: "acknowledged", at: orphan.at, by: "agent-a" }],
+    });
+
+    const late = { by: "agent-b", at: new Date().toISOString() };
+    expect(await replaceClaim(store, id, orphan, late)).toEqual({ won: false, claim: orphan });
+    expect((await loadAnnotation(store, id)).claim).toEqual(orphan);
+
+    await removeClaim(store, id);
+    await expect(setStatus(store, { id, status: "acknowledged" }, "agent-b")).rejects.toThrow(
+      `Annotation ${id} is acknowledged`,
+    );
+    expect((await loadAnnotation(store, id)).claim).toBeUndefined();
+    await setStatus(store, { id, status: "resolved" }, "agent-a");
   });
 });
 

@@ -35,6 +35,7 @@ import {
   removeClaim,
   replaceClaim,
   requireAnnotation,
+  restoreClaim,
   touchAnnotation,
   writeAnnotationDir,
   writeJsonAtomic,
@@ -298,7 +299,7 @@ export async function setStatus(
   by: string,
 ): Promise<SetStatusResult> {
   const files = await requireAnnotation(store, input.id);
-  const state = await readJson(store, files.state, State);
+  let state = await readJson(store, files.state, State);
   const at = new Date().toISOString();
   let claimedBy: string | undefined;
   if (isClosed(state.status)) {
@@ -309,11 +310,27 @@ export async function setStatus(
   }
   if (input.status === "acknowledged") {
     let claim = await createClaim(store, input.id, { by, at });
+    let replaced: Claim | undefined;
     if (!claim.won && claim.claim.by !== by && isOrphaned(state, claim.claim, Date.parse(at))) {
-      claim = await replaceClaim(store, input.id, claim.claim, { by, at });
+      replaced = claim.claim;
+      claim = await replaceClaim(store, input.id, replaced, { by, at });
     }
     claimedBy = claim.claim.by;
-    if (!claim.won) {
+    if (claim.won) {
+      // A claimant whose claim was replaced, or removed during a replacement, may have
+      // written its acknowledge since the first read.
+      state = await readJson(store, files.state, State);
+      if (state.status !== "pending") {
+        if (replaced === undefined) {
+          await removeClaim(store, input.id);
+          throw new PkaError(
+            `Annotation ${input.id} is ${state.status}. Pick another pending annotation.`,
+          );
+        }
+        await restoreClaim(store, input.id, replaced);
+        throw claimedError(input.id, replaced);
+      }
+    } else {
       if (claim.claim.by !== by) throw claimedError(input.id, claim.claim);
       // Same claimant: finish an acknowledge whose state write did not happen.
       if (state.status !== "pending") {
