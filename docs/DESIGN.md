@@ -84,14 +84,14 @@ The consumer passes `import.meta.hot` because a pre-bundled dependency has no HM
     <HoverBox> component name + file:line
     <SelectionBox n> numbered tab outside the element's box, so it never covers the element
     <MarqueeRect> | <LassoPolygon>
-  <MarkLayer>  cropped screenshot, recording region, rectangle, circle, freehand
+  <MarkLayer>  screenshot area and crop, recording area, rectangle, circle, freehand; drawings kept on the page
   <Panel>  one open at a time, beside the hub
     <RecordPanel> | <NetworkPanel> | <ConsolePanel> | <PerfPanel>
     <Composer>  lazily loaded Tiptap block editor
       <ElementChips>     one per selected element, removable; details open beside the panel
       <AttachmentChips>  recording, error groups, requests, perf snapshot
-      <PromptEditor> + Copy (Markdown) / Save / Send
-    <Composer batch> saved marks, editing, global comment, Send all
+      <PromptEditor> + Dictate / Copy (Markdown) / Save / Send
+    <Composer batch> Send: global comment with a badge per saved mark, Send
     <Thread>  History: agent replies and status for annotations sent from this tab
   <RadialMenu>  React, loaded on first open; rings of named menu items around the hub
     Pick ▸ · Capture ▸ · Annotate ▸ · Debug ▸ · Send · Settings ▸
@@ -101,7 +101,11 @@ The hub sits 20 px from its corner. Clicking it opens the radial menu; the hub's
 
 The menu follows the ARIA menu pattern. Enter or Space on the hub opens it with focus on the first item; Up and Down move within a ring, Home and End jump to its ends, Right opens a group's ring and Left or Escape returns to the group, Enter or Space on a tool group runs its remembered tool and on Debug or Settings opens the ring, and Escape on the first ring closes the menu and returns focus to the hub. Tab leaves the menu and closes it. Toggles such as pick modes, drawing tools, and panels are checkbox items. The closed menu and each unopened group's menu are `aria-hidden`, so a screen reader reaches only the rings on screen and counts only their items. Arrow keys on the focused hub move it to another corner. Escape and Enter inside any menu, including a panel's, never reach picking.
 
-Picking or capturing opens the prompt editor immediately. Enter creates a block; Ctrl/Cmd+Enter sends. The editor supports headings, lists, quotes, code blocks, and inline formatting. A mark can be sent immediately or saved in this tab. Saved marks retain their prompts, elements, and capture snapshots until they are sent; reload or Exit discards unsent marks. The menu's Send entry opens the composer, which edits these marks and an optional global comment. Send all creates one annotation with numbered mark sections and one deduplicated element list. Capture paths are unique per attachment, so multiple recordings cannot overwrite each other.
+Picking or capturing opens the prompt editor immediately. Enter creates a block; Ctrl/Cmd+Enter sends. The editor has no formatting toolbar; Markdown input rules and keyboard shortcuts create headings, lists, quotes, code blocks, and inline formatting. A mark can be sent immediately or saved in this tab. Saved marks retain their prompts, elements, and capture snapshots until they are sent; reload or Exit discards unsent marks. The Send panel holds the optional global comment, in which each saved mark is an inline badge (#1, #2, …, numbered in save order). A badge can be dragged between words and blocks; clicking it edits its mark, × deletes the mark, and text editing never deletes a badge. A mark without a badge, such as one saved while the panel was closed, gets one at the end when the panel opens. The badge is stored in the Markdown as `{{mark:<id>}}`. Send creates one annotation from the global text with each badge replaced by its mark's numbered section and one deduplicated element list. Capture paths are unique per attachment, so multiple recordings cannot overwrite each other.
+
+Screenshot starts an area gesture: a drag selects an area, and a click without a drag or Enter takes the whole viewport. The capture then opens a crop dialog with the full viewport image and a crop box at the chosen area, with handles on its corners and edges; Enter or ✓ keeps the box, an unchanged full box is a full screenshot, and Escape discards the capture. Record's panel starts a recording of the full viewport, or of an area dragged the same way (a click or Enter records the full viewport). Rectangle, Circle, and Freehand drawings stay on the page in document coordinates, so they scroll with the content and show only on the route they were drawn on, until their mark is deleted or sent. Finishing a drawing opens the prompt editor; the drawing's attachment is a viewport screenshot with the stroke flattened in. snapdom's `toCanvas` leaves `scale(devicePixelRatio)` on the canvas context, so the flattening sets its transform absolutely; a relative `scale()` placed the stroke at devicePixelRatio² times its points. The image scale is the canvas width over the root's `clientWidth`, which is the width snapdom clips to.
+
+The Dictate button in both editors uses the Web Speech API (`SpeechRecognition` or `webkitSpeechRecognition`) in the overlay language (en-US or ko-KR). Interim results show at the cursor as a decoration that is not part of the document, and each final result is inserted at the cursor. The button is absent when the browser has neither constructor. Chromium sends the audio to a speech service, so dictation needs the network and the browser's speech backend.
 
 Pick groups Select, Box, and Lasso. Capture groups Screenshot, which starts the screenshot gesture, and Record, which opens the record panel. Annotate groups Freehand, Rectangle, and Circle. Debug groups Console, Network, and Performance. Settings groups History, English/Korean language, and Exit. The first three times Select is activated in a tab session, counted in `sessionStorage`, a tip reading "⇧ Multi-select" follows the cursor from its first move, fades out with a CSS animation after 2.5 s, and unmounts. A group is marked while one of its tools or panels is active, and so are the active item and Send while its panel is open. The mark is the `--pka-pick` color and tint, never `--accent` alone, because a consumer's selected surface can sit within 1.2:1 of the menu. For the same reason, hover, keyboard focus, and an open group draw a 1.5 px inset edge mixed 55% from `--popover-foreground` into the menu surface, which keeps at least 3:1 against it; the `--accent` fill and keyboard focus's `--ring` outline remain as consumer-themed cues on top. Exit unmounts the overlay and stops capture. Language is stored on the origin; captured content and prompts retain their original language.
 
@@ -139,6 +143,7 @@ Nothing runs that you are not using, and production carries zero bytes.
 | Performance | No observers beyond the Network one. Opening the Perf panel starts PerformanceObserver with `buffered: true`, which still returns LCP, CLS, and earlier long animation frames | `react-scan/lite` runs only while the Perf panel is open |
 | Recording | Off | Keyframes only at actions, navigations, and errors (one per error group). GIF/video are opt-in; frame callbacks run only during recording. GIF encoding loads on demand, with at most 120 frames, a 480 px longest edge and 32 MB. WebM is capped at 256 MB and a 1920 px longest edge |
 | Saved marks | At most 50 marks and 256 MB of saved captures; no timers | Each Save freezes attachment data. A current mark holds at most 50 pasted/drawn image captures |
+| Drawings | No listeners while no drawing is kept | One passive `scroll` listener moves the kept drawings; route changes come from the capture's own navigation notifications. Dictation holds one recognition session only while its button is on |
 | Automation | Nothing mounts when `navigator.webdriver` is true (Playwright, e2e runs) | n/a |
 | Vite plugin | One `fs.watch` on the store root plus one per open annotation's directory; source transform runs only under `serve`. Under Vitest (`process.env.VITEST`) `annotator()` returns no plugins | Writes on events only |
 | pka-mcp | Not running until a client spawns it. Between calls it holds no timers or watchers. It exits on stdin EOF | `wait_for_annotation` holds one inotify watcher for its bounded duration, then closes it |
@@ -254,7 +259,7 @@ after the agent resolves and HMR reloads
 
 ## Recording
 
-A recording defaults to an event timeline with keyframes. Independent GIF and Video toggles add either or both formats from one tab-sharing request. The chosen rectangular viewport region applies to keyframes and both media formats. Agents use named actions far better than video: Jam had to add frame-extraction tools before agents could use its recordings.
+A recording defaults to an event timeline with keyframes. Independent GIF and Video toggles add either or both formats from one tab-sharing request. The area is chosen when the recording starts: Full records the viewport, and Area records a dragged rectangular region, which applies to keyframes and both media formats. Agents use named actions far better than video: Jam had to add frame-extraction tools before agents could use its recordings.
 
 ```text
 capture/attachments/<n>/capture/

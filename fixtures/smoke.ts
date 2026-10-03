@@ -8,10 +8,15 @@ import { promisify } from "node:util";
 import { chromium, type Browser } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 
+import { z } from "zod";
+
 import { GetResult, ListResult } from "../src/ops/ops.ts";
 import { NetworkLine, RecordingManifest } from "../src/shared/recording.ts";
 
 const exec = promisify(execFile);
+const ImageMetadata = z.object({
+  region: z.strictObject({ x: z.number(), y: z.number(), w: z.number(), h: z.number() }).nullable(),
+});
 const repo = path.resolve(import.meta.dirname, "..");
 
 test(
@@ -122,6 +127,10 @@ test(
     await page.getByTestId("pka-record-stop").click();
     const prompt = "Fixture smoke recording";
     await page.getByTestId("pka-prompt").fill(prompt);
+    const speech = await page.evaluate(
+      () => "SpeechRecognition" in window || "webkitSpeechRecognition" in window,
+    );
+    assert.equal(await page.getByTestId("pka-dictate").count(), speech ? 1 : 0);
     await page.getByTestId("pka-send").click();
     await page.getByTestId("pka-thread-item").filter({ hasText: prompt }).waitFor();
 
@@ -195,7 +204,6 @@ test(
     await page.getByTestId("pka-select-tip").filter({ hasText: "⇧ Multi-select" }).waitFor();
     await page.mouse.click(fetchBox.x + fetchBox.width / 2, fetchBox.y + fetchBox.height / 2);
     await page.getByTestId("pka-prompt").fill("Change this button");
-    await page.getByRole("button", { name: "Bold", exact: true }).click();
     await page.getByTestId("pka-save").click();
     await page.getByTestId("pka-saved-mark").waitFor();
     await page.getByRole("button", { name: "Edit mark 1", exact: true }).click();
@@ -203,13 +211,20 @@ test(
     await page.getByTestId("pka-prompt").fill("Edited button mark");
     await page.getByTestId("pka-save").click();
 
-    // Lane capture replaces this drag with its area/full screenshot and crop flow.
+    // A drag takes an area and Enter keeps it; a click takes the viewport and ✓ keeps it.
     await choose("capture", "Screenshot", "menuitemcheckbox");
     await page.mouse.move(20, 20);
     await page.mouse.down();
     await page.mouse.move(260, 140, { steps: 5 });
     await page.mouse.up();
+    await page.getByTestId("pka-crop").waitFor();
+    await page.keyboard.press("Enter");
     await page.getByTestId("pka-prompt").fill("Cropped screenshot mark");
+    await page.getByTestId("pka-save").click();
+    await runRemembered("capture", "Screenshot");
+    await page.mouse.click(400, 300);
+    await page.getByTestId("pka-crop-confirm").click();
+    await page.getByTestId("pka-prompt").fill("Full screenshot mark");
     await page.getByTestId("pka-save").click();
 
     await choose("annotate", "Circle", "menuitemcheckbox");
@@ -219,6 +234,13 @@ test(
     await page.mouse.up();
     await page.getByTestId("pka-prompt").fill("Circle mark");
     await page.getByTestId("pka-save").click();
+    // A saved drawing stays on its route and returns with it.
+    const drawing = page.getByTestId("pka-drawing");
+    assert.equal(await drawing.count(), 1);
+    await page.getByTestId("nav-home").click();
+    await drawing.waitFor({ state: "detached" });
+    await page.getByTestId("nav-lab").click();
+    await drawing.waitFor({ state: "attached" });
 
     for (const attempt of [1, 2]) {
       if (attempt === 1) await choose("capture", "Record", "menuitemcheckbox");
@@ -226,13 +248,13 @@ test(
       if (attempt === 1) {
         await page.getByTestId("pka-record-gif").check();
         await page.getByTestId("pka-record-video").check();
-        await page.getByRole("button", { name: "Choose area", exact: true }).click();
-        await page.mouse.move(20, 20);
-        await page.mouse.down();
-        await page.mouse.move(260, 140, { steps: 5 });
-        await page.mouse.up();
       }
-      await page.getByTestId("pka-record-start").click();
+      // The area is chosen as the recording starts.
+      await page.getByTestId("pka-record-start-area").click();
+      await page.mouse.move(20, 20);
+      await page.mouse.down();
+      await page.mouse.move(260, 140, { steps: 5 });
+      await page.mouse.up();
       try {
         await page.getByText("Tab capture on, overlay excluded.", { exact: false }).waitFor();
       } catch (cause) {
@@ -247,12 +269,15 @@ test(
       await page.getByTestId("pka-prompt").fill(`Saved recording ${attempt}`);
       await page.getByTestId("pka-save").click();
     }
-    assert.equal(await page.getByTestId("pka-saved-mark").count(), 5);
+    assert.equal(await page.getByTestId("pka-saved-mark").count(), 6);
     assert.equal(await page.evaluate(() => sessionStorage.getItem("pka:tool:capture")), "record");
     const global = "Fix these marks together";
-    await page.getByTestId("pka-prompt").fill(global);
+    await page.getByTestId("pka-prompt").focus();
+    await page.keyboard.press("Control+Home");
+    await page.keyboard.type(`${global} `);
     await page.getByTestId("pka-send").click();
     await page.getByTestId("pka-thread-item").filter({ hasText: global }).waitFor();
+    await drawing.waitFor({ state: "detached" });
     const batchedList = ListResult.parse(
       JSON.parse(
         (
@@ -277,8 +302,20 @@ test(
           .stdout,
       ),
     ).annotation;
-    assert.match(batch.prompt, /Fix these marks together/);
-    assert.match(batch.prompt, /Edited button mark/);
+    assert.match(
+      batch.prompt,
+      /^Fix these marks together\n\n## Mark 1 \(elements 1\)\n\nEdited button mark/,
+    );
+    assert.doesNotMatch(batch.prompt, /\{\{mark:/);
+    const regions = await Promise.all(
+      batch.attachments
+        .filter((attachment) => attachment.path.includes("/capture/images/"))
+        .map(async (attachment) => {
+          const metadata = path.join(batch.dir, attachment.path.replace(/\.webp$/, ".json"));
+          return ImageMetadata.parse(JSON.parse(await readFile(metadata, "utf8"))).region;
+        }),
+    );
+    assert.deepEqual(regions, [{ x: 20, y: 20, w: 240, h: 120 }, null, null]);
     assert.equal(batch.elements.length, 1);
     const recordings = batch.attachments.filter((attachment) => attachment.kind === "recording");
     assert.equal(recordings.length, 2);
@@ -390,9 +427,104 @@ test(
     await page.getByRole("menuitem", { name: "언어: 한국어", exact: true }).click();
     await page.getByRole("menuitem", { name: "Exit annotator", exact: true }).click();
     await page.locator("pk-annotator").waitFor({ state: "detached" });
+
+    // At devicePixelRatio 1.5 the flattened stroke lands at its points × 1.5 in the image.
+    const scaledContext = await browser.newContext({
+      deviceScaleFactor: 1.5,
+      viewport: { width: 1000, height: 700 },
+    });
+    await scaledContext.addInitScript(() => {
+      Object.defineProperty(navigator, "webdriver", { get: () => false });
+      Reflect.deleteProperty(window, "SpeechRecognition");
+      Reflect.deleteProperty(window, "webkitSpeechRecognition");
+    });
+    const scaled = await scaledContext.newPage();
+    scaled.setDefaultTimeout(30_000);
+    scaled.on("pageerror", (error) => errors.push(error));
+    await scaled.goto(new URL("/lab", url).href);
+    await scaled.locator("html[data-fixture-ready]").waitFor({ state: "attached" });
+    await scaled.locator("pk-annotator .pka-launcher").click();
+    await scaled.locator('.pka-node[data-group="annotate"]').hover();
+    await scaled.getByRole("menuitemcheckbox", { name: "Rectangle", exact: true }).click();
+    await scaled.mouse.move(600, 300);
+    await scaled.mouse.down();
+    await scaled.mouse.move(800, 450, { steps: 5 });
+    await scaled.mouse.up();
+    // Without the Web Speech API the composer has no dictation button.
+    await scaled.getByTestId("pka-prompt").waitFor();
+    assert.equal(await scaled.getByTestId("pka-dictate").count(), 0);
+    const stroked = "Scaled stroke";
+    await scaled.getByTestId("pka-prompt").fill(stroked);
+    await scaled.getByTestId("pka-send").click();
+    await scaled.getByTestId("pka-thread-item").filter({ hasText: stroked }).waitFor();
+    const strokedItem = ListResult.parse(
+      JSON.parse(
+        (
+          await exec(process.execPath, [
+            cli,
+            "--root",
+            workspace,
+            "--json",
+            "list",
+            "--status",
+            "all",
+          ])
+        ).stdout,
+      ),
+    ).items.find((candidate) => candidate.prompt === stroked);
+    assert.ok(strokedItem);
+    const strokedAnnotation = GetResult.parse(
+      JSON.parse(
+        (await exec(process.execPath, [cli, "--root", workspace, "--json", "get", strokedItem.id]))
+          .stdout,
+      ),
+    ).annotation;
+    const drawn = strokedAnnotation.attachments.find((attachment) =>
+      attachment.path.includes("/capture/images/"),
+    );
+    assert.ok(drawn);
+    const image = await readFile(path.join(strokedAnnotation.dir, drawn.path));
+    const samples = await scaled.evaluate(
+      async ({ data, points }) => {
+        const bytes = Uint8Array.from(atob(data), (character) => character.charCodeAt(0));
+        const bitmap = await createImageBitmap(new Blob([bytes], { type: "image/webp" }));
+        const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+        const context = canvas.getContext("2d");
+        if (context === null) throw new Error("No 2D context to read the stroke image");
+        context.drawImage(bitmap, 0, 0);
+        const ink = new OffscreenCanvas(1, 1).getContext("2d");
+        if (ink === null) throw new Error("No 2D context to resolve the stroke color");
+        ink.fillStyle = getComputedStyle(document.querySelector("pk-annotator")!)
+          .getPropertyValue("--pka-pick")
+          .trim();
+        ink.fillRect(0, 0, 1, 1);
+        return {
+          width: bitmap.width,
+          ink: Array.from(ink.getImageData(0, 0, 1, 1).data.slice(0, 3)),
+          at: points.map(({ x, y }) =>
+            Array.from(context.getImageData(x, y, 1, 1).data.slice(0, 3)),
+          ),
+        };
+      },
+      {
+        data: image.toString("base64"),
+        // The left edge at mid-height, at dpr × points and at the old dpr² × points.
+        points: [
+          { x: 900, y: 562 },
+          { x: 1350, y: 844 },
+        ],
+      },
+    );
+    const near = (pixel: number[] | undefined) =>
+      pixel !== undefined &&
+      pixel.every((channel, index) => Math.abs(channel - (samples.ink[index] ?? -1000)) <= 40);
+    assert.equal(samples.width, 1500);
+    assert.ok(near(samples.at[0]), `Stroke missing at 1.5×: ${JSON.stringify(samples)}`);
+    assert.ok(!near(samples.at[1]), `Stroke at 2.25×: ${JSON.stringify(samples)}`);
+    await scaledContext.close();
     assert.deepEqual(errors, []);
     t.diagnostic(
-      "Direct send, keyboard menu, remembered tools, the Select tip, saved marks, editing, screenshot and drawn captures, two region GIF/WebM recordings, batch send, the practice page, language, Exit and CLI artifacts passed.",
+      "Direct send, keyboard menu, remembered tools, the Select tip, saved marks, editing, area/full screenshots with crop, persisted drawings, two region GIF/WebM recordings chosen at start, batch send with badges, the practice page, language, Exit, the 1.5× stroke position and CLI artifacts passed.",
     );
   },
 );

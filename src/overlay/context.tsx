@@ -32,7 +32,6 @@ export type UiState = {
   busy: boolean;
   recording: boolean;
   gesture: "screenshot" | "record-area" | "rectangle" | "ellipse" | "freehand" | null;
-  recordRegion: Box | null;
   language: "en" | "ko";
   picking: PickMode | null;
   /** The Shift multi-select tip shows beside the cursor for the first few Select activations. */

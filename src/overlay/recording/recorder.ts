@@ -7,7 +7,7 @@ import type { RequestEntry, TimelineEntry } from "../../shared/timeline.ts";
 import { getCapture } from "../capture.ts";
 import { HOST_TAG } from "../launcher.ts";
 import { addAttachment } from "../registry.ts";
-import { captureCanvas, currentViewport } from "../send.ts";
+import { captureCanvas, currentViewport, pageScale } from "../send.ts";
 import { createStore } from "../store.ts";
 import { buildRecording, type RecordedFrame } from "./files.ts";
 
@@ -131,7 +131,7 @@ async function keyframe(region: Box | null): Promise<Blob> {
   const page = await captureCanvas(result);
   if (region === null) return toWebp(page);
   const canvas = document.createElement("canvas");
-  const scale = page.width / window.innerWidth;
+  const scale = pageScale(page);
   canvas.width = Math.max(1, Math.round(region.w * scale));
   canvas.height = Math.max(1, Math.round(region.h * scale));
   const context = canvas.getContext("2d");

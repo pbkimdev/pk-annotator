@@ -110,7 +110,6 @@ export function open(context: UiContext): UiController {
     busy: false,
     recording: false,
     gesture: null,
-    recordRegion: null,
     language: localStorage.getItem("pka:language") === "ko" ? "ko" : "en",
     picking: null,
     selectTip: false,
