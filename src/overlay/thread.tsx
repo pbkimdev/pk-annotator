@@ -121,16 +121,8 @@ function ThreadItem({ record }: { record: SentRecord }) {
 }
 
 export function Thread() {
-  const t = useText();
   const { thread } = useOverlay();
   const sent = useStore(thread, (state) => state.sent);
-  if (sent.length === 0) {
-    return (
-      <p className="px-3 py-6 text-center text-sm text-muted-foreground">
-        {t("Nothing sent from this tab yet.")}
-      </p>
-    );
-  }
   return (
     <ol className="divide-y" data-testid="pka-thread">
       {sent.map((record) => (

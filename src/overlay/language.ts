@@ -85,7 +85,6 @@ const korean = new Map<string, string>(
     You: "나",
     Reply: "답글",
     "Send reply": "답글 보내기",
-    "Nothing sent from this tab yet.": "이 탭에서 보낸 주석이 없습니다.",
     pending: "대기",
     acknowledged: "확인됨",
     resolved: "해결됨",
