@@ -4,6 +4,7 @@
     "dist/**",
     "node_modules/**",
     "_interim/**",
+    ".claude/**",
     "tools/oxlint/anti-slop/**",
     "pnpm-lock.yaml",
     "AGENTS.md",
