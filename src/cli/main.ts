@@ -21,6 +21,7 @@ import {
   prune,
   reply,
   setStatus,
+  validateAttachTarget,
   wait,
   type ErrorsResult,
   type PruneResult,
@@ -340,8 +341,11 @@ async function labCommand(values: Values): Promise<number> {
   } else {
     throw new UsageError(`--flow ${input.flow} is neither a timeline file nor an annotation id`);
   }
-  // Resolve the store before the runs, so a wrong --attach fails in seconds, not minutes.
   const store = input.attach === undefined ? undefined : await openStore(values);
+  const claimant = cliClaimant();
+  if (store !== undefined && input.attach !== undefined) {
+    await validateAttachTarget(store, input.attach, claimant);
+  }
   const stamp = new Date()
     .toISOString()
     .replace(/[-:]/g, "")
@@ -355,10 +359,12 @@ async function labCommand(values: Values): Promise<number> {
     network: input.network,
     budgets: input.budget,
     out: input.out ?? path.join(tmpdir(), "pka-lab", stamp),
-    onRun: (run, failure) =>
+    onRun: (run, failure) => {
+      const phase = run === "trace" ? "diagnostic trace" : `run ${run}/${input.runs}`;
       process.stderr.write(
-        `pka lab: run ${run}/${input.runs} ${failure === undefined ? "done" : `failed: ${failure.message}`}\n`,
-      ),
+        `pka lab: ${phase} ${failure === undefined ? "done" : `failed: ${failure.message}`}\n`,
+      );
+    },
   });
   let attached: { id: string; path: string } | undefined;
   if (store !== undefined && input.attach !== undefined) {
@@ -368,7 +374,13 @@ async function labCommand(values: Values): Promise<number> {
       summary: summarizeVerdict(verdict),
       data: Buffer.from(`${JSON.stringify(verdict, null, 2)}\n`),
     };
-    await attach(store, input.attach, [attachment], cliClaimant());
+    try {
+      await attach(store, input.attach, [attachment], claimant);
+    } catch (cause) {
+      const message = `Lab verdict written to ${file}; attachment failed`;
+      if (!(cause instanceof PkaError)) throw new Error(message, { cause });
+      throw new PkaError(`${message}: ${cause.message}`, { cause });
+    }
     attached = { id: input.attach, path: attachment.path };
   }
   if (values.json) line(JSON.stringify({ file, attached, verdict }));
