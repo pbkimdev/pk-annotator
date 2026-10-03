@@ -3,7 +3,7 @@ import { instrument, type FiberRoot } from "bippy";
 import { describe, expect, it } from "vitest";
 
 import type { ActionEntry, RequestEntry } from "../../shared/timeline.ts";
-import { addCommit, slowRequests, type HotSpot } from "./join.ts";
+import { addCommit, frameCause, slowRequests, type HotSpot } from "./join.ts";
 
 // React registers with the DevTools hook when it loads, so the hook comes first.
 const commits: FiberRoot[] = [];
@@ -63,6 +63,55 @@ describe("slowRequests", () => {
       [4, undefined, undefined],
       [2, 'button[data-testid="first"]', "onClick"],
     ]);
+  });
+
+  it("measures from the end of merged typing on the monotonic clock, and on Date for legacy pairs", () => {
+    const typing: ActionEntry = {
+      ...action(1, "2026-10-02T10:00:00.000Z", "search", { performanceMs: 1000, durationMs: 2500 }),
+      type: "input",
+    };
+    // The Date clock stepped back 5 s between this action and its request.
+    const stepped = action(3, "2026-10-02T10:00:20.000Z", "save", { performanceMs: 9000 });
+    const legacy = action(5, "2026-10-02T10:00:30.000Z", "legacy", { performanceMs: 20_000 });
+    const joined = slowRequests(
+      [
+        // 2.8 s after typing began, 300 ms after its last keystroke.
+        request(2, "2026-10-02T10:00:02.800Z", 300, 3800),
+        request(4, "2026-10-02T10:00:15.200Z", 200, 9200),
+        // Without its own performanceMs the pair falls back to Date: 2 s apart.
+        request(6, "2026-10-02T10:00:32.000Z", 100),
+      ],
+      [typing, stepped, legacy],
+    );
+    expect(joined.map((entry) => [entry.seq, entry.cause?.seq, entry.cause?.afterMs])).toEqual([
+      [2, 1, 300],
+      [4, 3, 200],
+      [6, undefined, undefined],
+    ]);
+  });
+});
+
+describe("frameCause", () => {
+  const timeOrigin = Date.parse("2026-10-02T10:00:00.000Z");
+
+  it("attributes a frame to typing that overlaps it and to an event delayed into it", () => {
+    const typing: ActionEntry = {
+      ...action(1, "2026-10-02T10:00:01.000Z", "search", { performanceMs: 1000, durationMs: 2000 }),
+      type: "input",
+    };
+    expect(frameCause(2900, 120, [typing], timeOrigin)?.seq).toBe(1);
+    // Created 15 ms before the frame that ran its handler.
+    const delayed = action(2, "2026-10-02T10:00:05.000Z", "save", { performanceMs: 4985 });
+    expect(frameCause(5000, 80, [typing, delayed], timeOrigin)?.seq).toBe(2);
+    // Created after the frame ended, so it ran in a later one.
+    const later = action(3, "2026-10-02T10:00:06.000Z", "next", { performanceMs: 6090 });
+    expect(frameCause(6000, 80, [later], timeOrigin)).toBeUndefined();
+  });
+
+  it("falls back to the Date timestamp, with clock slack, for legacy actions", () => {
+    const legacy = action(1, "2026-10-02T10:00:00.130Z", "legacy");
+    expect(frameCause(100, 20, [legacy], timeOrigin)?.afterMs).toBe(30);
+    expect(frameCause(200, 20, [legacy], timeOrigin)).toBeUndefined();
   });
 });
 

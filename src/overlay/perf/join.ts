@@ -11,8 +11,12 @@ import type {
 
 /** How long after an action a request still counts as caused by it. */
 export const CAUSE_WINDOW_MS = 1000;
-/** Slack between the Date clock of capture actions and the performance clock of frames. */
+/** Slack between the Date clock of legacy capture actions and the performance clock of frames. */
 const CLOCK_SLACK_MS = 20;
+/** An event's timestamp precedes the frame that runs its handler by its input delay. */
+const INPUT_DELAY_SLACK_MS = 20;
+/** Frame start and duration are rounded to whole milliseconds. */
+const ROUNDING_SLACK_MS = 1;
 export const MAX_REQUESTS = 8;
 const MAX_PROPS = 8;
 
@@ -23,7 +27,11 @@ export type Cause = {
   handler: string;
   target: string;
   source?: string;
-  /** Milliseconds from the action to the request or frame start. */
+  /**
+   * For a request, milliseconds from the action's last event (the end of a merged run of
+   * typing) to the request start, 0 when it started during the run. For a frame,
+   * milliseconds from the frame start to the action.
+   */
   afterMs: number;
 };
 
@@ -69,9 +77,21 @@ function isAction(entry: ActionEntry | NavigationEntry): entry is ActionEntry {
   return entry.kind === "action";
 }
 
+// Capture stamps new entries on the monotonic performance clock. Entries captured before
+// that carry only the Date timestamp, so a pair is compared on Date unless both have it.
+function requestDelay(action: ActionEntry, request: RequestEntry) {
+  const [actionStart, requestStart] =
+    action.performanceMs !== undefined && request.performanceMs !== undefined
+      ? [action.performanceMs, request.performanceMs]
+      : [Date.parse(action.at), Date.parse(request.at)];
+  const start = requestStart - actionStart;
+  return { start, end: start - (action.durationMs ?? 0) };
+}
+
 /**
  * The settled requests that took longest, each joined to the last action recorded before
- * it (by capture seq) when the request started within CAUSE_WINDOW_MS of that action.
+ * it (by capture seq) when the request started during that action or within
+ * CAUSE_WINDOW_MS of its last event.
  */
 export function slowRequests(
   requests: readonly RequestEntry[],
@@ -99,8 +119,10 @@ export function slowRequests(
       if (request.status !== undefined) slow.status = request.status;
       const action = actions.findLast((candidate) => candidate.seq < request.seq);
       if (action !== undefined) {
-        const afterMs = Date.parse(request.at) - Date.parse(action.at);
-        if (afterMs >= 0 && afterMs <= CAUSE_WINDOW_MS) slow.cause = causeOf(action, afterMs);
+        const delay = requestDelay(action, request);
+        if (delay.start >= 0 && delay.end <= CAUSE_WINDOW_MS) {
+          slow.cause = causeOf(action, Math.max(0, delay.end));
+        }
       }
       return slow;
     });
@@ -108,7 +130,7 @@ export function slowRequests(
 
 /**
  * The action whose event ran inside a frame, given the frame's start and duration on the
- * performance clock. Capture stamps actions with Date, so the comparison allows some slack.
+ * performance clock. A merged run of typing counts when any part of it falls in the frame.
  */
 export function frameCause(
   start: number,
@@ -116,12 +138,18 @@ export function frameCause(
   entries: readonly (ActionEntry | NavigationEntry)[],
   timeOrigin: number,
 ): Cause | undefined {
+  const startOf = (action: ActionEntry): number =>
+    action.performanceMs ?? Date.parse(action.at) - timeOrigin;
   const action = entries.filter(isAction).findLast((candidate) => {
-    const at = Date.parse(candidate.at) - timeOrigin;
-    return at >= start - CLOCK_SLACK_MS && at <= start + duration + CLOCK_SLACK_MS;
+    const monotonic = candidate.performanceMs !== undefined;
+    const actionStart = startOf(candidate);
+    const actionEnd = actionStart + (candidate.durationMs ?? 0);
+    const before = monotonic ? INPUT_DELAY_SLACK_MS : CLOCK_SLACK_MS;
+    const after = monotonic ? ROUNDING_SLACK_MS : CLOCK_SLACK_MS;
+    return actionEnd >= start - before && actionStart <= start + duration + after;
   });
   if (action === undefined) return undefined;
-  return causeOf(action, Math.max(0, Date.parse(action.at) - timeOrigin - start));
+  return causeOf(action, Math.max(0, startOf(action) - start));
 }
 
 export type FiberSite = { fileName: string; lineNumber: number; columnNumber: number };
