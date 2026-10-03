@@ -74,4 +74,6 @@ Forgejo `srv/pk-annotator` is the only writable source. GitHub `pbkimdev/pk-anno
 3. `.forgejo/workflows/publish-github.yml` fast-forwards GitHub `main` and pushes the tag, without force.
 4. On GitHub, `.github/workflows/publish.yml` checks that the tag matches the package version and runs `npm publish`. `prepublishOnly` runs `pnpm verify` first. npm authenticates the workflow through OIDC and records provenance, so no npm token is involved.
 
+If a tag push starts no GitHub run, or its run failed and the fix is in `publish.yml` itself, run the workflow from GitHub `main` with that tag: `gh workflow run publish.yml -R pbkimdev/pk-annotator -f tag=v<version>`. The run takes the workflow file from `main` but installs, verifies, and publishes the tagged tree, so any other fix needs a new version and tag.
+
 The Forgejo Actions secret `GH_PUBLISH_TOKEN` comes from Infisical `/platform/git/github` `GITHUB_PERSONAL_TOKEN`.
