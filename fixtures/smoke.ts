@@ -35,6 +35,11 @@ const ImageMetadata = z.object({
   region: z.strictObject({ x: z.number(), y: z.number(), w: z.number(), h: z.number() }).nullable(),
 });
 const repo = path.resolve(import.meta.dirname, "..");
+// Console errors the smoke causes on purpose; any other one fails the run. The 1.5×
+// context stubs a refused clipboard write.
+const EXPECTED_CONSOLE_ERRORS: readonly RegExp[] = [
+  /^\[pk-annotator\] copying the sent annotation failed NotAllowedError: Write permission denied\.$/,
+];
 
 /** A pka-mcp session that names itself claude-code themes the overlay until it exits. */
 /** Connects a claude-code pka-mcp session, runs `whileConnected`, and disconnects it. */
@@ -156,7 +161,18 @@ test(
     const page = await interactive.newPage();
     page.setDefaultTimeout(30_000);
     const errors: Error[] = [];
-    page.on("pageerror", (error) => errors.push(error));
+    const consoleErrors: string[] = [];
+    const watchErrors = (target: Page) => {
+      target.on("pageerror", (error) => errors.push(error));
+      target.on("console", (message) => {
+        if (message.type() !== "error") return;
+        const text = message.text();
+        if (!EXPECTED_CONSOLE_ERRORS.some((expected) => expected.test(text))) {
+          consoleErrors.push(text);
+        }
+      });
+    };
+    watchErrors(page);
     await page.goto(new URL("/lab", url).href);
     await page.locator("html[data-fixture-ready]").waitFor({ state: "attached" });
     assert.equal(await page.evaluate(() => navigator.webdriver), false);
@@ -586,7 +602,7 @@ test(
     });
     const scaled = await scaledContext.newPage();
     scaled.setDefaultTimeout(30_000);
-    scaled.on("pageerror", (error) => errors.push(error));
+    watchErrors(scaled);
     await scaled.goto(new URL("/lab", url).href);
     await scaled.locator("html[data-fixture-ready]").waitFor({ state: "attached" });
     await scaled.locator("pk-annotator .pka-launcher").click();
@@ -673,6 +689,7 @@ test(
     assert.ok(!near(samples.at[1]), `Stroke at 2.25×: ${JSON.stringify(samples)}`);
     await scaledContext.close();
     assert.deepEqual(errors, []);
+    assert.deepEqual(consoleErrors, []);
     t.diagnostic(
       "Direct send, keyboard menu, remembered tools, the Select tip, saved marks, editing, area/full screenshots with crop, persisted drawings, two region GIF/WebM recordings chosen at start, batch send with badges, the clipboard copy and pop-up without an agent, the hub count, the Claude agent theme, the practice page, language, session Exit, the 1.5× stroke position and CLI artifacts passed.",
     );
