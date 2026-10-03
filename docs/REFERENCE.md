@@ -29,6 +29,7 @@ The plugin runs only under `vite dev` and returns no plugins under Vitest, so te
 - Catch a failed import, as the README example does: a dev server can reload the page while the package is being reinstalled.
 - Nothing mounts when `navigator.webdriver` is true, so Playwright and e2e runs see a clean page.
 - Screenshots render through a `data:` SVG image, so a Content-Security-Policy must allow `img-src data: blob:`.
+- The overlay needs no Trusted Types policy. Under a `style-src` without `'unsafe-inline'`, snapdom reports refused inline styles during each capture; the images were unchanged on review-harness's policy.
 
 ## Theming
 
