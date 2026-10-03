@@ -2,8 +2,6 @@
 // (assets/regular/<name>.svg, MIT). claude.ai ships Phosphor (@phosphor-icons/react) in its
 // vendor-icons chunk, so the Claude theme draws its menu, panel, and editor icons from it.
 
-const arrowBendDownLeft =
-  '<path d="M232,56A104.11,104.11,0,0,1,128,160H51.31l34.35,34.34a8,8,0,0,1-11.32,11.32l-48-48a8,8,0,0,1,0-11.32l48-48a8,8,0,0,1,11.32,11.32L51.31,144H128a88.1,88.1,0,0,0,88-88,8,8,0,0,1,16,0Z"/>';
 const arrowUp =
   '<path d="M205.66,117.66a8,8,0,0,1-11.32,0L136,59.31V216a8,8,0,0,1-16,0V59.31L61.66,117.66a8,8,0,0,1-11.32-11.32l72-72a8,8,0,0,1,11.32,0l72,72A8,8,0,0,1,205.66,117.66Z"/>';
 const arrowsDownUp =
@@ -79,7 +77,6 @@ export const CLAUDE_ICONS = {
   copy: copy,
   send: arrowUp,
   dictate: microphone,
-  reply: arrowBendDownLeft,
   "kind:recording": videoCamera,
   "kind:video": videoCamera,
   "kind:errors": warning,

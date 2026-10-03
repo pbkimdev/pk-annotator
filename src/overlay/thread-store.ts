@@ -1,13 +1,7 @@
 import type { ViteHotContext } from "vite/types/hot.d.ts";
 import { z } from "zod";
 
-import {
-  CHANNEL,
-  ReplyMessage,
-  StateMessage,
-  SyncedMessage,
-  ThreadMessage,
-} from "../shared/channel.ts";
+import { CHANNEL, StateMessage, SyncedMessage, ThreadMessage } from "../shared/channel.ts";
 import { Id, Timestamp, type State, type ThreadEntry } from "../shared/schema.ts";
 import { listen, send } from "./channel-client.ts";
 import { agentReacted, setAgentWorking } from "./hub-state.ts";
@@ -28,14 +22,11 @@ export type ThreadState = {
   sent: readonly SentRecord[];
   states: ReadonlyMap<string, State>;
   entries: ReadonlyMap<string, readonly ThreadEntry[]>;
-  /** Human replies sent but not yet echoed back by the plugin. */
-  outgoing: ReadonlyMap<string, readonly string[]>;
   unread: boolean;
 };
 
 export type ThreadStore = Store<ThreadState> & {
   added(record: SentRecord): void;
-  reply(id: string, text: string): void;
   disconnect(): void;
 };
 
@@ -56,7 +47,6 @@ export function connectThread(hot: ViteHotContext): ThreadStore {
     sent: readSent(),
     states: new Map(),
     entries: new Map(),
-    outgoing: new Map(),
     unread: false,
   });
   const isOurs = (id: string) => store.get().sent.some((record) => record.id === id);
@@ -71,12 +61,9 @@ export function connectThread(hot: ViteHotContext): ThreadStore {
     }),
     listen(hot, CHANNEL.thread, ThreadMessage, ({ id, entry }) => {
       if (!isOurs(id)) return;
-      const { entries, outgoing, unread } = store.get();
-      const waiting = outgoing.get(id) ?? [];
-      const echoed = entry.from === "human" ? waiting.indexOf(entry.text) : -1;
+      const { entries, unread } = store.get();
       store.set({
         entries: new Map(entries).set(id, [...(entries.get(id) ?? []), entry]),
-        outgoing: echoed < 0 ? outgoing : new Map(outgoing).set(id, waiting.toSpliced(echoed, 1)),
         unread: unread || entry.from === "agent",
       });
       if (entry.from === "agent") agentReacted();
@@ -115,12 +102,6 @@ export function connectThread(hot: ViteHotContext): ThreadStore {
           history: [{ status: "pending", at: record.createdAt }],
         }),
       });
-    },
-    reply(id, text) {
-      const message = ReplyMessage.parse({ id, text });
-      const { outgoing } = store.get();
-      store.set({ outgoing: new Map(outgoing).set(id, [...(outgoing.get(id) ?? []), text]) });
-      send(hot, CHANNEL.reply, message);
     },
     disconnect() {
       for (const stop of stops) stop();
