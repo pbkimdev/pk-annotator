@@ -1,0 +1,6 @@
+# pk-annotator
+
+> Dev-only browser overlay for Vite and React apps. A person points at the running page and writes a request; a coding agent receives it with source locations, screenshots, console, network, recordings, and performance through the bundled pka-mcp stdio MCP server, and replies on the page. npm package: pk-annotator (MIT).
+
+- [Agent setup guide](https://pk-annotator.paulbkim.dev/agents.md): step-by-step instructions for a coding agent to install and connect pk-annotator in a project
+- [Installer](https://pk-annotator.paulbkim.dev/install.sh): shell script that adds the dev dependency and registers pka-mcp with Claude Code

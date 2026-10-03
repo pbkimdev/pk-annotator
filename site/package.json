@@ -1,0 +1,20 @@
+{
+  "name": "pk-annotator-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@fontsource/architects-daughter": "5.3.0",
+    "@fontsource/barlow": "5.3.0",
+    "@fontsource/barlow-condensed": "5.3.0",
+    "@fontsource/do-hyeon": "5.3.0",
+    "@fontsource/jetbrains-mono": "5.3.0",
+    "@fontsource/nanum-pen-script": "5.3.0",
+    "@types/node": "24.19.1",
+    "vite": "8.3.2"
+  }
+}

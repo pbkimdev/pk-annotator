@@ -40,11 +40,13 @@
     "lint": "oxlint .",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p fixtures/app",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p fixtures/app && tsc --noEmit -p site",
     "fixture": "pnpm build && pnpm --filter pk-annotator-fixture dev",
     "fixture:smoke": "pnpm build && node --test fixtures/smoke.ts",
     "verify": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm build",
-    "prepublishOnly": "pnpm verify"
+    "prepublishOnly": "pnpm verify",
+    "site": "pnpm --filter pk-annotator-site dev",
+    "site:build": "pnpm --filter pk-annotator-site build"
   },
   "dependencies": {
     "@jridgewell/trace-mapping": "0.3.31",

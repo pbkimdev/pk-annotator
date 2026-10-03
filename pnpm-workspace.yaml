@@ -1,3 +1,4 @@
 packages:
   - fixtures/app
+  - site
 minimumReleaseAge: 360
