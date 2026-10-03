@@ -8,7 +8,7 @@ This document owns the current package contract. Start with [DEVELOPING.md](DEVE
 
 1. **Capture is built in.** `core/` wraps fetch, XHR, console, and error events itself.
 2. **Own MCP server.** `pka-mcp` is a stdio server over a per-project file store in `_interim/annotations/`.
-3. **Tiptap edits prompts as blocks.** AI Elements supplies attachment chips alongside shadcn. The overlay keeps lucide icons; consumers map shadcn variables to their own tokens through a theme file.
+3. **Tiptap edits prompts as blocks.** Elements, captures, and saved marks are badges in the prompt text; shadcn supplies the remaining controls. The overlay keeps lucide icons; consumers map shadcn variables to their own tokens through a theme file.
 4. **Home: `~/srv/pk-annotator`**, Forgejo `srv/pk-annotator`, published to the Forgejo npm registry as **`@srv/pk-annotator`** (`https://git.paulbkim.dev/api/packages/srv/npm/`). The scope is required because pnpm routes only scoped packages to a second registry. Consumers set `@srv:registry` in `.npmrc` and list the package in `pnpm.minimumReleaseAgeExclude`. Worktrees go at `~/.worktrees/pk-annotator/<branch>`.
 5. **Replacement scope:** Lean, Mantra, the Claude Code user registration, and the Platform service. The historical migration plan is in [INTEGRATION-HISTORY.md](INTEGRATION-HISTORY.md#agentation-removal); current migration status belongs to each owning repository.
 6. **Tools only, no idle cost.** The MCP server uses no resources, prompts, sampling, roots, or logging primitives. Nothing polls, and nothing holds memory beyond fixed caps when unused.
@@ -28,7 +28,7 @@ pk-annotator/
 │   │   ├── perf/          # live observers, attribution, snapshots
 │   │   ├── launcher.ts    # plain DOM button in a shadow root; loads the React UI on first open
 │   │   ├── ui/            # shadcn primitives pulled by the registry
-│   │   ├── ai-elements/   # prompt-input, attachments (ai-elements CLI)
+│   │   ├── ai-elements/   # prompt-input (ai-elements CLI)
 │   │   └── shadow.css     # Tailwind adopted into the shadow root; @property registered on document
 │   ├── vite/          # serve-only plugin: source attributes, HMR channel, symbolication, store writer and watcher
 │   ├── store/         # file store: root discovery, id validation, atomic writes, claims, prune
@@ -88,9 +88,8 @@ The consumer passes `import.meta.hot` because a pre-bundled dependency has no HM
   <Panel>  one open at a time, beside the hub
     <RecordPanel> | <NetworkPanel> | <ConsolePanel> | <PerfPanel>
     <Composer>  lazily loaded Tiptap block editor
-      <ElementChips>     one per selected element, removable; details open beside the panel
-      <AttachmentChips>  recording, error groups, requests, perf snapshot
       <PromptEditor> + Dictate / Copy (Markdown) / Save / Send
+        badges in the text: each picked element (details open beside the panel) and capture
     <Composer batch> Send: global comment with a badge per saved mark, Send
     <Thread>  History: agent replies and status for annotations sent from this tab
   <RadialMenu>  React, loaded on first open; rings of named menu items around the hub
@@ -101,7 +100,9 @@ The hub sits 20 px from its corner. Clicking it opens the radial menu; the hub's
 
 The menu follows the ARIA menu pattern. Enter or Space on the hub opens it with focus on the first item; Up and Down move within a ring, Home and End jump to its ends, Right opens a group's ring and Left or Escape returns to the group, Enter or Space on a tool group runs its remembered tool and on Debug or Settings opens the ring, and Escape on the first ring closes the menu and returns focus to the hub. Tab leaves the menu and closes it. Toggles such as pick modes, drawing tools, and panels are checkbox items. The closed menu and each unopened group's menu are `aria-hidden`, so a screen reader reaches only the rings on screen and counts only their items. Arrow keys on the focused hub move it to another corner. Escape and Enter inside any menu, including a panel's, never reach picking.
 
-Picking or capturing opens the prompt editor immediately. Enter creates a block; Ctrl/Cmd+Enter sends. The editor has no formatting toolbar; Markdown input rules and keyboard shortcuts create headings, lists, quotes, code blocks, and inline formatting. A mark can be sent immediately or saved in this tab. Saved marks retain their prompts, elements, and capture snapshots until they are sent; reload or Exit discards unsent marks. The Send panel holds the optional global comment, in which each saved mark is an inline badge (#1, #2, …, numbered in save order). A badge can be dragged between words and blocks; clicking it edits its mark, × deletes the mark, and text editing never deletes a badge. A mark without a badge, such as one saved while the panel was closed, gets one at the end when the panel opens. The badge is stored in the Markdown as `{{mark:<id>}}`. Send creates one annotation from the global text with each badge replaced by its mark's numbered section and one deduplicated element list. Capture paths are unique per attachment, so multiple recordings cannot overwrite each other.
+Picking or capturing opens the prompt editor immediately. Enter creates a block; Ctrl/Cmd+Enter sends. The editor has no formatting toolbar; Markdown input rules and keyboard shortcuts create headings, lists, quotes, code blocks, and inline formatting. Nothing is listed above the editor: each picked element and each capture (drawing, screenshot, recording, pasted image, error groups, requests, perf snapshot) is an inline badge in the text, so the prompt can point at it. An element badge shows the element's pick number and name, with its source and owners in a card beside the panel; a capture badge shows its kind icon and label. A new badge goes to the cursor while the editor has focus, else to the end. Badges can be dragged between words and blocks, × removes the element or capture, and text editing never deletes a badge. Removing the element or capture elsewhere removes its badge, and an element or capture without a badge gets one at the end. A mark can be sent immediately or saved in this tab; Save stacks it for the Send panel. Saved marks retain their prompts with badges, elements, and capture snapshots until they are sent; reload or Exit discards unsent marks. The Send panel holds the optional global comment, in which each saved mark is an inline badge (#1, #2, …, numbered in save order); clicking it edits its mark and × deletes the mark. Send creates one annotation from the global text with each mark badge replaced by its mark's numbered section and one deduplicated element list. Capture paths are unique per attachment, so multiple recordings cannot overwrite each other.
+
+In the stored Markdown a badge is `[[mark:<id>]]`, `[[element:<key>]]`, or `[[attachment:<id>]]`. Tiptap's Markdown serializer backslash-escapes `[` and `]` in typed text, so typed text never becomes a badge and text such as `{{mark:abc}}` is sent as typed. On Send, an element badge becomes `[element n]`, where n is the element's `n` in the sent element list, and a capture badge becomes `[attachment n: label]`, where the capture's files are under `capture/attachments/<n>/`. In a batch Send, element numbers follow the combined deduplicated element list and capture numbers run across the marks in order, so the references inside each mark's section resolve against the one annotation. A reference touching a word gets a space so it stays apart from it.
 
 Screenshot starts an area gesture: a drag selects an area, and a click without a drag or Enter takes the whole viewport. The capture then opens a crop dialog with the full viewport image and a crop box at the chosen area, with handles on its corners and edges; Enter or ✓ keeps the box, an unchanged full box is a full screenshot, and Escape discards the capture. Record's panel starts a recording of the full viewport, or of an area dragged the same way (a click or Enter records the full viewport). Rectangle, Circle, and Freehand drawings stay on the page in document coordinates, so they scroll with the content and show only on the route they were drawn on, until their mark is deleted or sent. Finishing a drawing opens the prompt editor; the drawing's attachment is a viewport screenshot with the stroke flattened in. snapdom's `toCanvas` leaves `scale(devicePixelRatio)` on the canvas context, so the flattening sets its transform absolutely; a relative `scale()` placed the stroke at devicePixelRatio² times its points. The image scale is the canvas width over the root's `clientWidth`, which is the width snapdom clips to.
 
@@ -248,12 +249,14 @@ In React Bench, tools that sent `file:line` let the agent find the right file 95
 
 ```xml
 <annotation id="a-17" route="/projects/abc" viewport="1440x900@2">
-<prompt>Archive should confirm first; the row below jumps when this one leaves.</prompt>
+<prompt>Archive [element 1] should confirm first; the row below jumps when this one leaves, as in [attachment 1: Recording 0:07].</prompt>
 <element n="1" source="apps/web/src/ui/button.tsx:4:10" usedAt="apps/web/src/project-row.tsx:48:7" owners="ProjectRow > ProjectList"
          role="button" name="Archive project" crop="capture/frames/sel-1.webp"/>
 <capture>_interim/annotations/a-17/capture/summary.md</capture>
 </annotation>
 ```
+
+The prompt names elements and captures where the user placed them: `[element n]` matches the element's `n`, and `[attachment n: label]` matches the files under `capture/attachments/<n>/`.
 
 Per element, in order of how much it changes agent results: call-site `file:line:col`, owner component chain, the comment, selector (role and accessible name, test id, CSS), trimmed `outerHTML`, bounding box with viewport and scroll, route, cropped screenshot path. Computed styles only for style requests.
 

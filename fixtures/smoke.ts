@@ -15,6 +15,22 @@ import { GetResult, ListResult } from "../src/ops/ops.ts";
 import { NetworkLine, RecordingManifest } from "../src/shared/recording.ts";
 
 const exec = promisify(execFile);
+/** Asserts each `[attachment n: label]` in `prompt` names the attachment stored under n. */
+function assertAttachmentRefs(
+  prompt: string,
+  attachments: readonly { path: string; summary?: string | undefined }[],
+  count: number,
+): void {
+  const references = [...prompt.matchAll(/\[attachment (\d+): ([^\]]+)\]/g)];
+  assert.equal(references.length, count);
+  for (const [, n, label] of references) {
+    const stored = attachments.find((attachment) =>
+      attachment.path.startsWith(`capture/attachments/${n}/`),
+    );
+    assert.ok(stored?.summary?.includes(`: ${label}: `), `Attachment ${n} is not ${label}`);
+  }
+}
+
 const ImageMetadata = z.object({
   region: z.strictObject({ x: z.number(), y: z.number(), w: z.number(), h: z.number() }).nullable(),
 });
@@ -160,8 +176,15 @@ test(
     await page.getByTestId("lab-fetch-items").click();
     await page.getByTestId("lab-output").filter({ hasText: "alpha" }).waitFor();
     await page.getByTestId("pka-record-stop").click();
+    // The recording is a badge in the text; words typed around it keep their places.
     const prompt = "Fixture smoke recording";
-    await page.getByTestId("pka-prompt").fill(prompt);
+    const recordingRef = page.getByTestId("pka-attachment-ref");
+    assert.match(await recordingRef.innerText(), /^Recording \d+:\d\d/);
+    await page.getByTestId("pka-prompt").focus();
+    await page.keyboard.press("Control+Home");
+    await page.keyboard.type(`${prompt} `);
+    await page.keyboard.press("Control+End");
+    await page.keyboard.type(" shows the item list");
     const speech = await page.evaluate(
       () => "SpeechRecognition" in window || "webkitSpeechRecognition" in window,
     );
@@ -198,12 +221,16 @@ test(
       item.id,
     ]);
     const { annotation } = GetResult.parse(JSON.parse(detail.stdout));
-    assert.equal(annotation.prompt, prompt);
+    assert.match(
+      annotation.prompt,
+      /^Fixture smoke recording \[attachment 1: Recording \d+:\d\d\] shows the item list$/,
+    );
     assert.equal(annotation.dir, path.join(workspace, "_interim/annotations", item.id));
     assert.ok(annotation.attachments.some((attachment) => attachment.kind === "recording"));
 
     const recording = annotation.attachments.find((attachment) => attachment.kind === "recording");
     assert.ok(recording);
+    assert.ok(recording.path.startsWith("capture/attachments/1/"));
     const capture = path.dirname(path.join(annotation.dir, recording.path));
     const summary = await readFile(path.join(capture, "summary.md"), "utf8");
     assert.match(summary, /\/api\/items/);
@@ -351,7 +378,10 @@ test(
       batch.prompt,
       /^Fix these marks together\n\n## Mark 1 \(elements 1\)\n\nEdited button mark/,
     );
-    assert.doesNotMatch(batch.prompt, /\{\{mark:/);
+    assert.doesNotMatch(batch.prompt, /\[\[/);
+    assert.match(batch.prompt, /\nEdited button mark \[element 1\]\n/);
+    // Each mark's attachment references number across the batch, as the files are stored.
+    assertAttachmentRefs(batch.prompt, batch.attachments, 5);
     const regions = await Promise.all(
       batch.attachments
         .filter((attachment) => attachment.path.includes("/capture/images/"))
@@ -399,10 +429,16 @@ test(
     assert.ok(titleBox);
     await choose("pick", "Select", "menuitemcheckbox");
     await page.mouse.click(titleBox.x + titleBox.width / 2, titleBox.y + titleBox.height / 2);
-    const picked = "Practice smoke: rename the problem";
-    await page.getByTestId("pka-prompt").fill(picked);
+    // Typed text shaped like a badge token stays text.
+    const picked = "Practice smoke: rename [element 1] to Two Sum II {{mark:abc}}";
+    await page.getByTestId("pka-element-ref").waitFor();
+    await page.getByTestId("pka-prompt").focus();
+    await page.keyboard.press("Control+Home");
+    await page.keyboard.type("Practice smoke: rename ");
+    await page.keyboard.press("Control+End");
+    await page.keyboard.type(" to Two Sum II {{mark:abc}}");
     await page.getByTestId("pka-send").click();
-    await page.getByTestId("pka-thread-item").filter({ hasText: picked }).waitFor();
+    await page.getByTestId("pka-thread-item").filter({ hasText: "Two Sum II" }).waitFor();
     const practiceItems = ListResult.parse(
       JSON.parse(
         (
@@ -437,7 +473,7 @@ test(
           ).annotation,
       ),
     );
-    const judgedAnnotation = practice.find((annotation) => annotation.prompt === judged);
+    const judgedAnnotation = practice.find((annotation) => annotation.prompt.startsWith(judged));
     assert.ok(judgedAnnotation);
     assert.equal(judgedAnnotation.route, "/practice");
     const judgedRecording = judgedAnnotation.attachments.find(
@@ -526,7 +562,7 @@ test(
           ])
         ).stdout,
       ),
-    ).items.find((candidate) => candidate.prompt === stroked);
+    ).items.find((candidate) => candidate.prompt.startsWith(stroked));
     assert.ok(strokedItem);
     const strokedAnnotation = GetResult.parse(
       JSON.parse(
