@@ -163,12 +163,13 @@ export function Composer({ batch = false }: { batch?: boolean }) {
       let bytes = 0;
       const frozen: ComposerAttachment[] = [];
       for (const attachment of extra) {
-        const collected = await attachment.collect();
+        const fixed = (await attachment.freeze?.()) ?? attachment;
+        const collected = await fixed.collect();
         bytes += collected.files.reduce((total, file) => total + file.data.size, 0);
         if (bytes + others.reduce((total, mark) => total + mark.bytes, 0) > MAX_DRAFT_BYTES) {
           throw new Error("Saved captures would exceed 256 MB. Send or remove saved marks first.");
         }
-        frozen.push({ ...attachment, collect: async () => collected });
+        frozen.push({ ...fixed, collect: async () => collected });
       }
       const mark: SavedMark = {
         id: current.editing ?? markId(),

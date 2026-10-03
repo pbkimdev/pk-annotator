@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 
 import type { AttachmentKind } from "../shared/schema.ts";
 import type { RequestEntry } from "../shared/timeline.ts";
+import type { Hunted } from "./panels/hunt.ts";
 
 // Extension points for later lanes. This module is part of the launcher chunk, so it
 // holds plain data and listeners only; components are rendered by the UI chunk.
@@ -42,12 +43,20 @@ export type ComposerAttachment = {
   collect(): Promise<CollectedAttachment>;
   /** Runs after the dev server has stored the annotation. */
   sent?(id: string): void;
-  // A saved mark keeps these with its frozen attachment, so attaching more while editing
-  // that mark merges with its own choice rather than another mark's.
-  /** The Network panel's requests by seq, as they were when attached. */
+  /**
+   * Returns this attachment with its data fixed as of now. Save keeps the result, so adding
+   * to it while editing that mark keeps the saved data instead of collecting it again.
+   */
+  freeze?(): Promise<ComposerAttachment>;
+  // Each attachment carries its own choice, so adding to one never takes another mark's.
+  /** Requests the Network panel attached, by seq, resolved to their latest state on collect. */
   requests?: ReadonlyMap<number, RequestEntry>;
-  /** The error groups Hunt attached. */
+  /** Request copies fixed by Save. */
+  keptRequests?: readonly RequestEntry[];
+  /** Error groups Hunt attached, collected from the capture on collect. */
   fingerprints?: readonly string[];
+  /** Hunted error groups fixed by Save. */
+  keptGroups?: readonly Hunted[];
 };
 
 type Listener = () => void;

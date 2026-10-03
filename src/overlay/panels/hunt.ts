@@ -9,7 +9,13 @@ import {
 } from "../../shared/channel.ts";
 import { getCapture } from "../capture.ts";
 import { listen, send } from "../channel-client.ts";
-import { addAttachment, attachments, SUMMARY_PATH } from "../registry.ts";
+import {
+  addAttachment,
+  attachments,
+  SUMMARY_PATH,
+  type CollectedAttachment,
+  type ComposerAttachment,
+} from "../registry.ts";
 import { actionLine, clockTime, requestLine } from "./format.ts";
 
 const ATTACHMENT_ID = "errors";
@@ -43,7 +49,7 @@ function withoutVendor(stack: string): string {
 }
 
 type Stacks = { stack: string; ownerStack?: string; componentStack?: string };
-type Hunted = HuntContext & Stacks;
+export type Hunted = HuntContext & Stacks;
 
 function groupSection(hunted: Hunted, index: number): string {
   const { group, error, actions, requests, stack } = hunted;
@@ -116,7 +122,8 @@ function symbolicate(hot: ViteHotContext, stacks: string[]): Promise<string[]> {
   });
 }
 
-async function collect(hot: ViteHotContext, fingerprints: readonly string[]) {
+async function huntGroups(hot: ViteHotContext, fingerprints: readonly string[]) {
+  if (fingerprints.length === 0) return [];
   const capture = getCapture();
   const contexts = fingerprints.map((fingerprint) => capture.huntContext(fingerprint, WINDOW_MS));
   const raw = contexts.flatMap(({ group, error }) => [
@@ -135,6 +142,10 @@ async function collect(hot: ViteHotContext, fingerprints: readonly string[]) {
     if (componentStack !== "") stacks.componentStack = withoutVendor(componentStack);
     return { ...context, ...stacks };
   });
+  return hunted;
+}
+
+function collect(hunted: readonly Hunted[]): CollectedAttachment {
   const errors = {
     windowMs: WINDOW_MS,
     groups: hunted.map(({ group, error, actions, requests, ...stacks }) => ({
@@ -175,20 +186,43 @@ async function collect(hot: ViteHotContext, fingerprints: readonly string[]) {
  */
 export function hunt(hot: ViteHotContext, fingerprints: readonly string[]): void {
   const present = attachments.get().find((attachment) => attachment.id === ATTACHMENT_ID);
-  const chosen = [...new Set([...(present?.fingerprints ?? []), ...fingerprints])];
-  const groups = getCapture().snapshot().groups;
-  const only = chosen.length === 1 ? groups.find((g) => g.fingerprint === chosen[0]) : undefined;
-  addAttachment({
+  const kept = present?.keptGroups ?? [];
+  // A group Save already fixed stays as saved, even after the capture evicts it.
+  const live = [...new Set([...(present?.fingerprints ?? []), ...fingerprints])].filter(
+    (fingerprint) => !kept.some(({ group }) => group.fingerprint === fingerprint),
+  );
+  addAttachment(huntAttachment(hot, kept, live));
+}
+
+/** `kept` are groups fixed by Save; `live` fingerprints are collected from the capture. */
+function huntAttachment(
+  hot: ViteHotContext,
+  kept: readonly Hunted[],
+  live: readonly string[],
+): ComposerAttachment {
+  const all = [...kept.map(({ group }) => group.fingerprint), ...live];
+  const only =
+    kept.length === 1 && live.length === 0
+      ? kept[0]?.group
+      : kept.length === 0 && live.length === 1
+        ? getCapture()
+            .snapshot()
+            .groups.find((group) => group.fingerprint === live[0])
+        : undefined;
+  const resolve = async () => [...kept, ...(await huntGroups(hot, live))];
+  return {
     id: ATTACHMENT_ID,
     kind: "errors",
-    label: only === undefined ? `${chosen.length} errors` : oneLine(only.message, 60),
-    fingerprints: chosen,
-    collect: () => collect(hot, chosen),
+    label: only === undefined ? `${all.length} errors` : oneLine(only.message, 60),
+    fingerprints: live,
+    keptGroups: kept,
+    freeze: async () => huntAttachment(hot, structuredClone(await resolve()), []),
+    collect: async () => collect(await resolve()),
     sent(id) {
-      getCapture().markSent(chosen);
-      track(hot, id, chosen);
+      getCapture().markSent(all);
+      track(hot, id, all);
     },
-  });
+  };
 }
 
 // After a hunt is sent, its groups wait for two things: the agent resolving the

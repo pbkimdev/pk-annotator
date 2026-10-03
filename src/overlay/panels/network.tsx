@@ -12,7 +12,13 @@ import type { RequestEntry } from "../../shared/timeline.ts";
 import { getCapture } from "../capture.ts";
 import { NOTE, useOverlay } from "../context.tsx";
 import { cn } from "../lib/utils.ts";
-import { addAttachment, attachments, SUMMARY_PATH, type PanelProps } from "../registry.ts";
+import {
+  addAttachment,
+  attachments,
+  SUMMARY_PATH,
+  type ComposerAttachment,
+  type PanelProps,
+} from "../registry.ts";
 import { Button } from "../ui/button.tsx";
 import {
   clockTime,
@@ -27,25 +33,34 @@ import {
 const ATTACHMENT_ID = "network";
 const NETWORK_PATH = "capture/network.jsonl";
 
-// Entries as they were when attached, so a later Clear does not drop them from the attachment.
-function attach(requests: readonly RequestEntry[]): void {
-  const present = attachments.get().find((attachment) => attachment.id === ATTACHMENT_ID);
-  const chosen = new Map(present?.requests);
-  for (const request of requests) chosen.set(request.seq, request);
-  addAttachment({
+/**
+ * `kept` are copies fixed by Save. `live` entries resolve to the capture's latest state, or
+ * stay as they were when attached, so a later Clear does not drop them from the attachment.
+ */
+function networkAttachment(
+  kept: readonly RequestEntry[],
+  live: ReadonlyMap<number, RequestEntry>,
+): ComposerAttachment {
+  const count = kept.length + live.size;
+  const resolve = () => {
+    const latest = new Map(
+      getCapture()
+        .snapshot()
+        .requests.map((entry) => [entry.seq, entry]),
+    );
+    return [...kept, ...[...live.values()].map((entry) => latest.get(entry.seq) ?? entry)].sort(
+      (left, right) => left.seq - right.seq,
+    );
+  };
+  return {
     id: ATTACHMENT_ID,
     kind: "network",
-    label: chosen.size === 1 ? `1 request` : `${chosen.size} requests`,
-    requests: chosen,
+    label: count === 1 ? `1 request` : `${count} requests`,
+    requests: live,
+    keptRequests: kept,
+    freeze: async () => networkAttachment(structuredClone(resolve()), new Map()),
     async collect() {
-      const latest = new Map(
-        getCapture()
-          .snapshot()
-          .requests.map((entry) => [entry.seq, entry]),
-      );
-      const entries = [...chosen.values()]
-        .map((entry) => latest.get(entry.seq) ?? entry)
-        .sort((left, right) => left.seq - right.seq);
+      const entries = resolve();
       const summary = [
         `## Network`,
         "",
@@ -66,7 +81,17 @@ function attach(requests: readonly RequestEntry[]): void {
         ],
       };
     },
-  });
+  };
+}
+
+function attach(requests: readonly RequestEntry[]): void {
+  const present = attachments.get().find((attachment) => attachment.id === ATTACHMENT_ID);
+  const kept = present?.keptRequests ?? [];
+  const live = new Map(present?.requests);
+  // A request Save already fixed stays as saved.
+  for (const request of requests)
+    if (!kept.some((entry) => entry.seq === request.seq)) live.set(request.seq, request);
+  addAttachment(networkAttachment(kept, live));
 }
 
 function useRequests(): readonly RequestEntry[] {
