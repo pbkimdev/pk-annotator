@@ -6,7 +6,7 @@ import {
   type RecordingFrame,
   type RecordingVideo,
 } from "../../shared/recording.ts";
-import type { ErrorGroup, Viewport } from "../../shared/schema.ts";
+import type { Box, ErrorGroup, Viewport } from "../../shared/schema.ts";
 import type {
   ActionEntry,
   ActionTarget,
@@ -15,6 +15,7 @@ import type {
   RequestEntry,
   TimelineEntry,
 } from "../../shared/timeline.ts";
+import type { RecordedGif } from "./media.ts";
 import type { AttachmentFile, CollectedAttachment } from "../registry.ts";
 
 const SLOW_REQUEST_MS = 1000;
@@ -47,6 +48,8 @@ export type RecordingInput = {
   bodyLimit: number;
   bodiesDropped: number;
   video: RecordedVideo;
+  gif?: RecordedGif;
+  region?: Box | null;
   /** The capture's current groups, for symbolicated top frames and status. */
   groups: readonly ErrorGroup[];
   bodies: string[];
@@ -262,6 +265,8 @@ function manifestOf(input: RecordingInput, frames: RecordingFrame[]): RecordingM
       failed: input.framesFailed,
     },
     video: input.video.meta,
+    region: input.region,
+    gif: input.gif?.meta,
     redaction: {
       inputs: "values never recorded; masked in keyframes",
       headers: "credential headers dropped",
@@ -357,6 +362,14 @@ function summaryOf(input: RecordingInput, parts: Digest): string {
     `${relative(input.url)} → ${relative(input.endUrl)} · ${input.viewport.w}x${input.viewport.h}@${Number(input.viewport.dpr.toFixed(2))} · started ${input.startedAt}`,
     "Input values are not recorded and are masked in keyframes. Git SHA, times, and redaction: manifest.json.",
   ];
+  if (input.region !== undefined && input.region !== null)
+    lines.push(
+      `Capture area: ${input.region.x},${input.region.y}, ${input.region.w}×${input.region.h} CSS pixels.`,
+    );
+  if (input.gif !== undefined)
+    lines.push(
+      `GIF: ${input.gif.meta.path}, ${input.gif.meta.frames} frames${input.gif.meta.truncated ? " (limit reached)" : ""}. GIF pixels are not redacted.`,
+    );
   if (input.entriesDropped > 0) {
     lines.push(
       "",
@@ -398,13 +411,15 @@ export function buildRecording(input: RecordingInput): CollectedAttachment {
   ];
   if (input.video.data !== undefined) files.push({ path: RECORDING.video, data: input.video.data });
 
+  if (input.gif !== undefined) files.push({ path: RECORDING.gif, data: input.gif.data });
+
   const { steps, groups, problems, frames } = parts;
   const failed =
     problems.length === 0 ? "" : `, ${count(problems.length, "failed or slow request")}`;
   const video = input.video.meta.path === null ? "" : ", video";
   return {
     path: RECORDING.summary,
-    summary: `${seconds(input.startedAt, input.endedAt)}: ${count(steps.length, "step")}, ${count(groups.length, "error group")}${failed}, ${count(frames.length, "keyframe")}${video}`,
+    summary: `${seconds(input.startedAt, input.endedAt)}: ${count(steps.length, "step")}, ${count(groups.length, "error group")}${failed}, ${count(frames.length, "keyframe")}${video}${input.gif === undefined ? "" : ", GIF"}`,
     files,
   };
 }

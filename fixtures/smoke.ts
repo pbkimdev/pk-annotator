@@ -64,7 +64,13 @@ test(
     await server.listen();
     const url = server.resolvedUrls?.local[0];
     assert.ok(url, "Fixture must expose a loopback URL");
-    browser = await chromium.launch();
+    browser = await chromium.launch({
+      channel: "chromium",
+      args: [
+        "--auto-select-tab-capture-source-by-title=pk-annotator fixture",
+        "--enable-experimental-web-platform-features",
+      ],
+    });
 
     const automated = await browser.newContext();
     const guarded = await automated.newPage();
@@ -91,13 +97,12 @@ test(
     assert.equal(await page.evaluate(() => navigator.webdriver), false);
     await page.locator("pk-annotator .pka-launcher").click();
     const dock = page.getByTestId("pka-dock");
-    await dock.getByRole("button", { name: "Record", exact: true }).click();
+    await dock.getByRole("button", { name: "Capture", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Record", exact: true }).click();
     await page.getByTestId("pka-record-start").click();
     await page.getByTestId("lab-fetch-items").click();
     await page.getByTestId("lab-output").filter({ hasText: "alpha" }).waitFor();
     await page.getByTestId("pka-record-stop").click();
-    await page.getByText("In Compose", { exact: true }).waitFor();
-    await dock.getByRole("button", { name: "Compose", exact: true }).click();
     const prompt = "Fixture smoke recording";
     await page.getByTestId("pka-prompt").fill(prompt);
     await page.getByTestId("pka-send").click();
@@ -130,7 +135,9 @@ test(
     assert.equal(annotation.dir, path.join(workspace, "_interim/annotations", item.id));
     assert.ok(annotation.attachments.some((attachment) => attachment.kind === "recording"));
 
-    const capture = path.join(annotation.dir, "capture");
+    const recording = annotation.attachments.find((attachment) => attachment.kind === "recording");
+    assert.ok(recording);
+    const capture = path.dirname(path.join(annotation.dir, recording.path));
     const summary = await readFile(path.join(capture, "summary.md"), "utf8");
     assert.match(summary, /\/api\/items/);
     const manifest = RecordingManifest.parse(
@@ -150,9 +157,129 @@ test(
     assert.ok(request, "The saved recording must contain the fixture request");
     assert.equal(request.response.status, 200);
     assert.match(request.response.content.text ?? "", /alpha/);
+
+    const fetchBox = await page.getByTestId("lab-fetch-items").boundingBox();
+    assert.ok(fetchBox);
+    await dock.getByRole("button", { name: "Pick elements", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Single", exact: true }).click();
+    await page.mouse.click(fetchBox.x + fetchBox.width / 2, fetchBox.y + fetchBox.height / 2);
+    await page.getByTestId("pka-prompt").fill("Change this button");
+    await page.getByRole("button", { name: "Bold", exact: true }).click();
+    await page.getByTestId("pka-save").click();
+    await page.getByTestId("pka-saved-mark").waitFor();
+    await page.getByRole("button", { name: "Edit mark 1", exact: true }).click();
+    assert.match(await page.getByTestId("pka-prompt").innerText(), /Change this button/);
+    await page.getByTestId("pka-prompt").fill("Edited button mark");
+    await page.getByTestId("pka-save").click();
+
+    await dock.getByRole("button", { name: "Capture", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Crop screenshot", exact: true }).click();
+    await page.mouse.move(20, 20);
+    await page.mouse.down();
+    await page.mouse.move(260, 140, { steps: 5 });
+    await page.mouse.up();
+    await page.getByTestId("pka-prompt").fill("Cropped screenshot mark");
+    await page.getByTestId("pka-save").click();
+
+    await dock.getByRole("button", { name: "Annotate", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Circle", exact: true }).click();
+    await page.mouse.move(25, 25);
+    await page.mouse.down();
+    await page.mouse.move(220, 130, { steps: 5 });
+    await page.mouse.up();
+    await page.getByTestId("pka-prompt").fill("Circle mark");
+    await page.getByTestId("pka-save").click();
+
+    for (const attempt of [1, 2]) {
+      await dock.getByRole("button", { name: "Capture", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Record", exact: true }).click();
+      if (attempt === 1) {
+        await page.getByTestId("pka-record-gif").check();
+        await page.getByTestId("pka-record-video").check();
+        await page.getByRole("button", { name: "Choose area", exact: true }).click();
+        await page.mouse.move(20, 20);
+        await page.mouse.down();
+        await page.mouse.move(260, 140, { steps: 5 });
+        await page.mouse.up();
+      }
+      await page.getByTestId("pka-record-start").click();
+      try {
+        await page.getByText("Tab capture on, overlay excluded.", { exact: false }).waitFor();
+      } catch (cause) {
+        throw new Error(
+          `Tab capture did not start: ${await page.getByTestId("pka-record").innerText()}`,
+          { cause },
+        );
+      }
+      await page.getByTestId("lab-fetch-items").click();
+      await page.getByTestId("lab-output").filter({ hasText: "alpha" }).waitFor();
+      await page.getByTestId("pka-record-stop").click();
+      await page.getByTestId("pka-prompt").fill(`Saved recording ${attempt}`);
+      await page.getByTestId("pka-save").click();
+    }
+    assert.equal(await page.getByTestId("pka-saved-mark").count(), 5);
+    await dock.getByRole("button", { name: "Minimize", exact: true }).click();
+    await page.locator("pk-annotator .pka-launcher").click();
+    assert.equal(await page.getByTestId("pka-saved-mark").count(), 5);
+    const global = "Fix these marks together";
+    await page.getByTestId("pka-prompt").fill(global);
+    await page.getByTestId("pka-send").click();
+    await page.getByTestId("pka-thread-item").filter({ hasText: global }).waitFor();
+    const batchedList = ListResult.parse(
+      JSON.parse(
+        (
+          await exec(process.execPath, [
+            cli,
+            "--root",
+            workspace,
+            "--json",
+            "list",
+            "--status",
+            "all",
+          ])
+        ).stdout,
+      ),
+    );
+    assert.equal(batchedList.items.length, 2);
+    const batchItem = batchedList.items.find((candidate) => candidate.id !== item.id);
+    assert.ok(batchItem);
+    const batch = GetResult.parse(
+      JSON.parse(
+        (await exec(process.execPath, [cli, "--root", workspace, "--json", "get", batchItem.id]))
+          .stdout,
+      ),
+    ).annotation;
+    assert.match(batch.prompt, /Fix these marks together/);
+    assert.match(batch.prompt, /Edited button mark/);
+    assert.equal(batch.elements.length, 1);
+    const recordings = batch.attachments.filter((attachment) => attachment.kind === "recording");
+    assert.equal(recordings.length, 2);
+    assert.notEqual(recordings[0]?.path, recordings[1]?.path);
+    for (const recording of recordings) {
+      const recordingDir = path.dirname(path.join(batch.dir, recording.path));
+      const saved = RecordingManifest.parse(
+        JSON.parse(await readFile(path.join(recordingDir, "manifest.json"), "utf8")),
+      );
+      assert.deepEqual(saved.region, { x: 20, y: 20, w: 240, h: 120 });
+      assert.ok(saved.video.path, "Opt-in video must contain WebM data");
+      assert.ok(saved.gif, "Opt-in GIF must contain animation data");
+      const webm = await readFile(path.join(batch.dir, saved.video.path));
+      assert.equal(webm.subarray(0, 4).toString("hex"), "1a45dfa3");
+      const gif = await readFile(path.join(batch.dir, saved.gif.path));
+      assert.match(gif.toString("ascii", 0, 6), /^GIF8[79]a$/);
+      assert.equal(saved.gif.width, 240);
+      assert.equal(saved.gif.height, 120);
+      assert.ok(saved.gif.frames > 0);
+    }
+    await dock.getByRole("button", { name: "Settings", exact: true }).click();
+    await page.getByRole("combobox", { name: "Language", exact: true }).selectOption("ko");
+    await page.getByRole("heading", { name: "설정", exact: true }).waitFor();
+    await page.getByRole("combobox", { name: "언어", exact: true }).selectOption("en");
+    await page.getByRole("button", { name: "Exit annotator", exact: true }).click();
+    await page.locator("pk-annotator").waitFor({ state: "detached" });
     assert.deepEqual(errors, []);
     t.diagnostic(
-      "Record → Send → pka list/get passed; summary, network body, and WebP keyframes inspected.",
+      "Direct send, saved marks, editing, cropped/drawn captures, two region GIF/WebM recordings, batch send, language, minimize, Exit and CLI artifacts passed.",
     );
   },
 );

@@ -1,9 +1,8 @@
 import { NetworkIcon, SquareTerminalIcon } from "lucide-react";
-import { StrictMode } from "react";
+import { StrictMode, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 
-import { PromptInputProvider } from "./ai-elements/prompt-input.tsx";
-import { OverlayContext, useOverlay, type Overlay, type UiState } from "./context.tsx";
+import { OverlayContext, NOTE, useOverlay, type Overlay, type UiState } from "./context.tsx";
 import { Dock } from "./dock.tsx";
 import { readCorner, type UiContext, type UiController } from "./launcher.ts";
 import { PanelHost } from "./panel.tsx";
@@ -12,9 +11,10 @@ import { stopHuntTracking } from "./panels/hunt.ts";
 import { NetworkPanel } from "./panels/network.tsx";
 import { registerPerfPanel } from "./panels/perf.tsx";
 import { registerRecordPanel } from "./panels/record.tsx";
+import { MarkLayer } from "./mark-layer.tsx";
 import { PickLayer } from "./pick-layer.tsx";
 import { PortalContainerContext } from "./portal-container.tsx";
-import { registerPanel } from "./registry.ts";
+import { attachments, registerPanel } from "./registry.ts";
 import css from "./shadow.css?inline";
 import { createStore, useStore } from "./store.ts";
 import { connectThread } from "./thread-store.ts";
@@ -54,9 +54,21 @@ function patchActiveElement(shadow: ShadowRoot): () => void {
 function App() {
   const { ui } = useOverlay();
   const visible = useStore(ui, (state) => state.visible);
+  useEffect(() => {
+    let previous = attachments.get();
+    const stop = attachments.subscribe(() => {
+      const next = attachments.get();
+      if (next.some((item) => !previous.includes(item))) ui.set({ panel: NOTE });
+      previous = next;
+    });
+    return () => {
+      stop();
+    };
+  }, [ui]);
   return (
     <>
       <PickLayer />
+      <MarkLayer />
       {visible && (
         <>
           <Dock />
@@ -89,10 +101,20 @@ export function open(context: UiContext): UiController {
 
   const ui = createStore<UiState>({
     visible: false,
+    prompt: "",
+    globalPrompt: "",
+    marks: [],
+    editing: null,
+    busy: false,
+    recording: false,
+    gesture: null,
+    recordRegion: null,
+    language: localStorage.getItem("pka:language") === "ko" ? "ko" : "en",
     picking: null,
     panel: null,
     selection: [],
     hover: null,
+    lasso: null,
     marquee: null,
     corner: readCorner(),
   });
@@ -103,14 +125,15 @@ export function open(context: UiContext): UiController {
     theme,
     ui,
     thread,
+    exit: context.exit,
     hide() {
-      ui.set({ visible: false, picking: null, hover: null, marquee: null });
+      ui.set({ visible: false, picking: null, gesture: null, hover: null, marquee: null });
       context.hidden();
     },
   };
 
   const stopPanels = [
-    registerRecordPanel(),
+    registerRecordPanel((recording) => ui.set({ recording })),
     registerPanel({ id: "network", label: "Network", icon: NetworkIcon, component: NetworkPanel }),
     registerPanel({
       id: "console",
@@ -127,9 +150,7 @@ export function open(context: UiContext): UiController {
       <OverlayContext value={overlay}>
         <PortalContainerContext value={portalRoot}>
           <TooltipProvider delayDuration={400}>
-            <PromptInputProvider>
-              <App />
-            </PromptInputProvider>
+            <App />
           </TooltipProvider>
         </PortalContainerContext>
       </OverlayContext>
@@ -141,6 +162,7 @@ export function open(context: UiContext): UiController {
       ui.set({ visible: true, corner: readCorner() });
     },
     togglePick() {
+      if (ui.get().busy) return;
       ui.set({ visible: true, picking: ui.get().picking === null ? "pick" : null });
     },
     unmount() {
@@ -149,6 +171,7 @@ export function open(context: UiContext): UiController {
       stopHuntTracking();
       stopTheme();
       thread.disconnect();
+      attachments.clear();
       restoreActiveElement();
       appRoot.remove();
       portalRoot.remove();

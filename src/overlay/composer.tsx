@@ -1,16 +1,18 @@
+import { useText } from "./language.ts";
 import {
   CheckIcon,
   CopyIcon,
   ImageIcon,
-  MousePointer2Icon,
   NetworkIcon,
   TriangleAlertIcon,
   VideoIcon,
   GaugeIcon,
+  SendIcon,
+  Trash2Icon,
+  PencilIcon,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-
 import { locate, ownerName, type Location } from "../select/source.ts";
 import type { AttachmentKind } from "../shared/schema.ts";
 import {
@@ -24,20 +26,16 @@ import {
   Attachments,
 } from "./ai-elements/attachments.tsx";
 import {
-  PromptInput,
-  PromptInputBody,
-  PromptInputButton,
-  PromptInputFooter,
-  PromptInputHeader,
-  PromptInputSubmit,
-  PromptInputTextarea,
-  PromptInputTools,
-  usePromptInputAttachments,
-  usePromptInputController,
-  type PromptInputMessage,
-} from "./ai-elements/prompt-input.tsx";
-import { elementKey, THREAD, useOverlay } from "./context.tsx";
+  COMPOSE,
+  NOTE,
+  elementKey,
+  THREAD,
+  useOverlay,
+  type SavedMark,
+  type UiState,
+} from "./context.tsx";
 import { annotationBlock } from "./markdown.ts";
+import { PromptEditor } from "./prompt-editor.tsx";
 import { attachments as attachmentList, type ComposerAttachment } from "./registry.ts";
 import {
   currentViewport,
@@ -47,6 +45,7 @@ import {
   type SendPhase,
 } from "./send.ts";
 import { useList, useStore } from "./store.ts";
+import { Button } from "./ui/button.tsx";
 
 const KIND_ICON = {
   recording: VideoIcon,
@@ -56,6 +55,14 @@ const KIND_ICON = {
   perf: GaugeIcon,
   frame: ImageIcon,
 } satisfies Record<AttachmentKind, LucideIcon>;
+const MAX_MARKS = 50;
+const MAX_DRAFT_BYTES = 256 * 1024 * 1024;
+
+function markId(): string {
+  return Array.from(crypto.getRandomValues(new Uint8Array(8)), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
 
 function fileLine(location: string): string {
   const [file = location, line] = location.split(":");
@@ -119,6 +126,7 @@ function ElementChip({ element, n, remove }: { element: Element; n: number; remo
 }
 
 function AttachmentChip({ attachment }: { attachment: ComposerAttachment }) {
+  const { ui } = useOverlay();
   const Icon = KIND_ICON[attachment.kind];
   return (
     <Attachment
@@ -130,7 +138,9 @@ function AttachmentChip({ attachment }: { attachment: ComposerAttachment }) {
         mediaType: "text/plain",
         title: attachment.label,
       }}
-      onRemove={() => attachmentList.remove(attachment.id)}
+      onRemove={() => {
+        if (!ui.get().busy) attachmentList.remove(attachment.id);
+      }}
       className="h-7 max-w-56 cursor-default pl-1 text-xs"
     >
       <AttachmentPreview fallbackIcon={<Icon className="size-3 text-muted-foreground" />} />
@@ -143,41 +153,6 @@ function AttachmentChip({ attachment }: { attachment: ComposerAttachment }) {
   );
 }
 
-function PastedChips() {
-  const pasted = usePromptInputAttachments();
-  return pasted.files.map((file) => (
-    <Attachment
-      key={file.id}
-      data={file}
-      onRemove={() => pasted.remove(file.id)}
-      className="h-7 max-w-56 cursor-default pl-1 text-xs"
-    >
-      <AttachmentPreview />
-      <AttachmentInfo />
-      <AttachmentRemove className="focus-visible:opacity-100" />
-    </Attachment>
-  ));
-}
-
-async function pastedAttachment(
-  file: PromptInputMessage["files"][number],
-  index: number,
-): Promise<ComposerAttachment> {
-  const data = await (await fetch(file.url)).blob();
-  const extension = file.mediaType.split("/")[1]?.replace(/[^a-z0-9]/g, "") || "bin";
-  const path = `capture/files/pasted-${index + 1}.${extension}`;
-  return {
-    id: `pasted-${index}`,
-    kind: "frame",
-    label: file.filename ?? `Pasted image ${index + 1}`,
-    collect: async () => ({
-      path,
-      summary: `Image pasted into the prompt`,
-      files: [{ path, data }],
-    }),
-  };
-}
-
 function phaseText(phase: SendPhase): string {
   if (phase.phase === "locating") return "Resolving sources…";
   if (phase.phase === "capturing") return "Capturing screenshot…";
@@ -185,158 +160,347 @@ function phaseText(phase: SendPhase): string {
   return `Uploading ${Math.round(phase.sent / 1024)} of ${Math.round(phase.total / 1024)} KB…`;
 }
 
-function CopyMarkdown({ onError }: { onError(message: string): void }) {
-  const { ui } = useOverlay();
-  const controller = usePromptInputController();
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) return;
-    const timer = window.setTimeout(() => setCopied(false), 1500);
-    return () => window.clearTimeout(timer);
-  }, [copied]);
-
-  const copy = async () => {
-    try {
-      const elements = await locateElements(ui.get().selection);
-      const block = annotationBlock(
-        {
-          route: location.pathname,
-          viewport: currentViewport(),
-          prompt: controller.textInput.value,
-        },
-        elements,
-      );
-      await navigator.clipboard.writeText(block);
-      setCopied(true);
-    } catch (error) {
-      onError(`Copy failed: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  };
+function SavedMarks({
+  marks,
+  busy,
+  current,
+  edit,
+  remove,
+  resume,
+}: {
+  marks: readonly SavedMark[];
+  busy: boolean;
+  current: boolean;
+  edit(mark: SavedMark): void;
+  remove(mark: SavedMark): void;
+  resume(): void;
+}) {
+  const t = useText();
   return (
-    <PromptInputButton
-      aria-label="Copy as Markdown"
-      tooltip="Copy as Markdown"
-      data-testid="pka-copy"
-      onClick={() => void copy()}
-    >
-      {copied ? <CheckIcon className="size-4" /> : <CopyIcon className="size-4" />}
-    </PromptInputButton>
+    <>
+      {marks.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          {t("No saved marks. Pick or capture to add one.")}
+        </p>
+      ) : (
+        <ol className="divide-y" aria-label={t("Saved marks")}>
+          {marks.map((mark, index) => (
+            <li key={mark.id} data-testid="pka-saved-mark" className="flex items-center gap-2 py-2">
+              <span className="grid size-5 shrink-0 place-items-center rounded-sm bg-pick text-xs text-pick-foreground">
+                {index + 1}
+              </span>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => edit(mark)}
+                className="min-w-0 flex-1 text-left text-sm focus-visible:outline-ring"
+              >
+                <span className="block truncate">
+                  {mark.prompt || mark.attachments[0]?.label || "Selected elements"}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {mark.elements.length} elements · {mark.attachments.length} captures
+                </span>
+              </button>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label={`Edit mark ${index + 1}`}
+                disabled={busy}
+                onClick={() => edit(mark)}
+              >
+                <PencilIcon />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label={`Remove mark ${index + 1}`}
+                disabled={busy}
+                onClick={() => remove(mark)}
+              >
+                <Trash2Icon />
+              </Button>
+            </li>
+          ))}
+        </ol>
+      )}
+      {current && (
+        <Button variant="outline" size="sm" disabled={busy} onClick={resume}>
+          {t("Continue current mark")}
+        </Button>
+      )}
+      <label className="block text-xs font-medium">{t("Global comment")}</label>
+    </>
   );
 }
 
-function ComposerForm() {
+function canSubmit(state: UiState, batch: boolean): boolean {
+  if (state.busy || state.recording) return false;
+  if (batch)
+    return state.editing === null && (state.marks.length > 0 || state.globalPrompt.trim() !== "");
+  return state.prompt.trim() !== "" && state.selection.length <= MAX_ELEMENTS;
+}
+
+export function Composer({ batch = false }: { batch?: boolean }) {
+  const t = useText();
   const { hot, ui, thread } = useOverlay();
   const selection = useStore(ui, (state) => state.selection);
-  const picking = useStore(ui, (state) => state.picking);
+  const marks = useStore(ui, (state) => state.marks);
+  const editing = useStore(ui, (state) => state.editing);
+  const prompt = useStore(ui, (state) => (batch ? state.globalPrompt : state.prompt));
+  const recording = useStore(ui, (state) => state.recording);
+  const busy = useStore(ui, (state) => state.busy);
   const extra = useList(attachmentList);
-  const controller = usePromptInputController();
+  const ready = useStore(ui, (state) => canSubmit(state, batch));
   const [phase, setPhase] = useState<SendPhase | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const empty = controller.textInput.value.trim() === "";
+  const [copied, setCopied] = useState(false);
+  const hasCurrent = selection.length > 0 || extra.length > 0 || ui.get().prompt.trim() !== "";
 
-  const submit = async (message: PromptInputMessage) => {
+  const save = async () => {
+    if (ui.get().busy || ui.get().recording) return;
+    ui.set({ busy: true });
     setError(null);
     try {
-      const pasted = await Promise.all(message.files.map(pastedAttachment));
-      const { id, createdAt } = await sendAnnotation(
-        hot,
-        message.text,
-        selection,
-        [...extra, ...pasted],
-        setPhase,
-      );
-      thread.added({ id, prompt: message.text, createdAt, elements: selection.length });
-      for (const attachment of extra) attachment.sent?.(id);
+      const current = ui.get();
+      const others = current.marks.filter((mark) => mark.id !== current.editing);
+      if (others.length >= MAX_MARKS)
+        throw new Error(`Send or remove marks before saving more than ${MAX_MARKS}.`);
+      let bytes = 0;
+      const frozen: ComposerAttachment[] = [];
+      for (const attachment of extra) {
+        const collected = await attachment.collect();
+        bytes += collected.files.reduce((total, file) => total + file.data.size, 0);
+        if (bytes + others.reduce((total, mark) => total + mark.bytes, 0) > MAX_DRAFT_BYTES) {
+          throw new Error("Saved captures would exceed 256 MB. Send or remove saved marks first.");
+        }
+        frozen.push({ ...attachment, collect: async () => collected });
+      }
+      const mark: SavedMark = {
+        id: current.editing ?? markId(),
+        prompt: current.prompt,
+        elements: current.selection,
+        attachments: frozen,
+        bytes,
+      };
+      const next =
+        current.editing === null
+          ? [...others, mark]
+          : current.marks.map((item) => (item.id === mark.id ? mark : item));
       attachmentList.clear();
-      ui.set({ selection: [], panel: THREAD, picking: null });
+      ui.set({
+        marks: next,
+        prompt: "",
+        selection: [],
+        editing: null,
+        picking: null,
+        panel: COMPOSE,
+      });
     } catch (cause) {
-      const text = cause instanceof Error ? cause.message : String(cause);
-      setError(text);
-      throw cause;
+      setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
-      setPhase(null);
+      ui.set({ busy: false });
     }
   };
 
+  const submit = async () => {
+    if (!canSubmit(ui.get(), batch)) return;
+    const current = ui.get();
+    if (batch && current.editing !== null) {
+      setError("Save the edited mark before sending all.");
+      return;
+    }
+    const chosen = batch
+      ? current.marks
+      : [
+          {
+            id: current.editing ?? markId(),
+            prompt: current.prompt,
+            elements: selection,
+            attachments: extra,
+            bytes: 0,
+          },
+        ];
+    const elements = [...new Set(chosen.flatMap((mark) => [...mark.elements]))];
+    const text = batch
+      ? [
+          current.globalPrompt.trim(),
+          ...chosen.map((mark, index) => {
+            const refs = mark.elements.map((element) => elements.indexOf(element) + 1);
+            return `## Mark ${index + 1}${refs.length === 0 ? "" : ` (elements ${refs.join(", ")})`}\n\n${mark.prompt || "See attached capture."}`;
+          }),
+        ]
+          .filter(Boolean)
+          .join("\n\n")
+      : current.prompt;
+    if (text.trim() === "") return;
+    setError(null);
+    ui.set({ busy: true, picking: null });
+    try {
+      const allAttachments = chosen.flatMap((mark, index) =>
+        mark.attachments.map((attachment) =>
+          batch ? { ...attachment, label: `Mark ${index + 1}: ${attachment.label}` } : attachment,
+        ),
+      );
+      const { id, createdAt } = await sendAnnotation(hot, text, elements, allAttachments, setPhase);
+      thread.added({ id, prompt: text, createdAt, elements: elements.length });
+      for (const attachment of allAttachments) attachment.sent?.(id);
+      if (batch) ui.set({ marks: [], globalPrompt: "", panel: THREAD });
+      else {
+        attachmentList.clear();
+        ui.set({
+          marks: current.marks.filter((mark) => mark.id !== current.editing),
+          selection: [],
+          prompt: "",
+          editing: null,
+          panel: THREAD,
+        });
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setPhase(null);
+      ui.set({ busy: false });
+    }
+  };
+
+  const edit = (mark: SavedMark) => {
+    if (hasCurrent) {
+      setError("Save or finish the current mark before editing another.");
+      return;
+    }
+    for (const attachment of mark.attachments) attachmentList.add(attachment);
+    ui.set({
+      selection: mark.elements,
+      prompt: mark.prompt,
+      editing: mark.id,
+      picking: null,
+      panel: NOTE,
+    });
+  };
+
+  const copy = async () => {
+    try {
+      const elements = await locateElements(selection);
+      await navigator.clipboard.writeText(
+        annotationBlock(
+          { route: location.pathname, viewport: currentViewport(), prompt },
+          elements,
+        ),
+      );
+      setCopied(true);
+    } catch (cause) {
+      setError(`Copy failed: ${cause instanceof Error ? cause.message : String(cause)}`);
+    }
+  };
+
+  const pasteImage = (file: File) => {
+    if (ui.get().busy) return;
+    if (attachmentList.get().length >= 50) {
+      setError("Save or send this mark before adding more captures.");
+      return;
+    }
+    if (file.size > 16 * 1024 * 1024) {
+      setError("Pasted images must be 16 MB or smaller.");
+      return;
+    }
+    const id = markId();
+    const extension = file.type.split("/")[1]?.replace(/[^a-z0-9]/g, "") || "bin";
+    const path = `capture/files/pasted-${id}.${extension}`;
+    attachmentList.add({
+      id,
+      kind: "frame",
+      label: file.name,
+      collect: async () => ({
+        path,
+        summary: "Image pasted into the prompt",
+        files: [{ path, data: file }],
+      }),
+    });
+  };
+
   return (
-    <div className="p-2">
-      <PromptInput
-        accept="image/*"
-        multiple
-        onSubmit={submit}
-        onError={(problem) => setError(problem.message)}
-        className="[&_[data-slot=input-group]]:bg-background"
-      >
-        {(selection.length > 0 || extra.length > 0) && (
-          <PromptInputHeader className="px-2 pt-2">
-            <Attachments variant="inline" className="gap-1.5">
-              {selection.map((element, index) => (
-                <ElementChip
-                  key={elementKey(element)}
-                  element={element}
-                  n={index + 1}
-                  remove={() =>
-                    ui.set({ selection: ui.get().selection.filter((item) => item !== element) })
-                  }
-                />
-              ))}
-              {extra.map((attachment) => (
-                <AttachmentChip key={attachment.id} attachment={attachment} />
-              ))}
-              <PastedChips />
-            </Attachments>
-          </PromptInputHeader>
+    <div className="space-y-3 p-3">
+      {batch ? (
+        <SavedMarks
+          marks={marks}
+          busy={busy}
+          current={hasCurrent}
+          edit={edit}
+          remove={(mark) => ui.set({ marks: marks.filter((item) => item !== mark) })}
+          resume={() => ui.set({ panel: NOTE })}
+        />
+      ) : (
+        <Attachments variant="inline" className="gap-1.5">
+          {selection.map((element, index) => (
+            <ElementChip
+              key={elementKey(element)}
+              element={element}
+              n={index + 1}
+              remove={() => {
+                if (!busy) ui.set({ selection: selection.filter((item) => item !== element) });
+              }}
+            />
+          ))}
+          {extra.map((attachment) => (
+            <AttachmentChip key={attachment.id} attachment={attachment} />
+          ))}
+        </Attachments>
+      )}
+      <PromptEditor
+        key={batch ? "global" : (editing ?? "current")}
+        value={prompt}
+        onChange={(value) => ui.set(batch ? { globalPrompt: value } : { prompt: value })}
+        label={t(batch ? "Global comment" : "Prompt")}
+        disabled={busy}
+        onSend={() => void submit()}
+        {...(batch ? {} : { onPasteImage: pasteImage })}
+      />
+      <div className="flex items-center gap-2">
+        {!batch && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={t("Copy as Markdown")}
+            data-testid="pka-copy"
+            disabled={busy}
+            onClick={() => void copy()}
+          >
+            {copied ? <CheckIcon /> : <CopyIcon />}
+          </Button>
         )}
-        <PromptInputBody>
-          <PromptInputTextarea
-            data-testid="pka-prompt"
-            aria-label="Prompt"
-            placeholder={
-              selection.length > 0
-                ? "What should change?"
-                : "Pick elements, then describe the change"
-            }
-            className="min-h-14 text-sm"
-          />
-        </PromptInputBody>
-        <PromptInputFooter className="px-1.5 pb-1.5">
-          <PromptInputTools>
-            <PromptInputButton
-              aria-label="Pick elements"
-              aria-pressed={picking === "pick"}
-              tooltip="Pick elements"
-              className="aria-pressed:bg-pick aria-pressed:text-pick-foreground"
-              onClick={() => ui.set({ picking: picking === "pick" ? null : "pick" })}
-            >
-              <MousePointer2Icon className="size-4" />
-            </PromptInputButton>
-            <CopyMarkdown onError={setError} />
-            {selection.length > MAX_ELEMENTS && (
-              <span className="text-xs text-destructive">At most {MAX_ELEMENTS} elements</span>
-            )}
-          </PromptInputTools>
-          <PromptInputSubmit
-            aria-label="Send to agent"
-            data-testid="pka-send"
-            status={phase === null ? "ready" : "submitted"}
-            disabled={phase !== null || empty || selection.length > MAX_ELEMENTS}
-          />
-        </PromptInputFooter>
-      </PromptInput>
-      <div aria-live="polite" className="min-h-5 px-1 pt-1.5 text-xs">
+        <span className="mr-auto text-xs text-muted-foreground">{t("Ctrl / ⌘ Enter sends")}</span>
+        {!batch && (
+          <Button
+            variant="outline"
+            size="sm"
+            data-testid="pka-save"
+            disabled={busy || recording || !hasCurrent || selection.length > MAX_ELEMENTS}
+            onClick={() => void save()}
+          >
+            {t("Save")}
+          </Button>
+        )}
+        <Button size="sm" data-testid="pka-send" disabled={!ready} onClick={() => void submit()}>
+          <SendIcon />
+          {t(batch ? "Send all" : "Send")}
+        </Button>
+      </div>
+      {recording && (
+        <p className="text-xs text-muted-foreground">Stop recording before saving or sending.</p>
+      )}
+      {selection.length > MAX_ELEMENTS && (
+        <p className="text-xs text-destructive">Select at most {MAX_ELEMENTS} elements.</p>
+      )}
+      <div aria-live="polite" className="text-xs">
         {error !== null ? (
-          <p role="alert" className="flex items-start gap-1.5 text-destructive">
-            <TriangleAlertIcon className="mt-0.5 size-3 shrink-0" />
+          <p role="alert" className="text-destructive">
             {error}
           </p>
         ) : phase !== null ? (
           <p className="text-muted-foreground">{phaseText(phase)}</p>
-        ) : (
-          <p className="text-muted-foreground">Enter sends · Shift+Enter adds a line</p>
-        )}
+        ) : null}
       </div>
     </div>
   );
 }
-
-export { ComposerForm as Composer };

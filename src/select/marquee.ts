@@ -1,5 +1,7 @@
 import type { Box } from "../shared/schema.ts";
 
+export type Point = { x: number; y: number };
+
 export type Candidate<E> = { element: E; box: Box };
 
 export type HitTree<E> = {
@@ -23,6 +25,40 @@ export function marqueeHits<E>(
 ): E[] {
   const test = containment === "contain" ? contains : intersects;
   const hits = candidates.filter((candidate) => test(marquee, candidate.box));
+  return resolveHits(hits, candidates, tree);
+}
+
+export function lassoHits<E>(
+  points: readonly Point[],
+  candidates: readonly Candidate<E>[],
+  tree: HitTree<E>,
+): E[] {
+  if (points.length < 3) return [];
+  const inside = (point: Point): boolean => {
+    let hit = false;
+    for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+      const a = points[i]!;
+      const b = points[j]!;
+      if (
+        a.y > point.y !== b.y > point.y &&
+        point.x < ((b.x - a.x) * (point.y - a.y)) / (b.y - a.y) + a.x
+      )
+        hit = !hit;
+    }
+    return hit;
+  };
+  return resolveHits(
+    candidates.filter(({ box }) => inside({ x: box.x + box.w / 2, y: box.y + box.h / 2 })),
+    candidates,
+    tree,
+  );
+}
+
+function resolveHits<E>(
+  hits: readonly Candidate<E>[],
+  candidates: readonly Candidate<E>[],
+  tree: HitTree<E>,
+): E[] {
   const hitSet = new Set(hits.map((candidate) => candidate.element));
 
   const ancestors = new Set<E>();

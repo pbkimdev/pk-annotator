@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { ErrorGroup, RelativePath, Timestamp, Viewport } from "./schema.ts";
+import { Box, ErrorGroup, RelativePath, Timestamp, Viewport } from "./schema.ts";
 import { RequestEntry } from "./timeline.ts";
 
 // The files of one recording attachment, relative to the annotation directory. The
@@ -13,6 +13,7 @@ export const RECORDING = {
   network: "capture/network.jsonl",
   errors: "capture/errors.json",
   video: "capture/video.webm",
+  gif: "capture/animation.gif",
 } as const;
 
 export function framePath(n: number): string {
@@ -27,7 +28,7 @@ export const RecordingFrame = z.strictObject({ path: RelativePath, seq: Seq, at:
 
 export const RecordingVideo = z.union([
   z.strictObject({
-    path: z.literal(RECORDING.video),
+    path: RelativePath,
     mimeType: z.string(),
     bytes: Count,
     startedAt: Timestamp,
@@ -62,6 +63,17 @@ export const RecordingManifestDraft = z.strictObject({
     failed: Count,
   }),
   video: RecordingVideo,
+  region: Box.nullable().optional(),
+  gif: z
+    .strictObject({
+      path: RelativePath,
+      width: Count,
+      height: Count,
+      frames: Count,
+      durationMs: Count,
+      truncated: z.boolean(),
+    })
+    .optional(),
   redaction: z.strictObject({
     inputs: z.literal("values never recorded; masked in keyframes"),
     headers: z.literal("credential headers dropped"),

@@ -21,6 +21,7 @@ export type UiContext = {
   theme: ThemeSignal;
   /** Called by the UI when the dock closes; the launcher shows itself again. */
   hidden(): void;
+  exit(): void;
 };
 
 export type UiController = {
@@ -138,7 +139,11 @@ function watchTheme(
 export type Launcher = { setTheme(theme: ThemeSetting): void; unmount(): void };
 
 /** Creates the host element and the plain DOM launcher; the React UI loads on first open. */
-export function createLauncher(hot: ViteHotContext, theme: ThemeSetting): Launcher {
+export function createLauncher(
+  hot: ViteHotContext,
+  theme: ThemeSetting,
+  exit: () => void,
+): Launcher {
   if (document.querySelector(HOST_TAG) !== null) {
     throw new Error(`<${HOST_TAG}> is already mounted; call unmount() before mounting again`);
   }
@@ -182,6 +187,10 @@ export function createLauncher(hot: ViteHotContext, theme: ThemeSetting): Launch
         shadow,
         hot,
         theme: themeSignal,
+        exit() {
+          sessionStorage.removeItem(OPEN_KEY);
+          exit();
+        },
         hidden() {
           sessionStorage.removeItem(OPEN_KEY);
           button.dataset.corner = readCorner();

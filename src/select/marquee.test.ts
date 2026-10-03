@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Box } from "../shared/schema.ts";
-import { marqueeHits, type Candidate, type HitTree } from "./marquee.ts";
+import { lassoHits, marqueeHits, type Candidate, type HitTree } from "./marquee.ts";
 
 type Node = { name: string; parent: Node | null; children: Node[]; root: boolean };
 
@@ -69,5 +69,19 @@ describe("marqueeHits", () => {
   it("keeps document order across collapsed roots and plain hits", () => {
     const hits = marqueeHits({ x: -4, y: 50, w: 208, h: 120 }, candidates, "contain", tree);
     expect(names(hits)).toEqual(["c", "card"]);
+  });
+});
+
+describe("lassoHits", () => {
+  it("excludes elements inside the bounding box but outside a concave lasso", () => {
+    const points = [
+      { x: -2, y: -2 },
+      { x: 202, y: -2 },
+      { x: 202, y: 32 },
+      { x: 80, y: 32 },
+      { x: 80, y: 162 },
+      { x: -2, y: 162 },
+    ];
+    expect(names(lassoHits(points, candidates, tree))).toEqual(["a", "action"]);
   });
 });

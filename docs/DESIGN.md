@@ -1,6 +1,6 @@
 # pk-annotator: design
 
-A standalone, dev-only, floating package that replaces Agentation (toolbar, server, and MCP registrations) everywhere Paul uses it. It covers element picking (click, Shift multi-select, marquee), prompt composition, flow recording, network and console inspection with error hunting, and a performance panel.
+A standalone, dev-only, floating package that replaces Agentation (toolbar, server, and MCP registrations) everywhere Paul uses it. It covers element picking (click, Shift multi-select, box, lasso), prompt composition, flow recording, network and console inspection with error hunting, and a performance panel.
 
 This document owns the current package contract. Start with [DEVELOPING.md](DEVELOPING.md) for task entry points, tests, and the fixture. Dated consumer migration plans and external runtime observations are in [INTEGRATION-HISTORY.md](INTEGRATION-HISTORY.md).
 
@@ -8,7 +8,7 @@ This document owns the current package contract. Start with [DEVELOPING.md](DEVE
 
 1. **Capture is built in.** `core/` wraps fetch, XHR, console, and error events itself.
 2. **Own MCP server.** `pka-mcp` is a stdio server over a per-project file store in `_interim/annotations/`.
-3. **AI Elements is installed** with shadcn into the overlay. The overlay keeps lucide icons; consumers map shadcn variables to their own tokens through a theme file.
+3. **Tiptap edits prompts as blocks.** AI Elements supplies attachment chips alongside shadcn. The overlay keeps lucide icons; consumers map shadcn variables to their own tokens through a theme file.
 4. **Home: `~/srv/pk-annotator`**, Forgejo `srv/pk-annotator`, published to the Forgejo npm registry as **`@srv/pk-annotator`** (`https://git.paulbkim.dev/api/packages/srv/npm/`). The scope is required because pnpm routes only scoped packages to a second registry. Consumers set `@srv:registry` in `.npmrc` and list the package in `pnpm.minimumReleaseAgeExclude`. Worktrees go at `~/.worktrees/pk-annotator/<branch>`.
 5. **Replacement scope:** Lean, Mantra, the Claude Code user registration, and the Platform service. The historical migration plan is in [INTEGRATION-HISTORY.md](INTEGRATION-HISTORY.md#agentation-removal); current migration status belongs to each owning repository.
 6. **Tools only, no idle cost.** The MCP server uses no resources, prompts, sampling, roots, or logging primitives. Nothing polls, and nothing holds memory beyond fixed caps when unused.
@@ -80,19 +80,26 @@ The consumer passes `import.meta.hot` because a pre-bundled dependency has no HM
 <pk-annotator> shadow root, a child of <html>
   launcher.ts  plain DOM button with an error badge; no React until first open
   <Dock>  React root, loaded on first open; draggable, snaps to a corner
-    Pick · Box | Record · Network · Console · Perf | Compose · Sent | Close   (named icon buttons, Tab-reachable)
+    Pick ▾ · Capture ▾ · Annotate ▾ | Debug ▾ · Composer | Settings · Minimize   (named icon buttons, Tab-reachable)
   <PickLayer>  takes pointer events only while picking
     <HoverBox> component name + file:line
     <SelectionBox n> numbered tab outside the element's box, so it never covers the element
-    <MarqueeRect>
+    <MarqueeRect> | <LassoPolygon>
+  <MarkLayer>  cropped screenshot, recording region, rectangle, circle, freehand
   <Panel>  one open at a time, beside the dock
     <RecordPanel> | <NetworkPanel> | <ConsolePanel> | <PerfPanel>
-    <Composer>  AI Elements PromptInput
+    <Composer>  lazily loaded Tiptap block editor
       <ElementChips>     one per selected element, removable; details open beside the panel
       <AttachmentChips>  recording, error groups, requests, perf snapshot
-      <Textarea> + Send (to the store) / Copy (Markdown)
-    <Thread>  "Sent": agent replies and status for annotations sent from this tab
+      <PromptEditor> + Send / Save / Copy (Markdown)
+    <Composer batch> saved marks, editing, global comment, Send all
+    <Settings> History, language, Exit
+    <Thread>  History: agent replies and status for annotations sent from this tab
 ```
+
+Picking or capturing opens the prompt editor immediately. Enter creates a block; Ctrl/Cmd+Enter sends. The editor supports headings, lists, quotes, code blocks, and inline formatting. A mark can be sent immediately or saved in this tab. Saved marks retain their prompts, elements, and capture snapshots while the dock is minimized; reload or Exit discards unsent marks. Composer edits these marks and an optional global comment. Send all creates one annotation with numbered mark sections and one deduplicated element list. Capture paths are unique per attachment, so multiple recordings cannot overwrite each other.
+
+Pick groups Single, Box, and Lasso. Capture groups Record, Screenshot, Crop screenshot, and Recording area. Annotate groups Rectangle, Circle, and Freehand. Debug groups Console, Network, and Performance. Settings holds History, English/Korean language, and Exit. Minimize retains the launcher; Exit unmounts the overlay and stops capture. Language is stored on the origin; captured content and prompts retain their original language.
 
 ## Data flow
 
@@ -126,7 +133,8 @@ Nothing runs that you are not using, and production carries zero bytes.
 | Console and errors | Wrappers append to fixed ring buffers (500 entries). Arguments are serialized at capture time with depth and length caps, so the buffer never holds app objects. An error group that is new, recurs, or changes status is sent to the plugin for the live error snapshot, at most once per second; the timer exists only while a group waits | Panels subscribe to the in-page buffers and read them directly. A recording copies each new entry through a tap, so the ring cap cannot drop it. Nothing else reaches the plugin until you send an annotation |
 | Network | Request metadata only, same ring-buffer cap. One PerformanceObserver for `resource` entries keeps the timings of up to 500 fetch and XHR requests, so Server-Timing and transfer sizes survive a full resource timing buffer (Chromium holds 250 entries, and a Vite dev page fills it with module scripts). Its callback runs only when a request completes, it never resizes or reads the page's buffer, and stopping the capture disconnects it. Bodies are captured only for allowlisted same-origin paths, 64 KB each, 8 MB total. A JSON response without Content-Length is read from a clone until it ends or passes 64 KB, when the clone is cancelled. Event streams, NDJSON, and other streaming types are never cloned; only open, close, and byte count are recorded. The overlay's own requests (source maps for symbolication, images and fonts snapdom inlines) use the unwrapped fetch and are never recorded | Same |
 | Performance | No observers beyond the Network one. Opening the Perf panel starts PerformanceObserver with `buffered: true`, which still returns LCP, CLS, and earlier long animation frames | `react-scan/lite` runs only while the Perf panel is open |
-| Recording | Off | Keyframes only at actions, navigations, and errors (one per error group); video only when chosen |
+| Recording | Off | Keyframes only at actions, navigations, and errors (one per error group). GIF/video are opt-in; frame callbacks run only during recording. GIF encoding loads on demand, with at most 120 frames, a 480 px longest edge and 32 MB. WebM is capped at 256 MB and a 1920 px longest edge |
+| Saved marks | At most 50 marks and 256 MB of saved captures; no timers | Each Save freezes attachment data. A current mark holds at most 50 pasted/drawn image captures |
 | Automation | Nothing mounts when `navigator.webdriver` is true (Playwright, e2e runs) | n/a |
 | Vite plugin | One `fs.watch` on the store root plus one per open annotation's directory; source transform runs only under `serve` | Writes on events only |
 | pka-mcp | Not running until a client spawns it. Between calls it holds no timers or watchers. It exits on stdin EOF | `wait_for_annotation` holds one inotify watcher for its bounded duration, then closes it |
@@ -193,13 +201,16 @@ pick mode, capture-phase pointer listeners, overlay host skipped in elementsFrom
   Shift+click    → toggle target in selection
   drag > 4 px    → marquee (box mode: any drag)
   Esc            → clear the selection; with none, leave pick mode
-  Enter          → leave pick mode and open Compose (not while typing in a field)
+  Enter          → leave pick mode and open the annotation panel (not while typing in a field)
 marquee end(rect)
   candidates = interactive, text, img, or [data-pka-src] elements, minus tiny and near-viewport-size ones
   hits = full containment (Alt: intersection)
   hits = drop any hit that contains another hit
   hits = replace with the component root when every child of that root is hit
   selection = Shift ? selection ∪ hits : hits
+lasso end(points)
+  select candidates whose centers are inside the polygon, then apply the same ancestor pruning
+  bound the stroke to 512 points; picking opens the editor without ending multi-selection
 ```
 
 Source location comes from the serve-only Vite plugin, `src/vite/source.ts`. It parses with Vite's re-exported `parseSync` and `Visitor` and writes with `magic-string`, stamping `data-pka-src="<workspace-relative path>:line:col"` (1-based) on every lowercase host JSX element. Paths are relative to `searchForWorkspaceRoot`, so a monorepo can report `apps/web/src/...`. The hook must use `enforce: "pre"` and `transform.order: "pre"` so it stamps the untouched source in client, route-split, and SSR environments alike; this prevents hydration mismatches from attributes added after source splitting. TanStack's `injectSource` was rejected: fixed attribute name, composite elements stamped, spread detection defeated by rest destructuring, parse errors swallowed.
@@ -239,20 +250,23 @@ after the agent resolves and HMR reloads
 
 ## Recording
 
-A recording defaults to an event timeline with keyframes; video is opt-in. Agents use named actions far better than video: Jam had to add frame-extraction tools before agents could use its recordings.
+A recording defaults to an event timeline with keyframes. Independent GIF and Video toggles add either or both formats from one tab-sharing request. The chosen rectangular viewport region applies to keyframes and both media formats. Agents use named actions far better than video: Jam had to add frame-extraction tools before agents could use its recordings.
 
 ```text
-capture/
+capture/attachments/<n>/capture/
 ├── summary.md       # about 2 KB; the agent reads this first
 ├── manifest.json    # URL, viewport, git SHA, times, redaction policy
 ├── timeline.jsonl   # actions, navigations, console, errors, requests, joined by seq and traceparent
 ├── network.jsonl    # redacted, HAR-like
 ├── errors.json      # deduplicated groups
 ├── frames/NNN.webp  # snapdom keyframe at each action, navigation, error
-└── video.webm       # opt-in: getDisplayMedia + Element Capture restricted to body
+├── video.webm       # opt-in: getDisplayMedia + Element Capture restricted to body, then cropped
+└── animation.gif    # opt-in GIF of the same region
 ```
 
-Redaction happens in the page: inputs masked, auth and cookie headers dropped, bodies kept only for allowlisted same-origin API paths, storage never read.
+Each recording attachment points to its own summary; the manifest, timeline, network, and errors files are siblings. `capture/summary.md` links all attachments. The plugin stamps every recording manifest. The lab replays the first recording attachment.
+
+Redaction happens in the page: keyframe inputs are masked, auth and cookie headers dropped, bodies kept only for allowlisted same-origin API paths, and storage never read. Video and GIF pixels are not redacted; the capture controls say so.
 
 **Overlay exclusion.** The video is restricted to body, and the `<pk-annotator>` host is a child of `<html>` from mount on, so the video never contains the overlay. This placement is safe when a consumer hydrates the whole document. React 19 starts hydrating a document at body's first child and resolves html, head, and body by reference, so it never visits another child of `<html>` (react-dom 19.3.0, `beginWork` for the root and for host singletons). It also skips, without an error, an unexpected element that is a direct child of head or body. In the fixture on 2026-10-03, neither placement produced a hydration error in at least 60 loads each. Those loads covered fresh contexts, 4x and 6x CPU throttling, a cold Vite dependency cache, navigation between `/` and `/lab`, reloads with the dock open, and clicks before hydration ended. An injected mismatch was reported every time.
 
@@ -279,7 +293,7 @@ The overlay follows these isolation and integration rules. The original investig
 4. **Focus.** Radix Select and Menu compare `document.activeElement`, which is retargeted to the host element. While mounted, an instance getter on `document` returns `shadow.activeElement` only when the native value is our host; unmount removes it.
 5. **Portals.** A context supplies a portal container inside the shadow root, a sibling of the app root, to every shadcn portal.
 6. **Stacking.** The host is the only stacking context; the dock carries no z-index, so portal content stacks above it.
-7. **No modal primitives.** Modal Select, Dialog, and DropdownMenu lock host scrolling, set `pointer-events: none` on `body`, and put `aria-hidden` on host elements. Use non-modal variants only: `modal={false}` menus, and a non-modal menu or popover in place of Select (including PromptInput's model select).
+7. **No modal primitives.** Modal Select, Dialog, and DropdownMenu lock host scrolling, set `pointer-events: none` on `body`, and put `aria-hidden` on host elements. Use non-modal variants only: `modal={false}` menus, and a non-modal menu or popover in place of Select (including editor block controls).
 8. **Theming.** Consumers theme through custom properties on the host element (`pk-annotator { --primary: var(--app-accent); --radius: 4px; }`), which beat `:host` and inherit across the boundary. Dark mode needs `data-theme="dark"` on the host, which switches the `:host` variables, and a `.dark` class on `.pka-root` for Tailwind's dark variant; the `theme` option and `setTheme` set both (see Public API).
 
 ## Sources

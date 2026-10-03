@@ -60,7 +60,7 @@ export function mount(options: MountOptions): Mounted {
     open = count;
     setBadge(count);
   });
-  const launcher = createLauncher(options.hot, options.theme ?? "system");
+  const launcher = createLauncher(options.hot, options.theme ?? "system", () => mounted.unmount());
 
   const mounted: Mounted = {
     reactRootOptions: capture.reactRootOptions,

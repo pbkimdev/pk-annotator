@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import tailwindcss from "@tailwindcss/postcss";
 import postcss, { type Declaration } from "postcss";
+import { esmExternalRequirePlugin } from "rolldown/plugins";
 import { defineConfig, type UserConfig } from "tsdown";
 
 const INLINE_CSS = "?inline";
@@ -72,11 +73,13 @@ const overlay: UserConfig = {
   alias: { "@": path.resolve(import.meta.dirname, "src") },
   define: { "process.env.NODE_ENV": JSON.stringify("production") },
   deps: {
-    neverBundle: [/^react($|\/)/, /^react-dom($|\/)/],
-    alwaysBundle: [/^(?!react($|\/)|react-dom($|\/))/],
+    alwaysBundle: [/.*/],
     onlyBundle: false,
   },
-  plugins: [inlineTailwind],
+  plugins: [
+    esmExternalRequirePlugin({ external: [/^react($|\/)/, /^react-dom($|\/)/] }),
+    inlineTailwind,
+  ],
 };
 
 export default defineConfig([

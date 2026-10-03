@@ -12,7 +12,7 @@ import { formatArgs } from "../../core/serialize.ts";
 import type { ErrorGroup, ErrorGroupStatus } from "../../shared/schema.ts";
 import type { ConsoleEntry } from "../../shared/timeline.ts";
 import { getCapture } from "../capture.ts";
-import { COMPOSE, useOverlay } from "../context.tsx";
+import { NOTE, useOverlay } from "../context.tsx";
 import { cn } from "../lib/utils.ts";
 import type { PanelProps } from "../registry.ts";
 import { Button } from "../ui/button.tsx";
@@ -155,7 +155,7 @@ export function ConsolePanel(_props: PanelProps) {
 
   const huntAndCompose = (fingerprints: readonly string[]) => {
     hunt(hot, fingerprints);
-    ui.set({ panel: COMPOSE });
+    ui.set({ panel: NOTE });
   };
 
   return (

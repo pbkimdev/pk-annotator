@@ -1,23 +1,44 @@
 import { createContext, useContext } from "react";
 import type { ViteHotContext } from "vite/types/hot.d.ts";
 
-import type { Containment } from "../select/marquee.ts";
+import type { Containment, Point } from "../select/marquee.ts";
 import type { PickMode, SelectHow } from "../select/pick.ts";
 import type { Box } from "../shared/schema.ts";
 import type { Corner, ThemeSignal } from "./launcher.ts";
+import type { ComposerAttachment } from "./registry.ts";
 import type { Store } from "./store.ts";
 import type { ThreadStore } from "./thread-store.ts";
 
 export const COMPOSE = "compose";
 export const THREAD = "thread";
+export const NOTE = "note";
+export const SETTINGS = "settings";
+
+export type SavedMark = {
+  id: string;
+  prompt: string;
+  elements: readonly Element[];
+  attachments: readonly ComposerAttachment[];
+  bytes: number;
+};
 
 export type UiState = {
   visible: boolean;
+  prompt: string;
+  globalPrompt: string;
+  marks: readonly SavedMark[];
+  editing: string | null;
+  busy: boolean;
+  recording: boolean;
+  gesture: "screenshot" | "record-area" | "rectangle" | "ellipse" | "freehand" | null;
+  recordRegion: Box | null;
+  language: "en" | "ko";
   picking: PickMode | null;
   /** The open panel: COMPOSE, THREAD, or a registered panel id. */
   panel: string | null;
   selection: readonly Element[];
   hover: Element | null;
+  lasso: readonly Point[] | null;
   marquee: { box: Box; containment: Containment } | null;
   corner: Corner;
 };
@@ -29,6 +50,7 @@ export type Overlay = {
   ui: Store<UiState>;
   thread: ThreadStore;
   hide(): void;
+  exit(): void;
 };
 
 export const OverlayContext = createContext<Overlay | null>(null);

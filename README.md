@@ -64,6 +64,12 @@ pk-annotator {
 
 Declarations on `pk-annotator` win over the overlay's defaults in both themes.
 
+## Mark and send
+
+Open the launcher, then use Pick (single, box, lasso), Capture (screenshot/crop or area GIF/video), or Annotate (rectangle, circle, freehand). Each opens a Tiptap prompt editor. Send immediately or Save a mark; Composer lets you edit saved marks, add a global comment, and send one combined annotation. Unsent marks stay in this tab until reload or Exit.
+
+Debug groups Console, Network, and Performance. Settings holds History, English/Korean language, and Exit. Minimize keeps the launcher available.
+
 ## MCP
 
 `pka-mcp` is a stdio server with tools only. Launch it from `node_modules/.bin` directly; `pnpm exec` adds a second process.

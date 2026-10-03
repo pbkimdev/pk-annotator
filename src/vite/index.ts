@@ -29,7 +29,6 @@ import {
   type SyncedMessage,
 } from "../shared/channel.ts";
 import {
-  RECORDING,
   RecordingErrors,
   RecordingManifestDraft,
   type RecordingManifest,
@@ -260,24 +259,31 @@ async function serve(server: ViteDevServer, maxStoreBytes: number): Promise<() =
   }
 
   /** Stamps the git SHA into a recording's manifest and symbolicates its error groups. */
-  async function completeRecording(upload: Upload): Promise<void> {
-    const draft = await readStagedJson(upload, RECORDING.manifest, RecordingManifestDraft);
+  async function completeRecording(upload: Upload, directory: string): Promise<void> {
+    const manifestPath = path.posix.join(directory, "manifest.json");
+    const errorsPath = path.posix.join(directory, "errors.json");
+    const draft = await readStagedJson(upload, manifestPath, RecordingManifestDraft);
     const manifest: RecordingManifest = { ...draft, gitSha: await headSha(workspaceRoot) };
     await rewrite(
-      resolveInside(upload.dir, RECORDING.manifest),
+      resolveInside(upload.dir, manifestPath),
       `${JSON.stringify(manifest, null, 2)}\n`,
     );
-    if (!upload.files.has(RECORDING.errors)) return;
-    const errors = await readStagedJson(upload, RECORDING.errors, RecordingErrors);
+    if (!upload.files.has(errorsPath)) return;
+    const errors = await readStagedJson(upload, errorsPath, RecordingErrors);
     const groups = await Promise.all(errors.groups.map(symbolicateGroup));
     await rewrite(
-      resolveInside(upload.dir, RECORDING.errors),
+      resolveInside(upload.dir, errorsPath),
       `${JSON.stringify({ groups }, null, 2)}\n`,
     );
   }
 
   async function finish(upload: Upload): Promise<void> {
-    if (upload.files.has(RECORDING.manifest)) await completeRecording(upload);
+    const recordingDirectories = new Set(
+      upload.draft.attachments
+        .filter((attachment) => attachment.kind === "recording")
+        .map((attachment) => path.posix.dirname(attachment.path)),
+    );
+    for (const directory of recordingDirectories) await completeRecording(upload, directory);
     const { id } = await create(store, upload.draft, {
       dir: upload.dir,
       paths: [...upload.files.keys()],
@@ -290,7 +296,7 @@ async function serve(server: ViteDevServer, maxStoreBytes: number): Promise<() =
 
   async function prepare(upload: Upload, declaredBytes: number): Promise<void> {
     if (
-      upload.files.has(RECORDING.video) ||
+      [...upload.files.keys()].some((file) => file.endsWith(".webm") || file.endsWith(".gif")) ||
       upload.draft.attachments.some((attachment) => attachment.kind === "video")
     ) {
       const size = await checkStoreSize(store, maxStoreBytes);

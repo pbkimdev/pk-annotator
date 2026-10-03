@@ -8,7 +8,7 @@ import {
   type Location,
 } from "../select/source.ts";
 import { startPicking } from "../select/pick.ts";
-import { COMPOSE, elementKey, nextSelection, useOverlay } from "./context.tsx";
+import { NOTE, elementKey, nextSelection, useOverlay } from "./context.tsx";
 import { cn } from "./lib/utils.ts";
 import { remember } from "./send.ts";
 import { useStore } from "./store.ts";
@@ -120,14 +120,18 @@ function SelectionBox({ element, n }: { element: Element; n: number }) {
 export function PickLayer() {
   const { host, ui } = useOverlay();
   const picking = useStore(ui, (state) => state.picking);
+  const busy = useStore(ui, (state) => state.busy);
   const visible = useStore(ui, (state) => state.visible);
   const selection = useStore(ui, (state) => state.selection);
   const hover = useStore(ui, (state) => state.hover);
+  const lasso = useStore(ui, (state) => state.lasso);
+  const marks = useStore(ui, (state) => state.marks);
+  const editing = useStore(ui, (state) => state.editing);
   const marquee = useStore(ui, (state) => state.marquee);
   const layer = useRef<HTMLDivElement>(null);
-  const active = visible && picking !== null;
+  const active = visible && !busy && picking !== null;
 
-  useLayoutTicks(visible && (selection.length > 0 || hover !== null));
+  useLayoutTicks(visible && (selection.length > 0 || marks.length > 0 || hover !== null));
 
   useEffect(() => {
     if (!active || layer.current === null) return;
@@ -140,15 +144,16 @@ export function PickLayer() {
       hover: (element) => ui.set({ hover: element }),
       select: (elements, how) => {
         remember(elements);
-        ui.set({ selection: nextSelection(ui.get().selection, elements, how) });
+        ui.set({ selection: nextSelection(ui.get().selection, elements, how), panel: NOTE });
       },
       marquee: (box, containment) =>
         ui.set({ marquee: box === null ? null : { box, containment } }),
+      lasso: (points) => ui.set({ lasso: points }),
       escape: () => {
         if (ui.get().selection.length > 0) ui.set({ selection: [] });
         else ui.set({ picking: null });
       },
-      enter: () => ui.set({ picking: null, panel: COMPOSE }),
+      enter: () => ui.set({ picking: null, panel: NOTE }),
     });
   }, [active, picking, host, ui]);
 
@@ -161,10 +166,31 @@ export function PickLayer() {
         aria-hidden="true"
         className={cn("fixed inset-0", active ? "pointer-events-auto cursor-crosshair" : "hidden")}
       />
+      {marks
+        .filter((mark) => mark.id !== editing)
+        .flatMap((mark) => mark.elements)
+        .map((element, index) => (
+          <SelectionBox
+            key={`saved-${elementKey(element)}-${index}`}
+            element={element}
+            n={index + 1}
+          />
+        ))}
       {selection.map((element, index) => (
         <SelectionBox key={elementKey(element)} element={element} n={index + 1} />
       ))}
       {active && hover !== null && marquee === null && <HoverBox element={hover} />}
+      {lasso !== null && (
+        <svg className="pointer-events-none fixed inset-0 size-full overflow-visible text-pick">
+          <polygon
+            points={lasso.map((point) => `${point.x},${point.y}`).join(" ")}
+            fill="currentColor"
+            fillOpacity="0.1"
+            stroke="currentColor"
+            strokeWidth="2"
+          />
+        </svg>
+      )}
       {marquee !== null && (
         <div
           data-testid="pka-marquee"

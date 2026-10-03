@@ -1,10 +1,20 @@
+import { useText } from "./language.ts";
 import {
   GripVerticalIcon,
   MessageSquarePlusIcon,
-  MessagesSquareIcon,
   MousePointer2Icon,
   SquareDashedMousePointerIcon,
-  XIcon,
+  LassoIcon,
+  MinusIcon,
+  SettingsIcon,
+  VideoIcon,
+  BugIcon,
+  PencilIcon,
+  SquareIcon,
+  CircleIcon,
+  CameraIcon,
+  CropIcon,
+  ChevronDownIcon,
 } from "lucide-react";
 import {
   useRef,
@@ -16,12 +26,19 @@ import {
 } from "react";
 
 import type { PickMode } from "../select/pick.ts";
-import { COMPOSE, THREAD, useOverlay } from "./context.tsx";
+import { COMPOSE, SETTINGS, useOverlay } from "./context.tsx";
 import { CORNER_KEY, SHORTCUT_LABEL, type Corner } from "./launcher.ts";
 import { cn } from "./lib/utils.ts";
 import { panels } from "./registry.ts";
 import { useList, useStore } from "./store.ts";
 import { Button } from "./ui/button.tsx";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu.tsx";
 import { Kbd } from "./ui/kbd.tsx";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip.tsx";
 
@@ -44,15 +61,16 @@ function DockButton({
   children,
   ...props
 }: ComponentProps<typeof Button> & { label: string; shortcut?: string; children: ReactNode }) {
+  const t = useText();
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Button variant="ghost" size="icon-sm" aria-label={label} {...props}>
+        <Button variant="ghost" size="icon-sm" aria-label={t(label)} {...props}>
           {children}
         </Button>
       </TooltipTrigger>
       <TooltipContent side="top" sideOffset={6}>
-        {label}
+        {t(label)}
         {shortcut !== undefined && <Kbd>{shortcut}</Kbd>}
       </TooltipContent>
     </Tooltip>
@@ -77,13 +95,17 @@ const ARROW_CORNER = new Map<string, (corner: Corner) => Corner>([
 ]);
 
 export function Dock() {
-  const { ui, thread, hide } = useOverlay();
+  const t = useText();
+  const { ui, hide } = useOverlay();
   const picking = useStore(ui, (state) => state.picking);
   const panel = useStore(ui, (state) => state.panel);
   const corner = useStore(ui, (state) => state.corner);
   const selected = useStore(ui, (state) => state.selection.length);
-  const unread = useStore(thread, (state) => state.unread);
+  const busy = useStore(ui, (state) => state.busy);
+  const marks = useStore(ui, (state) => state.marks.length);
   const registered = useList(panels);
+  const CaptureIcon =
+    registered.find((definition) => definition.id === "record")?.icon ?? VideoIcon;
   const dock = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<{ x: number; y: number; dx: number; dy: number } | null>(null);
 
@@ -91,10 +113,10 @@ export function Dock() {
     localStorage.setItem(CORNER_KEY, next);
     ui.set({ corner: next });
   };
-  const togglePick = (mode: PickMode) => ui.set({ picking: picking === mode ? null : mode });
+  const togglePick = (mode: PickMode) =>
+    ui.set({ picking: picking === mode ? null : mode, gesture: null });
   const togglePanel = (id: string) => {
     ui.set({ panel: panel === id ? null : id });
-    if (id === THREAD) thread.set({ unread: false });
   };
 
   const onGripDown = (event: PointerEvent<HTMLButtonElement>) => {
@@ -152,69 +174,147 @@ export function Dock() {
       >
         <GripVerticalIcon className="size-3.5" />
       </button>
-      <DockButton
-        label="Pick elements"
-        shortcut={SHORTCUT_LABEL}
-        aria-pressed={picking === "pick"}
-        className="aria-pressed:bg-pick aria-pressed:text-pick-foreground"
-        onClick={() => togglePick("pick")}
-      >
-        <MousePointer2Icon />
-      </DockButton>
-      <DockButton
-        label="Select an area"
-        aria-pressed={picking === "box"}
-        className="aria-pressed:bg-pick aria-pressed:text-pick-foreground"
-        onClick={() => togglePick("box")}
-      >
-        <SquareDashedMousePointerIcon />
-      </DockButton>
-      {registered.length > 0 && <Separator />}
-      {registered.map((definition) => (
-        <DockButton
-          key={definition.id}
-          label={definition.label}
-          aria-pressed={panel === definition.id}
-          className={PRESSED}
-          onClick={() => togglePanel(definition.id)}
-        >
-          <definition.icon />
-        </DockButton>
-      ))}
+
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <DockButton
+            label="Pick elements"
+            shortcut={SHORTCUT_LABEL}
+            disabled={busy}
+            aria-pressed={picking !== null}
+            className="w-10 aria-pressed:bg-pick aria-pressed:text-pick-foreground"
+          >
+            <MousePointer2Icon />
+            <ChevronDownIcon className="size-2.5" />
+          </DockButton>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent side={corner.startsWith("top") ? "bottom" : "top"}>
+          <DropdownMenuItem onSelect={() => togglePick("pick")}>
+            <MousePointer2Icon />
+            {t("Single")}
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => togglePick("box")}>
+            <SquareDashedMousePointerIcon />
+            {t("Box")}
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => togglePick("lasso")}>
+            <LassoIcon />
+            {t("Lasso")}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <DockButton
+            label="Capture"
+            disabled={busy}
+            aria-pressed={panel === "record"}
+            className="w-10"
+          >
+            <CaptureIcon />
+            <ChevronDownIcon className="size-2.5" />
+          </DockButton>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent side={corner.startsWith("top") ? "bottom" : "top"}>
+          <DropdownMenuItem onSelect={() => togglePanel("record")}>
+            <VideoIcon />
+            {t("Record")}
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => ui.set({ panel: "snapshot", picking: null })}>
+            <CameraIcon />
+            {t("Screenshot")}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={() => ui.set({ gesture: "screenshot", picking: null, panel: null })}
+          >
+            <CropIcon />
+            {t("Crop screenshot")}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onSelect={() => ui.set({ gesture: "record-area", picking: null, panel: null })}
+          >
+            <SquareDashedMousePointerIcon />
+            {t("Recording area")}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <DockButton label="Annotate" disabled={busy} className="w-10">
+            <PencilIcon />
+            <ChevronDownIcon className="size-2.5" />
+          </DockButton>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent side={corner.startsWith("top") ? "bottom" : "top"}>
+          <DropdownMenuItem
+            onSelect={() => ui.set({ gesture: "rectangle", picking: null, panel: null })}
+          >
+            <SquareIcon />
+            {t("Rectangle")}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={() => ui.set({ gesture: "ellipse", picking: null, panel: null })}
+          >
+            <CircleIcon />
+            {t("Circle")}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={() => ui.set({ gesture: "freehand", picking: null, panel: null })}
+          >
+            <PencilIcon />
+            {t("Freehand")}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
       <Separator />
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <DockButton label="Debug" disabled={busy} className="w-10">
+            <BugIcon />
+            <ChevronDownIcon className="size-2.5" />
+          </DockButton>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent side={corner.startsWith("top") ? "bottom" : "top"}>
+          {registered
+            .filter((definition) => definition.id !== "record")
+            .map((definition) => (
+              <DropdownMenuItem key={definition.id} onSelect={() => togglePanel(definition.id)}>
+                <definition.icon />
+                {t(definition.id === "perf" ? "Performance" : definition.label)}
+              </DropdownMenuItem>
+            ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
       <DockButton
-        label={selected > 0 ? `Compose (${selected} selected)` : "Compose"}
+        label="Composer"
+        disabled={busy}
         aria-pressed={panel === COMPOSE}
         className={cn("relative", PRESSED)}
         onClick={() => togglePanel(COMPOSE)}
       >
         <MessageSquarePlusIcon />
-        {selected > 0 && (
+        {marks + (selected > 0 ? 1 : 0) > 0 && (
           <span
             aria-hidden="true"
-            className="absolute -top-1 -right-1 grid h-4 min-w-4 place-items-center rounded-full bg-pick px-1 text-[10px] leading-none font-semibold text-pick-foreground"
+            className="absolute -top-1 -right-1 grid h-4 min-w-4 place-items-center rounded-full bg-pick px-1 text-[10px] font-semibold text-pick-foreground"
           >
-            {selected}
+            {marks + (selected > 0 ? 1 : 0)}
           </span>
         )}
       </DockButton>
-      <DockButton
-        label={unread ? "Sent annotations (new replies)" : "Sent annotations"}
-        aria-pressed={panel === THREAD}
-        className={cn("relative", PRESSED)}
-        onClick={() => togglePanel(THREAD)}
-      >
-        <MessagesSquareIcon />
-        {unread && (
-          <span
-            aria-hidden="true"
-            className="absolute top-1 right-1 size-1.5 rounded-full bg-pick ring-2 ring-popover"
-          />
-        )}
-      </DockButton>
       <Separator />
-      <DockButton label="Close annotator" onClick={hide}>
-        <XIcon />
+      <DockButton
+        label="Settings"
+        disabled={busy}
+        aria-pressed={panel === SETTINGS}
+        className={PRESSED}
+        onClick={() => togglePanel(SETTINGS)}
+      >
+        <SettingsIcon />
+      </DockButton>
+      <DockButton label="Minimize" disabled={busy} onClick={hide}>
+        <MinusIcon />
       </DockButton>
     </div>
   );

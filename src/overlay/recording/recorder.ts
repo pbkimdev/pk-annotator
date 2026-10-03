@@ -1,51 +1,33 @@
 import { snapdom } from "@zumer/snapdom";
 
 import { MAX_BODY_TOTAL_BYTES, redactUrl, utf8Length } from "../../core/network.ts";
-import { RECORDING, framePath } from "../../shared/recording.ts";
-import type { Viewport } from "../../shared/schema.ts";
+import { framePath } from "../../shared/recording.ts";
+import type { Box, Viewport } from "../../shared/schema.ts";
 import type { RequestEntry, TimelineEntry } from "../../shared/timeline.ts";
 import { getCapture } from "../capture.ts";
 import { HOST_TAG } from "../launcher.ts";
 import { addAttachment } from "../registry.ts";
 import { captureCanvas, currentViewport } from "../send.ts";
 import { createStore } from "../store.ts";
-import { buildRecording, type RecordedFrame, type RecordedVideo } from "./files.ts";
-
-declare global {
-  // Element Capture (Chrome 132+) and Chrome's self-capture options, not yet in TypeScript's DOM lib.
-  interface RestrictionTarget {
-    readonly __brand: "RestrictionTarget";
-  }
-  var RestrictionTarget: { fromElement(element: Element): Promise<RestrictionTarget> } | undefined;
-  interface MediaStreamTrack {
-    restrictTo?(target: RestrictionTarget | null): Promise<void>;
-  }
-  interface DisplayMediaStreamOptions {
-    preferCurrentTab?: boolean;
-  }
-}
+import { buildRecording, type RecordedFrame } from "./files.ts";
 
 /** The composer attachment id; a new recording replaces the previous chip. */
+export { videoUnavailable } from "./media.ts";
+import { startMedia, type VideoStatus } from "./media.ts";
+
 export const RECORDING_ATTACHMENT = "recording";
 const MAX_ENTRIES = 5000;
 const MAX_FRAMES = 200;
-const MAX_VIDEO_BYTES = 256 * 1024 * 1024;
-const VIDEO_SLICE_MS = 1000;
 const FIELDS =
   'input:not([type="hidden"],[type="checkbox"],[type="radio"],[type="button"],[type="submit"],[type="reset"],[type="image"],[type="range"],[type="color"],[type="file"]),textarea,select,[contenteditable]:not([contenteditable="false"])';
 const MASK = "•••••";
-
-export type VideoStatus =
-  | { state: "off" }
-  | { state: "starting" }
-  | { state: "on" }
-  | { state: "failed"; reason: string };
 
 export type RecorderState = {
   phase: "idle" | "recording" | "stopping";
   /** Date.now() when the running recording started. */
   startedAt: number;
   withVideo: boolean;
+  withGif: boolean;
   video: VideoStatus;
   /** The attachment summary of the last finished recording. */
   last: string | null;
@@ -58,18 +40,6 @@ export type Counts = {
   requests: number;
   frames: number;
   dropped: number;
-};
-
-type Video = {
-  stream: MediaStream;
-  recorder: MediaRecorder;
-  chunks: Blob[];
-  bytes: number;
-  mimeType: string;
-  startedAt: string;
-  truncated: boolean;
-  stopped: Promise<void>;
-  restoreBody: () => void;
 };
 
 type Bodies = Pick<RequestEntry, "requestBody" | "responseBody">;
@@ -95,27 +65,13 @@ type Session = {
   pendingFrame: TimelineEntry | undefined;
   framing: Promise<void> | undefined;
   untap: () => void;
-  video: { kind: "none"; reason: string } | { kind: "starting" } | { kind: "on"; video: Video };
+  media: ReturnType<typeof startMedia> | null;
+  region: Box | null;
 };
 
 function describe(cause: unknown): string {
   if (cause instanceof DOMException) return `${cause.name}: ${cause.message}`;
   return cause instanceof Error ? cause.message : String(cause);
-}
-
-/** Why opt-in video cannot work in this page, or undefined when it can. */
-export function videoUnavailable(): string | undefined {
-  if (!window.isSecureContext) return "Video needs https or localhost";
-  if (!("mediaDevices" in navigator) || !("getDisplayMedia" in navigator.mediaDevices)) {
-    return "This browser cannot capture the tab (no getDisplayMedia)";
-  }
-  if (globalThis.RestrictionTarget === undefined) {
-    return "This browser lacks Element Capture, which keeps the overlay out of the video";
-  }
-  if (!("MediaRecorder" in globalThis) || !MediaRecorder.isTypeSupported("video/webm")) {
-    return "This browser cannot record WebM";
-  }
-  return undefined;
 }
 
 function nextPaint(): Promise<void> {
@@ -154,7 +110,7 @@ function maskFields(clone: Element): void {
 }
 
 /** The viewport without the overlay and with every field value masked. */
-async function keyframe(): Promise<Blob> {
+async function keyframe(region: Box | null): Promise<Blob> {
   const result = await snapdom(document.documentElement, {
     clip: "viewport",
     exclude: [HOST_TAG],
@@ -172,51 +128,26 @@ async function keyframe(): Promise<Blob> {
       },
     ],
   });
-  return toWebp(await captureCanvas(result));
-}
-
-function transparent(color: string): boolean {
-  return color === "transparent" || color === "rgba(0, 0, 0, 0)";
-}
-
-// Element Capture yields no frames unless body forms a stacking context, and it shows a
-// transparent body as black. With a transparent root, body's own background moves to the
-// canvas and body itself stays transparent. Giving each element the color already visible
-// behind it keeps the background on body and changes nothing on screen.
-function prepareBody(): () => void {
-  const restores: (() => void)[] = [];
-  const set = (element: HTMLElement, name: string, value: string): void => {
-    const previous = element.style.getPropertyValue(name);
-    const priority = element.style.getPropertyPriority(name);
-    element.style.setProperty(name, value);
-    restores.push(() => {
-      if (previous === "") element.style.removeProperty(name);
-      else element.style.setProperty(name, previous, priority);
-    });
-  };
-  const { documentElement: html, body } = document;
-  set(body, "isolation", "isolate");
-  const htmlStyle = getComputedStyle(html);
-  const bodyStyle = getComputedStyle(body);
-  const bodyPlain = bodyStyle.backgroundImage === "none" && transparent(bodyStyle.backgroundColor);
-  let behindBody = htmlStyle.backgroundColor;
-  if (htmlStyle.backgroundImage === "none" && transparent(htmlStyle.backgroundColor)) {
-    behindBody = bodyPlain ? "Canvas" : bodyStyle.backgroundColor;
-    set(html, "background-color", behindBody);
-  }
-  if (bodyPlain && htmlStyle.backgroundImage === "none") {
-    set(body, "background-color", behindBody);
-  }
-  let restored = false;
-  return () => {
-    if (restored) return;
-    restored = true;
-    for (const restore of restores.reverse()) restore();
-  };
-}
-
-function stopTracks(stream: MediaStream): void {
-  for (const track of stream.getTracks()) track.stop();
+  const page = await captureCanvas(result);
+  if (region === null) return toWebp(page);
+  const canvas = document.createElement("canvas");
+  const scale = page.width / window.innerWidth;
+  canvas.width = Math.max(1, Math.round(region.w * scale));
+  canvas.height = Math.max(1, Math.round(region.h * scale));
+  const context = canvas.getContext("2d");
+  if (context === null) throw new Error("No canvas context for keyframe crop");
+  context.drawImage(
+    page,
+    region.x * scale,
+    region.y * scale,
+    region.w * scale,
+    region.h * scale,
+    0,
+    0,
+    canvas.width,
+    canvas.height,
+  );
+  return toWebp(canvas);
 }
 
 // Request entries are live until stop; the copy freezes them, with the bodies kept at settle.
@@ -233,15 +164,13 @@ export function createRecorder() {
     phase: "idle",
     startedAt: 0,
     withVideo: false,
+    withGif: false,
     video: { state: "off" },
     last: null,
     error: null,
   });
   let session: Session | undefined;
-
-  function setVideo(video: VideoStatus): void {
-    state.set({ video });
-  }
+  let generation = 0;
 
   async function drainFrames(current: Session): Promise<void> {
     while (current.pendingFrame !== undefined) {
@@ -250,7 +179,7 @@ export function createRecorder() {
       current.pendingFrame = undefined;
       if (entry === undefined) continue;
       try {
-        const data = await keyframe();
+        const data = await keyframe(current.region);
         const path = framePath(current.frames.length + 1);
         current.frames.push({ path, seq: entry.seq, at: entry.at, data });
         current.counts.frames = current.frames.length;
@@ -327,125 +256,9 @@ export function createRecorder() {
     }
   }
 
-  // Runs inside the Start click: getDisplayMedia needs the user activation.
-  async function startVideo(current: Session): Promise<void> {
-    const unavailable = videoUnavailable();
-    if (unavailable !== undefined) {
-      current.video = { kind: "none", reason: unavailable };
-      setVideo({ state: "failed", reason: unavailable });
-      return;
-    }
-    current.video = { kind: "starting" };
-    setVideo({ state: "starting" });
-    const fail = (reason: string): void => {
-      current.video = { kind: "none", reason };
-      if (session === current) setVideo({ state: "failed", reason });
-    };
-    let stream: MediaStream;
-    try {
-      stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { displaySurface: "browser" },
-        audio: false,
-        preferCurrentTab: true,
-      });
-    } catch (cause) {
-      fail(`Tab capture was refused (${describe(cause)})`);
-      return;
-    }
-    if (session !== current) {
-      stopTracks(stream);
-      fail("The recording stopped before tab capture started");
-      return;
-    }
-    const [track] = stream.getVideoTracks();
-    const restoreBody = prepareBody();
-    try {
-      if (track === undefined) throw new Error("the capture has no video track");
-      if (track.restrictTo === undefined) throw new Error("the track has no restrictTo");
-      const target = await globalThis.RestrictionTarget?.fromElement(document.body);
-      if (target === undefined) throw new Error("RestrictionTarget disappeared");
-      // restrictTo itself refuses anything but this tab; the surface names what was shared.
-      await track.restrictTo(target);
-    } catch (cause) {
-      const surface = track?.getSettings().displaySurface ?? "unknown";
-      restoreBody();
-      stopTracks(stream);
-      fail(`Element Capture failed on a ${surface} capture; share this tab (${describe(cause)})`);
-      return;
-    }
-    if (session !== current) {
-      restoreBody();
-      stopTracks(stream);
-      fail("The recording stopped before tab capture started");
-      return;
-    }
-    const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
-      ? "video/webm;codecs=vp9"
-      : "video/webm";
-    const recorder = new MediaRecorder(stream, { mimeType });
-    const video: Video = {
-      stream,
-      recorder,
-      chunks: [],
-      bytes: 0,
-      mimeType,
-      startedAt: new Date().toISOString(),
-      truncated: false,
-      stopped: new Promise((resolve) => {
-        recorder.addEventListener("stop", () => resolve(), { once: true });
-      }),
-      restoreBody,
-    };
-    recorder.addEventListener("dataavailable", (event) => {
-      if (event.data.size === 0) return;
-      video.chunks.push(event.data);
-      video.bytes += event.data.size;
-      if (video.bytes >= MAX_VIDEO_BYTES && recorder.state === "recording") {
-        video.truncated = true;
-        recorder.stop();
-      }
-    });
-    track.addEventListener("ended", () => {
-      if (recorder.state !== "inactive") recorder.stop();
-      restoreBody();
-      if (session === current) setVideo({ state: "failed", reason: "Tab sharing was stopped" });
-    });
-    current.video = { kind: "on", video };
-    recorder.start(VIDEO_SLICE_MS);
-    setVideo({ state: "on" });
-  }
-
-  async function finishVideo(current: Session): Promise<RecordedVideo> {
-    if (current.video.kind === "none") {
-      return { data: undefined, meta: { path: null, reason: current.video.reason } };
-    }
-    if (current.video.kind === "starting") {
-      return {
-        data: undefined,
-        meta: { path: null, reason: "The recording stopped before tab capture started" },
-      };
-    }
-    const { video } = current.video;
-    if (video.recorder.state !== "inactive") video.recorder.stop();
-    await video.stopped;
-    stopTracks(video.stream);
-    video.restoreBody();
-    return {
-      data: new Blob(video.chunks, { type: "video/webm" }),
-      meta: {
-        path: RECORDING.video,
-        mimeType: video.mimeType,
-        bytes: video.bytes,
-        startedAt: video.startedAt,
-        endedAt: new Date().toISOString(),
-        restrictedTo: "body",
-        truncated: video.truncated,
-      },
-    };
-  }
-
-  function start(): void {
-    if (session !== undefined) throw new Error("A recording is already running");
+  function start(region: Box | null = null): void {
+    if (state.get().phase !== "idle") throw new Error("A recording is already running or stopping");
+    generation += 1;
     const capture = getCapture();
     const current: Session = {
       startedAt: new Date(),
@@ -465,7 +278,8 @@ export function createRecorder() {
       pendingFrame: undefined,
       framing: undefined,
       untap: () => {},
-      video: { kind: "none", reason: "Not chosen" },
+      media: null,
+      region,
     };
     session = current;
     current.untap = capture.tap((entry) => onEntry(current, entry));
@@ -475,18 +289,27 @@ export function createRecorder() {
       video: { state: "off" },
       error: null,
     });
-    if (state.get().withVideo) void startVideo(current);
+    const { withVideo, withGif } = state.get();
+    if (withVideo || withGif)
+      current.media = startMedia(withVideo, withGif, region, (video) => {
+        if (session === current) state.set({ video });
+      });
   }
 
   async function stop(): Promise<void> {
     const current = session;
     if (current === undefined) return;
+    const stoppedGeneration = generation;
     session = undefined;
     current.untap();
     state.set({ phase: "stopping" });
     try {
-      const video = await finishVideo(current);
+      const media =
+        current.media === null
+          ? { video: { data: undefined, meta: { path: null, reason: "Not chosen" } } }
+          : await current.media.stop();
       await current.framing;
+      if (generation !== stoppedGeneration) return;
       const capture = getCapture();
       // snapshot() also settles resource timings on the live request entries.
       const { groups } = capture.snapshot();
@@ -506,7 +329,8 @@ export function createRecorder() {
         framesFailed: current.framesFailed,
         bodyLimit: MAX_BODY_TOTAL_BYTES,
         bodiesDropped: current.bodiesDropped,
-        video,
+        ...media,
+        region: current.region,
         groups,
         bodies: globalThis.__PKA_BODIES__ ?? [],
       });
@@ -530,21 +354,22 @@ export function createRecorder() {
     setWithVideo(withVideo: boolean) {
       state.set({ withVideo });
     },
+    setWithGif(withGif: boolean) {
+      state.set({ withGif });
+    },
     /** Counts of the running recording, read by the panel on its clock tick. */
     counts(): Counts | undefined {
       return session === undefined ? undefined : { ...session.counts };
     },
     dispose() {
+      generation += 1;
+      state.set({ phase: "idle" });
       const current = session;
       session = undefined;
       if (current === undefined) return;
       current.untap();
-      if (current.video.kind === "on") {
-        const { video } = current.video;
-        if (video.recorder.state !== "inactive") video.recorder.stop();
-        stopTracks(video.stream);
-        video.restoreBody();
-      }
+      current.pendingFrame = undefined;
+      current.media?.dispose();
     },
   };
 }

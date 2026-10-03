@@ -105,3 +105,59 @@
     tab-size: 4;
   }
 }
+
+.pka-editor {
+  min-height: 120px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 12px;
+  outline: none;
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  caret-color: var(--primary);
+}
+.pka-editor:focus {
+  box-shadow: inset 0 0 0 2px var(--ring);
+}
+.pka-editor ::selection {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+.pka-editor > * + * {
+  margin-top: 8px;
+}
+.pka-editor h2 {
+  font-size: 18px;
+  font-weight: 600;
+}
+.pka-editor h3 {
+  font-size: 16px;
+  font-weight: 600;
+}
+.pka-editor ul {
+  list-style: square;
+  padding-left: 20px;
+}
+.pka-editor ol {
+  list-style: decimal;
+  padding-left: 20px;
+}
+.pka-editor pre {
+  background: var(--muted);
+  border-radius: 4px;
+  padding: 8px;
+  overflow-x: auto;
+}
+.pka-editor code {
+  font-family: var(--font-mono);
+}
+.pka-editor blockquote {
+  border-left: 1px solid var(--border);
+  padding-left: 12px;
+}
+.pka-editor a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

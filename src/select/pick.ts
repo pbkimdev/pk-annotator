@@ -1,19 +1,26 @@
 import type { Box } from "../shared/schema.ts";
-import { marqueeCandidates, marqueeHits, type Containment } from "./marquee.ts";
+import {
+  lassoHits,
+  marqueeCandidates,
+  marqueeHits,
+  type Point,
+  type Containment,
+} from "./marquee.ts";
 import { isComponentRoot } from "./source.ts";
 
-export type PickMode = "pick" | "box";
+export type PickMode = "pick" | "box" | "lasso";
 export type SelectHow = "replace" | "toggle" | "add";
 
 export type PickHandlers = {
   hover(element: Element | null): void;
   select(elements: Element[], how: SelectHow): void;
   marquee(box: Box | null, containment: Containment): void;
+  lasso(points: readonly Point[] | null): void;
   escape(): void;
   enter(): void;
 };
 
-const DRAG_THRESHOLD = { pick: 4, box: 1 } as const;
+const DRAG_THRESHOLD = { pick: 4, box: 1, lasso: 3 } as const;
 
 const elementTree = {
   parent: (element: Element) => element.parentElement,
@@ -33,6 +40,7 @@ export function startPicking(
   handlers: PickHandlers,
 ): () => void {
   let frame = 0;
+  let points: Point[] = [];
   let lastPoint: { x: number; y: number } | undefined;
   let drag: { x: number; y: number; active: boolean } | undefined;
 
@@ -69,7 +77,14 @@ export function startPicking(
         drag.active = true;
         handlers.hover(null);
       }
-      if (drag.active) handlers.marquee(box, containmentOf(event));
+      if (drag.active && mode === "lasso") {
+        const last = points.at(-1)!;
+        if (Math.hypot(last.x - event.clientX, last.y - event.clientY) >= 3) {
+          if (points.length >= 512) points = points.filter((_, index) => index % 2 === 0);
+          points.push({ x: event.clientX, y: event.clientY });
+          handlers.lasso([...points]);
+        }
+      } else if (drag.active) handlers.marquee(box, containmentOf(event));
       return;
     }
     lastPoint = { x: event.clientX, y: event.clientY };
@@ -87,6 +102,7 @@ export function startPicking(
     swallow(event);
     if (event.button !== 0) return;
     drag = { x: event.clientX, y: event.clientY, active: false };
+    points = [{ x: event.clientX, y: event.clientY }];
     if (layer instanceof HTMLElement || layer instanceof SVGElement) {
       layer.setPointerCapture(event.pointerId);
     }
@@ -101,7 +117,12 @@ export function startPicking(
     drag = undefined;
     if (wasDrag) {
       handlers.marquee(null, containmentOf(event));
-      const hits = marqueeHits(box, marqueeCandidates(host), containmentOf(event), elementTree);
+      const candidates = marqueeCandidates(host);
+      const hits =
+        mode === "lasso"
+          ? lassoHits(points, candidates, elementTree)
+          : marqueeHits(box, candidates, containmentOf(event), elementTree);
+      handlers.lasso(null);
       handlers.select(hits, event.shiftKey ? "add" : "replace");
       return;
     }
@@ -119,6 +140,7 @@ export function startPicking(
       swallow(event);
       if (drag?.active) handlers.marquee(null, "contain");
       drag = undefined;
+      handlers.lasso(null);
       handlers.escape();
     } else if (event.key === "Enter" && !event.composedPath().some(isTextField)) {
       swallow(event);
@@ -136,6 +158,7 @@ export function startPicking(
     () => {
       if (drag?.active) handlers.marquee(null, "contain");
       drag = undefined;
+      handlers.lasso(null);
     },
     options,
   );
@@ -148,6 +171,7 @@ export function startPicking(
     if (frame !== 0) cancelAnimationFrame(frame);
     handlers.hover(null);
     handlers.marquee(null, "contain");
+    handlers.lasso(null);
   };
 }
 

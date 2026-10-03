@@ -10,7 +10,7 @@ import {
 
 import type { RequestEntry } from "../../shared/timeline.ts";
 import { getCapture } from "../capture.ts";
-import { COMPOSE, useOverlay } from "../context.tsx";
+import { NOTE, useOverlay } from "../context.tsx";
 import { cn } from "../lib/utils.ts";
 import { addAttachment, attachments, SUMMARY_PATH, type PanelProps } from "../registry.ts";
 import { Button } from "../ui/button.tsx";
@@ -149,7 +149,7 @@ function RequestList({
             onClick={() => {
               attach(chosen);
               setSelected(new Set());
-              ui.set({ panel: COMPOSE });
+              ui.set({ panel: NOTE });
             }}
           >
             <PaperclipIcon />
@@ -330,7 +330,7 @@ function RequestDetail({ seq, back }: { seq: number; back(): void }) {
           className="ml-auto"
           onClick={() => {
             attach([request]);
-            ui.set({ panel: COMPOSE });
+            ui.set({ panel: NOTE });
           }}
         >
           <PaperclipIcon />

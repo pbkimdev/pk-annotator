@@ -12,6 +12,7 @@ import {
   FileChunkMessage,
   MAX_CHUNK_BYTES,
 } from "../shared/channel.ts";
+import { RECORDING, RecordingManifestDraft } from "../shared/recording.ts";
 import type { Attachment, Box, Viewport } from "../shared/schema.ts";
 import { listen, send } from "./channel-client.ts";
 import { HOST_TAG } from "./launcher.ts";
@@ -168,6 +169,45 @@ function base64(blob: Blob): Promise<string> {
   });
 }
 
+export async function collectAttachments(
+  items: readonly ComposerAttachment[],
+): Promise<{ files: AttachmentFile[]; attachments: Attachment[] }> {
+  const files: AttachmentFile[] = [];
+  const attachments: Attachment[] = [];
+  const overview: string[] = [];
+  for (const [index, item] of items.entries()) {
+    const collected = await item.collect();
+    const prefix = `capture/attachments/${index + 1}/`;
+    const relocate = (path: string) => prefix + path;
+    const references = new Map(collected.files.map((file) => [file.path, relocate(file.path)]));
+    for (const file of collected.files) {
+      let data = file.data;
+      if (item.kind === "recording" && file.path === RECORDING.manifest) {
+        const manifest = RecordingManifestDraft.parse(JSON.parse(await data.text()));
+        for (const frame of manifest.frames.items) frame.path = relocate(frame.path);
+        if (manifest.video.path !== null) manifest.video.path = relocate(manifest.video.path);
+        if (manifest.gif !== undefined) manifest.gif.path = relocate(manifest.gif.path);
+        data = new Blob([JSON.stringify(manifest, null, 2)], { type: "application/json" });
+      } else if (file.path.endsWith(".md")) {
+        let text = await data.text();
+        text = text.replace(/capture\/[A-Za-z0-9_./-]+/g, (path) => references.get(path) ?? path);
+        data = new Blob([text], { type: "text/markdown" });
+      }
+      files.push({ path: relocate(file.path), data });
+    }
+    const path = relocate(collected.path);
+    const summary = `${item.label}: ${collected.summary}`;
+    attachments.push({ kind: item.kind, path, summary });
+    overview.push(`- ${summary} (${path})`);
+  }
+  if (overview.length > 0)
+    files.push({
+      path: SUMMARY_PATH,
+      data: new Blob([overview.join("\n") + "\n"], { type: "text/markdown" }),
+    });
+  return { files, attachments };
+}
+
 /**
  * Sends one annotation: pka:create with the draft and declared files, then pka:file
  * chunks in offset order, then waits for pka:created or pka:create-failed.
@@ -202,18 +242,9 @@ export async function sendAnnotation(
     files.push({ path, data: blob });
     return { ...ref, crop: path };
   });
-  const summary: Blob[] = [];
-  for (const attachment of composerAttachments) {
-    const collected = await attachment.collect();
-    for (const file of collected.files) {
-      if (file.path === SUMMARY_PATH) summary.push(file.data);
-      else files.push(file);
-    }
-    attachments.push({ kind: attachment.kind, path: collected.path, summary: collected.summary });
-  }
-  if (summary.length > 0) {
-    files.push({ path: SUMMARY_PATH, data: new Blob(summary.flatMap((part) => [part, "\n"])) });
-  }
+  const collected = await collectAttachments(composerAttachments);
+  files.push(...collected.files);
+  attachments.push(...collected.attachments);
 
   // getRandomValues, unlike randomUUID, also works on plain-http LAN dev origins.
   const requestId = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) =>
