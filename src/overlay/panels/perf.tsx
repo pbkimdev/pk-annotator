@@ -1,11 +1,12 @@
 import { GaugeIcon } from "lucide-react";
 import { lazy, Suspense } from "react";
 
+import { claimObservers } from "../perf/observer.ts";
 import { registerPanel } from "../registry.ts";
 import { Spinner } from "../ui/spinner.tsx";
 
 // web-vitals and react-scan live in the panel's own chunk, loaded when the panel first opens.
-const load = () => import("./perf-panel.tsx");
+const load = () => claimObservers(() => import("./perf-panel.tsx"));
 let loaded: ReturnType<typeof load> | undefined;
 const Body = lazy(() => (loaded ??= load()));
 

@@ -9,6 +9,7 @@ import {
   startObservers,
   startScan,
   stopAll as stopCollector,
+  stopObservers,
   stopScan,
   type Target,
 } from "../perf/collector.ts";
@@ -463,7 +464,10 @@ export default function PerfPanel() {
   useEffect(() => {
     startObservers();
     startScan();
-    return stopScan;
+    return () => {
+      stopScan();
+      stopObservers();
+    };
   }, []);
   return (
     <div data-testid="pka-perf" className="divide-y">

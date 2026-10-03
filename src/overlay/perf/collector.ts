@@ -14,7 +14,7 @@ import { SOURCE_ATTRIBUTE } from "../../select/source.ts";
 import { HOST_TAG } from "../launcher.ts";
 import { createStore } from "../store.ts";
 import { addCommit, hotSpotKey, type HotSpot } from "./join.ts";
-import { disconnectAll } from "./observer.ts";
+import { disconnectPerf, resumeImported } from "./observer.ts";
 
 const MAX_FRAMES = 10;
 const MAX_GROUPS = 100;
@@ -84,9 +84,9 @@ export type ScriptGroup = {
 };
 
 export type PerfState = {
-  lcp?: Lcp;
-  inp?: Inp;
-  cls?: Cls;
+  lcp: Lcp | undefined;
+  inp: Inp | undefined;
+  cls: Cls | undefined;
   frames: Frame[];
   groups: ScriptGroup[];
   hotSpots: HotSpot[];
@@ -94,13 +94,18 @@ export type PerfState = {
   scanning: boolean;
 };
 
-const EMPTY: PerfState = {
+// What the vitals observers report; cleared when they stop because a later start replays
+// the buffered entries.
+const NO_VITALS = {
+  lcp: undefined,
+  inp: undefined,
+  cls: undefined,
   frames: [],
   groups: [],
-  hotSpots: [],
   loafSupported: true,
-  scanning: false,
-};
+} satisfies Partial<PerfState>;
+
+const EMPTY: PerfState = { ...NO_VITALS, hotSpots: [], scanning: false };
 
 export const perf = createStore<PerfState>(EMPTY);
 
@@ -262,25 +267,64 @@ function addFrames(entries: readonly PerformanceLongAnimationFrameTiming[]): voi
   });
 }
 
+// web-vitals cannot stop its callbacks: after the observers disconnect, a page hide, a
+// click, or a back/forward restore can still report from an earlier start. Each start is
+// a generation, and reports from any other are dropped.
+let generation = 0;
 let observing = false;
 
-/** Starts web-vitals and the long-animation-frame observer; buffered entries arrive too. */
+/**
+ * Starts web-vitals and the long-animation-frame observer while the Perf panel is open;
+ * buffered entries arrive too, so a reopened panel recomputes the current navigation.
+ */
 export function startObservers(): void {
   if (observing) return;
   observing = true;
+  resumeImported();
+  generation += 1;
+  const started = generation;
+  const report =
+    <T>(apply: (value: T) => void) =>
+    (value: T): void => {
+      if (observing && generation === started) apply(value);
+    };
   const options = { reportAllChanges: true, reportSoftNavs: true, generateTarget };
-  onLCP((metric) => perf.set({ lcp: toLcp(metric) }), options);
-  onINP((metric) => perf.set({ inp: toInp(metric) }), options);
-  onCLS((metric) => perf.set({ cls: toCls(metric) }), options);
+  onLCP(
+    report((metric) => perf.set({ lcp: toLcp(metric) })),
+    options,
+  );
+  onINP(
+    report((metric) => perf.set({ inp: toInp(metric) })),
+    options,
+  );
+  onCLS(
+    report((metric) => perf.set({ cls: toCls(metric) })),
+    options,
+  );
   if (!PerformanceObserver.supportedEntryTypes.includes("long-animation-frame")) {
     perf.set({ loafSupported: false });
     return;
   }
-  const observer = new PerformanceObserver((list) => {
-    // SAFETY: the observer is registered only for "long-animation-frame" entries.
-    addFrames(list.getEntries() as PerformanceLongAnimationFrameTiming[]);
-  });
+  const observer = new PerformanceObserver(
+    report((list: PerformanceObserverEntryList) => {
+      // SAFETY: the observer is registered only for "long-animation-frame" entries.
+      addFrames(list.getEntries() as PerformanceLongAnimationFrameTiming[]);
+    }),
+  );
   observer.observe({ type: "long-animation-frame", buffered: true });
+}
+
+/**
+ * Disconnects every Perf observer when the panel closes, leaving capture's own. That
+ * includes web-vitals' resource observer, which runs from chunk load even if no panel
+ * body started.
+ */
+export function stopObservers(): void {
+  disconnectPerf();
+  if (!observing) return;
+  observing = false;
+  groups.clear();
+  perf.set(NO_VITALS);
 }
 
 // The overlay's own chunks load from the same directory as this one; in a consumer they sit
@@ -340,9 +384,7 @@ export function stopScan(): void {
 /** Stops everything; called when the overlay unmounts. A later open starts afresh. */
 export function stopAll(): void {
   stopScan();
-  disconnectAll();
-  observing = false;
-  groups.clear();
+  stopObservers();
   hotSpots.clear();
   perf.set(EMPTY);
 }
