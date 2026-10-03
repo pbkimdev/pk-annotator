@@ -1,9 +1,10 @@
+import { createWriteStream } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { promisify } from "node:util";
-import { gzip } from "node:zlib";
+import { pipeline } from "node:stream/promises";
+import { createGzip } from "node:zlib";
 
 import type { BrowserContext, CDPSession, Locator, Page, Request } from "playwright";
 import { z } from "zod";
@@ -602,6 +603,7 @@ async function startTrace(cdp: CDPSession): Promise<void> {
   });
 }
 
+/** Ends the trace and returns the handle of the stream Chrome wrote it to. */
 async function endTrace(cdp: CDPSession): Promise<string> {
   const complete = new Promise<string>((resolve, reject) => {
     cdp.once("Tracing.tracingComplete", (event) => {
@@ -610,13 +612,26 @@ async function endTrace(cdp: CDPSession): Promise<string> {
     });
   });
   await cdp.send("Tracing.end");
-  const handle = await complete;
+  return await complete;
+}
+
+// Gzips the stream to `file` as Chrome hands it over, so compression holds no
+// second full-size copy of the trace, and returns the text for analysis.
+async function saveTrace(cdp: CDPSession, handle: string, file: string): Promise<string> {
   const chunks: Buffer[] = [];
-  for (;;) {
-    const read = await cdp.send("IO.read", { handle });
-    chunks.push(Buffer.from(read.data, read.base64Encoded === true ? "base64" : "utf8"));
-    if (read.eof) break;
-  }
+  await pipeline(
+    async function* () {
+      for (;;) {
+        const read = await cdp.send("IO.read", { handle });
+        const chunk = Buffer.from(read.data, read.base64Encoded === true ? "base64" : "utf8");
+        chunks.push(chunk);
+        yield chunk;
+        if (read.eof) return;
+      }
+    },
+    createGzip(),
+    createWriteStream(file),
+  );
   await cdp.send("IO.close", { handle });
   return Buffer.concat(chunks).toString("utf8");
 }
@@ -696,10 +711,12 @@ async function runOnce(run: number, options: RunContext): Promise<RunResult> {
   } catch (thrown) {
     // The run already failed; a trace that cannot be ended (target closed,
     // renderer crashed) is dropped so the step error stays the reported cause.
-    const traceError = await endTrace(cdp).then(
-      () => undefined,
-      (failure: Error) => failure.message,
-    );
+    const traceError = await endTrace(cdp)
+      .then((handle) => cdp.send("IO.close", { handle }))
+      .then(
+        () => undefined,
+        (failure: Error) => failure.message,
+      );
     if (thrown instanceof StepError && traceError !== undefined) {
       throw new StepError(thrown.step, `${thrown.message} (trace discarded: ${traceError})`, {
         cause: thrown,
@@ -707,11 +724,11 @@ async function runOnce(run: number, options: RunContext): Promise<RunResult> {
     }
     throw thrown;
   }
-  const trace = await endTrace(cdp);
+  const handle = await endTrace(cdp);
   if (invalid.length > 0) {
     throw new Error(`Run ${run}: the page script sent an invalid report:\n${invalid[0]}`);
   }
-  await writeFile(options.tracePath, await promisify(gzip)(trace));
+  const trace = await saveTrace(cdp, handle, options.tracePath);
   const analysis = await analyzeTrace(TraceFile.parse(JSON.parse(trace)));
   return { run, metrics: worstPerMetric(reports), trace: options.tracePath, analysis };
 }
