@@ -13,6 +13,7 @@ import { z } from "zod";
 
 import { GetResult, ListResult } from "../src/ops/ops.ts";
 import { NetworkLine, RecordingManifest } from "../src/shared/recording.ts";
+import { TimelineEntry } from "../src/shared/timeline.ts";
 
 const exec = promisify(execFile);
 /** Asserts each `[attachment n: label]` in `prompt` names the attachment stored under n. */
@@ -41,7 +42,39 @@ const EXPECTED_CONSOLE_ERRORS: readonly RegExp[] = [
   /^\[pk-annotator\] copying the sent annotation failed NotAllowedError: Write permission denied\.$/,
 ];
 
-/** A pka-mcp session that names itself claude-code themes the overlay until it exits. */
+async function checkRecordingTimeline(file: string): Promise<void> {
+  const timeline = (await readFile(file, "utf8"))
+    .trim()
+    .split("\n")
+    .map((line) => TimelineEntry.parse(JSON.parse(line)));
+  let previousSeq = -1;
+  for (const entry of timeline) {
+    assert.ok(entry.seq > previousSeq, "Recording must retain sequence order");
+    previousSeq = entry.seq;
+    if (entry.kind === "action" || entry.kind === "request") {
+      assert.notEqual(entry.performanceMs, undefined, "New captures need monotonic timing");
+    }
+  }
+}
+
+async function checkDeletedDraft(page: Page): Promise<void> {
+  const hub = page.locator("pk-annotator .pka-launcher");
+  await page.getByRole("button", { name: "Edit mark 1", exact: true }).click();
+  assert.match(await page.getByTestId("pka-prompt").innerText(), /Change this button/);
+  await page.getByTestId("pka-prompt").fill("Edited button mark");
+  if ((await hub.getAttribute("aria-expanded")) !== "true") await hub.click();
+  await page.getByRole("menuitemcheckbox", { name: "Send", exact: true }).click();
+  await page.getByRole("button", { name: "Remove mark 1", exact: true }).click();
+  assert.equal(await page.getByTestId("pka-saved-mark").count(), 0);
+  if ((await hub.getAttribute("aria-expanded")) !== "true") await hub.click();
+  await page.locator('.pka-node[data-group="pick"]').hover();
+  await page.getByRole("menuitemcheckbox", { name: "Select", exact: true }).click();
+  await page.keyboard.press("Enter");
+  assert.match(await page.getByTestId("pka-prompt").innerText(), /Edited button mark/);
+  await page.getByTestId("pka-save").click();
+  assert.equal(await page.getByTestId("pka-saved-mark").count(), 1);
+}
+
 /** Connects a claude-code pka-mcp session, runs `whileConnected`, and disconnects it. */
 async function checkAgentTheme(
   t: TestContext,
@@ -173,6 +206,11 @@ test(
       });
     };
     watchErrors(page);
+    const chunks: string[] = [];
+    page.on("request", (request) => {
+      const name = new URL(request.url()).pathname.split("/").at(-1);
+      if (name?.startsWith("pka-overlay-")) chunks.push(name);
+    });
     await page.goto(new URL("/lab", url).href);
     await page.locator("html[data-fixture-ready]").waitFor({ state: "attached" });
     assert.equal(await page.evaluate(() => navigator.webdriver), false);
@@ -221,6 +259,11 @@ test(
       ),
     );
     await page.locator('pk-annotator .pka-launcher[aria-expanded="false"]').waitFor();
+    chunks.length = 0;
+    await page.reload({ waitUntil: "networkidle" });
+    await hub.waitFor();
+    assert.equal(chunks.length, 0, "Reload must not restore the lazy UI before a user opens it");
+    assert.equal(await hub.getAttribute("aria-expanded"), "false");
 
     await choose("capture", "Record", "menuitemcheckbox");
     await page.getByTestId("pka-record-start").click();
@@ -317,6 +360,28 @@ test(
     assert.ok(request, "The saved recording must contain the fixture request");
     assert.equal(request.response.status, 200);
     assert.match(request.response.content.text ?? "", /alpha/);
+    await checkRecordingTimeline(path.join(capture, "timeline.jsonl"));
+    const failedLab = path.join(workspace, "missing-attach-lab");
+    await assert.rejects(
+      exec(process.execPath, [
+        path.join(workspace, "dist/pka.mjs"),
+        "--root",
+        workspace,
+        "lab",
+        "--url",
+        "http://127.0.0.1:1",
+        "--flow",
+        path.join(capture, "timeline.jsonl"),
+        "--runs",
+        "1",
+        "--attach",
+        "missing-annotation",
+        "--out",
+        failedLab,
+      ]),
+      { stderr: /No annotation missing-annotation/ },
+    );
+    await assert.rejects(readFile(path.join(failedLab, "verdict.json")), { code: "ENOENT" });
 
     const fetchBox = await page.getByTestId("lab-fetch-items").boundingBox();
     assert.ok(fetchBox);
@@ -340,10 +405,7 @@ test(
     await page.getByTestId("pka-prompt").fill("Change this button");
     await page.getByTestId("pka-save").click();
     await page.getByTestId("pka-saved-mark").waitFor();
-    await page.getByRole("button", { name: "Edit mark 1", exact: true }).click();
-    assert.match(await page.getByTestId("pka-prompt").innerText(), /Change this button/);
-    await page.getByTestId("pka-prompt").fill("Edited button mark");
-    await page.getByTestId("pka-save").click();
+    await checkDeletedDraft(page);
 
     // A drag takes an area and Enter keeps it; a click takes the viewport and ✓ keeps it.
     await choose("capture", "Screenshot", "menuitemcheckbox");
@@ -607,6 +669,44 @@ test(
         /connected agent/,
       );
     });
+
+    const retained = {
+      id: item.id,
+      prompt: "Fixture smoke recording",
+      createdAt: item.createdAt,
+      elements: 0,
+    };
+    await page.evaluate((real) => {
+      const missing = Array.from({ length: 250 }, (_, index) => ({
+        ...real,
+        id: `missing-${String(index).padStart(4, "0")}`,
+      }));
+      sessionStorage.setItem("pka:sent", JSON.stringify([...missing, real]));
+    }, retained);
+    await exec(process.execPath, [
+      path.join(workspace, "dist/pka.mjs"),
+      "--root",
+      workspace,
+      "status",
+      item.id,
+      "acknowledged",
+    ]);
+    chunks.length = 0;
+    await page.reload({ waitUntil: "networkidle" });
+    await page.locator("pk-annotator .pka-launcher[data-working]").waitFor();
+    assert.ok(!chunks.some((name) => name.startsWith("pka-overlay-app-")));
+    assert.deepEqual(await page.evaluate(() => JSON.parse(sessionStorage.getItem("pka:sent")!)), [
+      retained,
+    ]);
+    await exec(process.execPath, [
+      path.join(workspace, "dist/pka.mjs"),
+      "--root",
+      workspace,
+      "status",
+      item.id,
+      "resolved",
+    ]);
+    await page.locator("pk-annotator .pka-launcher:not([data-working])").waitFor();
 
     // Language switches in place, so the menu stays open on the Settings group.
     await choose("settings", "Language: English", "menuitem");
