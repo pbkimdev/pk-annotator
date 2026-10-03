@@ -569,6 +569,7 @@ export function RadialMenu() {
           id={MENU_ID}
           role="menu"
           aria-label={t("Annotator")}
+          aria-hidden={!open || undefined}
           tabIndex={-1}
           className="pka-radial-menu"
         >
@@ -618,7 +619,12 @@ export function RadialMenu() {
                   onPointerLeave={() => window.clearTimeout(intent.current)}
                   {...describe({ id: entry.id, label: entry.label })}
                 />
-                <div id={`${MENU_ID}-${entry.id}`} role="menu" aria-label={entry.label}>
+                <div
+                  id={`${MENU_ID}-${entry.id}`}
+                  role="menu"
+                  aria-label={entry.label}
+                  aria-hidden={!expanded || undefined}
+                >
                   {entry.children.map((child, order) => {
                     const next: Hint = { id: `${entry.id}/${child.id}`, label: child.label };
                     if (child.shortcut !== undefined) next.shortcut = child.shortcut;
