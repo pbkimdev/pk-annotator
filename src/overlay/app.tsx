@@ -1,9 +1,8 @@
-import { NetworkIcon, SquareTerminalIcon } from "lucide-react";
+import { ArrowDownUpIcon, TerminalIcon } from "lucide-react";
 import { StrictMode, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 
 import { OverlayContext, NOTE, useOverlay, type Overlay, type UiState } from "./context.tsx";
-import { Dock } from "./dock.tsx";
 import { readCorner, type UiContext, type UiController } from "./launcher.ts";
 import { PanelHost } from "./panel.tsx";
 import { ConsolePanel } from "./panels/console.tsx";
@@ -14,6 +13,7 @@ import { registerRecordPanel } from "./panels/record.tsx";
 import { MarkLayer } from "./mark-layer.tsx";
 import { PickLayer } from "./pick-layer.tsx";
 import { PortalContainerContext } from "./portal-container.tsx";
+import { RadialMenu } from "./radial-menu.tsx";
 import { attachments, registerPanel } from "./registry.ts";
 import css from "./shadow.css?inline";
 import { createStore, useStore } from "./store.ts";
@@ -69,19 +69,15 @@ function App() {
     <>
       <PickLayer />
       <MarkLayer />
-      {visible && (
-        <>
-          <Dock />
-          <PanelHost />
-        </>
-      )}
+      {visible && <PanelHost />}
+      <RadialMenu />
     </>
   );
 }
 
 /** Mounts the React UI into the launcher's shadow root. Called once, on first open. */
 export function open(context: UiContext): UiController {
-  const { host, shadow, hot, theme } = context;
+  const { host, shadow, hot, theme, hub } = context;
   document.adoptedStyleSheets = [...document.adoptedStyleSheets, propertySheet];
   shadow.adoptedStyleSheets = [...shadow.adoptedStyleSheets, overlaySheet];
   const restoreActiveElement = patchActiveElement(shadow);
@@ -90,7 +86,9 @@ export function open(context: UiContext): UiController {
   appRoot.className = "pka-root";
   const portalRoot = document.createElement("div");
   portalRoot.className = "pka-root";
-  shadow.append(appRoot, portalRoot);
+  // The hub follows the app root, so it stays clickable above the pick and drawing layers.
+  shadow.insertBefore(appRoot, hub);
+  shadow.append(portalRoot);
   const applyTheme = () => {
     for (const element of [appRoot, portalRoot]) {
       element.classList.toggle("dark", theme.get() === "dark");
@@ -101,6 +99,7 @@ export function open(context: UiContext): UiController {
 
   const ui = createStore<UiState>({
     visible: false,
+    menu: "closed",
     prompt: "",
     globalPrompt: "",
     marks: [],
@@ -121,26 +120,34 @@ export function open(context: UiContext): UiController {
   const thread = connectThread(hot);
   const overlay: Overlay = {
     host,
+    hub,
     hot,
     theme,
     ui,
     thread,
     exit: context.exit,
     hide() {
-      ui.set({ visible: false, picking: null, gesture: null, hover: null, marquee: null });
+      ui.set({
+        visible: false,
+        menu: "closed",
+        picking: null,
+        gesture: null,
+        hover: null,
+        marquee: null,
+      });
       context.hidden();
     },
   };
 
   const stopPanels = [
     registerRecordPanel((recording) => ui.set({ recording })),
-    registerPanel({ id: "network", label: "Network", icon: NetworkIcon, component: NetworkPanel }),
     registerPanel({
-      id: "console",
-      label: "Console",
-      icon: SquareTerminalIcon,
-      component: ConsolePanel,
+      id: "network",
+      label: "Network",
+      icon: ArrowDownUpIcon,
+      component: NetworkPanel,
     }),
+    registerPanel({ id: "console", label: "Console", icon: TerminalIcon, component: ConsolePanel }),
     registerPerfPanel(),
   ];
 
@@ -159,7 +166,18 @@ export function open(context: UiContext): UiController {
 
   return {
     show() {
-      ui.set({ visible: true, corner: readCorner() });
+      ui.set({ visible: true });
+    },
+    toggleMenu(fromKeyboard) {
+      const { visible, menu } = ui.get();
+      if (visible && menu !== "closed") ui.set({ menu: "closed" });
+      else ui.set({ visible: true, menu: fromKeyboard ? "keyboard" : "pointer" });
+    },
+    closeMenu() {
+      ui.set({ menu: "closed" });
+    },
+    setCorner(corner) {
+      ui.set({ corner, menu: "closed" });
     },
     togglePick() {
       if (ui.get().busy) return;

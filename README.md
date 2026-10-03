@@ -111,4 +111,4 @@ Every command takes `--json` and `--root DIR`. `pka status <id> acknowledged` cl
 
 ## Resource budget
 
-Mount starts bounded capture and one resource-timing observer. Opening the dock loads the UI; opening Perf starts its additional observers, and recording starts on request. `pka-mcp` holds no timers or watchers between calls. The dev-only integration above excludes the package from consumer production builds. [DESIGN.md](docs/DESIGN.md#resource-budget) owns the detailed limits and lifecycle.
+Mount starts bounded capture and one resource-timing observer. Opening the hub's menu loads the UI; opening Perf starts its additional observers, and recording starts on request. `pka-mcp` holds no timers or watchers between calls. The dev-only integration above excludes the package from consumer production builds. [DESIGN.md](docs/DESIGN.md#resource-budget) owns the detailed limits and lifecycle.

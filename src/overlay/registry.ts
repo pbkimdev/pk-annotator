@@ -10,7 +10,7 @@ export type PanelProps = { close(): void };
 export type PanelDefinition = {
   /** Stable id, for example "network", "console", "record", "perf". */
   id: string;
-  /** Accessible name of the dock button and title of the panel. */
+  /** Accessible name of the menu item and title of the panel. */
   label: string;
   icon: ComponentType<{ className?: string }>;
   component: ComponentType<PanelProps>;
@@ -79,7 +79,7 @@ function createList<T extends { id: string }>() {
 export const panels = createList<PanelDefinition>();
 export const attachments = createList<ComposerAttachment>();
 
-/** Adds a dock button and its panel; returns a function that removes both. */
+/** Adds a menu item and its panel; returns a function that removes both. */
 export function registerPanel(panel: PanelDefinition): () => void {
   return panels.add(panel);
 }

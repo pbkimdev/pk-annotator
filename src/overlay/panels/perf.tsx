@@ -23,7 +23,7 @@ function PerfPanel() {
   );
 }
 
-/** Adds the Perf dock button; the returned function removes it and stops every perf observer. */
+/** Adds the Perf menu item; the returned function removes it and stops every perf observer. */
 export function registerPerfPanel(): () => void {
   const remove = registerPanel({
     id: "perf",

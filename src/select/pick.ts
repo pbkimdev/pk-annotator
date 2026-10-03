@@ -31,7 +31,7 @@ const elementTree = {
 /**
  * Captures pointer and key events while picking. `layer` covers the page inside the
  * shadow root; events whose path includes it are page picks, and nothing else on the
- * page sees them. Events on the dock and panels pass through untouched.
+ * page sees them. Events on the menu, hub, and panels pass through untouched.
  */
 export function startPicking(
   host: Element,
@@ -136,6 +136,8 @@ export function startPicking(
   };
 
   const onKeyDown = (event: KeyboardEvent) => {
+    // A menu, including the overlay's own, handles its keys before picking does.
+    if (event.composedPath().some(isMenu)) return;
     if (event.key === "Escape") {
       swallow(event);
       if (drag?.active) handlers.marquee(null, "contain");
@@ -181,4 +183,8 @@ function isTextField(target: EventTarget): boolean {
     target instanceof HTMLInputElement ||
     (target instanceof HTMLElement && target.isContentEditable)
   );
+}
+
+function isMenu(target: EventTarget): boolean {
+  return target instanceof Element && target.getAttribute("role") === "menu";
 }

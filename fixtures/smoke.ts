@@ -95,10 +95,14 @@ test(
     await page.goto(new URL("/lab", url).href);
     await page.locator("html[data-fixture-ready]").waitFor({ state: "attached" });
     assert.equal(await page.evaluate(() => navigator.webdriver), false);
-    await page.locator("pk-annotator .pka-launcher").click();
-    const dock = page.getByTestId("pka-dock");
-    await dock.getByRole("button", { name: "Capture", exact: true }).click();
-    await page.getByRole("menuitem", { name: "Record", exact: true }).click();
+    const hub = page.locator("pk-annotator .pka-launcher");
+    // Opens the hub's menu unless it is open, sweeps out a group, and chooses one of its items.
+    const choose = async (group: string, item: string, role: "menuitem" | "menuitemcheckbox") => {
+      if ((await hub.getAttribute("aria-expanded")) !== "true") await hub.click();
+      await page.getByRole("menuitem", { name: group, exact: true }).click();
+      await page.getByRole(role, { name: item, exact: true }).click();
+    };
+    await choose("Capture", "Record", "menuitemcheckbox");
     await page.getByTestId("pka-record-start").click();
     await page.getByTestId("lab-fetch-items").click();
     await page.getByTestId("lab-output").filter({ hasText: "alpha" }).waitFor();
@@ -160,8 +164,7 @@ test(
 
     const fetchBox = await page.getByTestId("lab-fetch-items").boundingBox();
     assert.ok(fetchBox);
-    await dock.getByRole("button", { name: "Pick elements", exact: true }).click();
-    await page.getByRole("menuitem", { name: "Single", exact: true }).click();
+    await choose("Pick elements", "Single", "menuitemcheckbox");
     await page.mouse.click(fetchBox.x + fetchBox.width / 2, fetchBox.y + fetchBox.height / 2);
     await page.getByTestId("pka-prompt").fill("Change this button");
     await page.getByRole("button", { name: "Bold", exact: true }).click();
@@ -172,8 +175,7 @@ test(
     await page.getByTestId("pka-prompt").fill("Edited button mark");
     await page.getByTestId("pka-save").click();
 
-    await dock.getByRole("button", { name: "Capture", exact: true }).click();
-    await page.getByRole("menuitem", { name: "Crop screenshot", exact: true }).click();
+    await choose("Capture", "Crop screenshot", "menuitemcheckbox");
     await page.mouse.move(20, 20);
     await page.mouse.down();
     await page.mouse.move(260, 140, { steps: 5 });
@@ -181,8 +183,7 @@ test(
     await page.getByTestId("pka-prompt").fill("Cropped screenshot mark");
     await page.getByTestId("pka-save").click();
 
-    await dock.getByRole("button", { name: "Annotate", exact: true }).click();
-    await page.getByRole("menuitem", { name: "Circle", exact: true }).click();
+    await choose("Annotate", "Circle", "menuitemcheckbox");
     await page.mouse.move(25, 25);
     await page.mouse.down();
     await page.mouse.move(220, 130, { steps: 5 });
@@ -191,8 +192,7 @@ test(
     await page.getByTestId("pka-save").click();
 
     for (const attempt of [1, 2]) {
-      await dock.getByRole("button", { name: "Capture", exact: true }).click();
-      await page.getByRole("menuitem", { name: "Record", exact: true }).click();
+      await choose("Capture", "Record", "menuitemcheckbox");
       if (attempt === 1) {
         await page.getByTestId("pka-record-gif").check();
         await page.getByTestId("pka-record-video").check();
@@ -218,8 +218,8 @@ test(
       await page.getByTestId("pka-save").click();
     }
     assert.equal(await page.getByTestId("pka-saved-mark").count(), 5);
-    await dock.getByRole("button", { name: "Minimize", exact: true }).click();
-    await page.locator("pk-annotator .pka-launcher").click();
+    await choose("Settings", "Minimize", "menuitem");
+    await hub.click();
     assert.equal(await page.getByTestId("pka-saved-mark").count(), 5);
     const global = "Fix these marks together";
     await page.getByTestId("pka-prompt").fill(global);
@@ -271,11 +271,11 @@ test(
       assert.equal(saved.gif.height, 120);
       assert.ok(saved.gif.frames > 0);
     }
-    await dock.getByRole("button", { name: "Settings", exact: true }).click();
-    await page.getByRole("combobox", { name: "Language", exact: true }).selectOption("ko");
-    await page.getByRole("heading", { name: "설정", exact: true }).waitFor();
-    await page.getByRole("combobox", { name: "언어", exact: true }).selectOption("en");
-    await page.getByRole("button", { name: "Exit annotator", exact: true }).click();
+    // Language switches in place, so the menu stays open on the Settings group.
+    await choose("Settings", "Language: English", "menuitem");
+    await page.getByRole("menuitem", { name: "설정", exact: true }).waitFor();
+    await page.getByRole("menuitem", { name: "언어: 한국어", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Exit annotator", exact: true }).click();
     await page.locator("pk-annotator").waitFor({ state: "detached" });
     assert.deepEqual(errors, []);
     t.diagnostic(

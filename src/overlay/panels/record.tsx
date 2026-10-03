@@ -1,5 +1,5 @@
 import { useText } from "../language.ts";
-import { CircleIcon, SquareIcon, CropIcon, VideoIcon } from "lucide-react";
+import { CircleDotIcon, CircleIcon, SquareIcon, CropIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { NOTE, useOverlay } from "../context.tsx";
@@ -23,7 +23,7 @@ function count(n: number, noun: string): string {
 function RecordIcon({ className }: { className?: string }) {
   const recording = useStore(recorder.state, (state) => state.phase === "recording");
   return (
-    <VideoIcon
+    <CircleDotIcon
       className={cn(
         className,
         recording && "animate-pulse fill-destructive text-destructive motion-reduce:animate-none",
@@ -231,7 +231,7 @@ function RecordPanel(_props: PanelProps) {
   );
 }
 
-/** Adds the Record dock button and panel; the returned function also ends a running recording. */
+/** Adds the Record menu item and panel; the returned function also ends a running recording. */
 export function registerRecordPanel(onPhase: (active: boolean) => void): () => void {
   const stopPhase = recorder.state.subscribe(() => onPhase(recorder.state.get().phase !== "idle"));
   const unregister = registerPanel({

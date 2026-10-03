@@ -12,7 +12,6 @@ import type { ThreadStore } from "./thread-store.ts";
 export const COMPOSE = "compose";
 export const THREAD = "thread";
 export const NOTE = "note";
-export const SETTINGS = "settings";
 
 export type SavedMark = {
   id: string;
@@ -24,6 +23,8 @@ export type SavedMark = {
 
 export type UiState = {
   visible: boolean;
+  /** How the radial menu was opened; a keyboard open moves focus to its first item. */
+  menu: "closed" | "pointer" | "keyboard";
   prompt: string;
   globalPrompt: string;
   marks: readonly SavedMark[];
@@ -45,6 +46,7 @@ export type UiState = {
 
 export type Overlay = {
   host: HTMLElement;
+  hub: HTMLButtonElement;
   hot: ViteHotContext;
   theme: ThemeSignal;
   ui: Store<UiState>;

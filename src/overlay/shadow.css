@@ -106,6 +106,206 @@
   }
 }
 
+/* Radial menu. .pka-radial is a zero-size box at the hub's center; items and bands are
+   placed around it. Opening sweeps counterclockwise; closing retracts in reverse. */
+.pka-radial {
+  position: fixed;
+  width: 0;
+  height: 0;
+  --pka-sweep: 340ms;
+  --pka-draw: cubic-bezier(0.3, 0.45, 0.35, 1);
+  --pka-spring: cubic-bezier(0.34, 1.36, 0.64, 1);
+  --pka-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --pka-in: cubic-bezier(0.4, 0, 1, 1);
+}
+.pka-radial-menu {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 0;
+  height: 0;
+  outline: none;
+}
+.pka-radial-scrim {
+  --pka-scrim: rgb(0 0 0 / 0.07);
+  position: fixed;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 220ms var(--pka-out, ease-out);
+}
+.dark .pka-radial-scrim {
+  --pka-scrim: rgb(0 0 0 / 0.1);
+}
+.pka-radial-scrim[data-open] {
+  opacity: 1;
+  pointer-events: auto;
+}
+.pka-band {
+  position: absolute;
+  overflow: visible;
+  pointer-events: none;
+  filter: drop-shadow(0 14px 22px rgb(0 0 0 / 0.16)) drop-shadow(0 1px 1.5px rgb(0 0 0 / 0.1));
+}
+.dark .pka-band {
+  filter: drop-shadow(0 16px 28px rgb(0 0 0 / 0.5)) drop-shadow(0 1px 1.5px rgb(0 0 0 / 0.3));
+}
+.pka-band path {
+  fill: none;
+  stroke-linecap: round;
+  stroke-dasharray: 1 2;
+  stroke-dashoffset: 1;
+  opacity: 0;
+  transition:
+    stroke-dashoffset 220ms var(--pka-in),
+    opacity 100ms linear 160ms;
+}
+.pka-band[data-open] path {
+  stroke-dashoffset: 0;
+  opacity: 1;
+  transition:
+    stroke-dashoffset var(--pka-sweep) var(--pka-draw),
+    opacity 60ms linear;
+}
+.pka-band-edge {
+  stroke: color-mix(in oklch, var(--foreground) 12%, transparent);
+  stroke-width: 54px;
+}
+.pka-band-fill {
+  stroke: var(--popover);
+  stroke-width: 52px;
+}
+/* Lifted in dark, so the band stays distinct over an open panel of the same surface. */
+.dark .pka-band-fill {
+  stroke: color-mix(in oklch, var(--popover), var(--foreground) 5%);
+}
+.pka-node {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 40px;
+  height: 40px;
+  margin: -20px 0 0 -20px;
+  display: grid;
+  place-items: center;
+  border-radius: 9999px;
+  color: color-mix(in oklch, var(--popover-foreground) 82%, transparent);
+  outline: none;
+  cursor: pointer;
+  opacity: 0;
+  visibility: hidden;
+  transition-property: transform, opacity, visibility, background-color, color;
+  transition-duration: 180ms, 120ms, 0s, 140ms, 140ms;
+  transition-timing-function: var(--pka-in), linear, linear, ease-out, ease-out;
+}
+.pka-node[data-open] {
+  opacity: 1;
+  visibility: visible;
+  transition-duration: 460ms, 160ms, 0s, 140ms, 140ms;
+  transition-timing-function: var(--pka-spring), ease-out, linear, ease-out, ease-out;
+}
+.pka-node:hover,
+.pka-node:focus-visible,
+.pka-node[aria-expanded="true"] {
+  background-color: var(--accent);
+  color: var(--accent-foreground);
+}
+.pka-node:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+.pka-node[data-active] {
+  color: var(--pka-pick);
+  background-color: color-mix(in oklch, var(--pka-pick) 14%, transparent);
+}
+.pka-node[data-active]:hover,
+.pka-node[data-active][aria-expanded="true"] {
+  background-color: color-mix(in oklch, var(--pka-pick) 22%, transparent);
+}
+.pka-node[aria-disabled="true"] {
+  cursor: default;
+  color: var(--muted-foreground);
+}
+.pka-node-tick {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 9999px;
+  background: color-mix(in oklch, var(--popover-foreground) 30%, transparent);
+  transition: background-color 140ms ease-out;
+}
+.pka-node[aria-expanded="true"] .pka-node-tick,
+.pka-node[data-active] .pka-node-tick {
+  background: var(--pka-pick);
+}
+.pka-node-badge {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 9999px;
+  background: var(--pka-pick);
+  color: var(--pka-pick-foreground);
+  box-shadow: 0 0 0 2px var(--popover);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.pka-readout {
+  position: absolute;
+  inset: 0 auto auto 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  max-width: 132px;
+  padding: 5px 10px 6px;
+  border-radius: 12px;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, var(--foreground) 10%, transparent),
+    0 6px 16px -6px rgb(0 0 0 / 0.3);
+  pointer-events: none;
+  text-align: center;
+  animation: pka-readout-in 140ms var(--pka-out);
+}
+.pka-readout-parent {
+  font-size: 10px;
+  line-height: 12px;
+  letter-spacing: 0.02em;
+  color: var(--muted-foreground);
+}
+.pka-readout-label {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  text-wrap: balance;
+}
+.pka-readout-key {
+  margin-top: 3px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font: 500 10px/16px var(--font-sans);
+}
+@keyframes pka-readout-in {
+  from {
+    opacity: 0;
+    scale: 0.94;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pka-radial *,
+  .pka-radial-scrim {
+    transition-duration: 0s !important;
+    transition-delay: 0s !important;
+    animation: none !important;
+  }
+}
+
 .pka-editor {
   min-height: 120px;
   max-height: 280px;

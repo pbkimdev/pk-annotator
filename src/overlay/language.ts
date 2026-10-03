@@ -31,6 +31,7 @@ const korean = new Map<string, string>(
     Close: "닫기",
     "Loading editor…": "편집기 불러오는 중…",
     Prompt: "요청",
+    Annotator: "주석 도구",
     "Global comment": "전체 의견",
     "No saved marks. Pick or capture to add one.":
       "저장된 주석이 없습니다. 요소를 선택하거나 캡처해 추가하세요.",

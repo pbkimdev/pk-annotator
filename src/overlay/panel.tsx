@@ -1,8 +1,8 @@
 import { useText } from "./language.ts";
-import { XIcon, HistoryIcon, LogOutIcon } from "lucide-react";
-import { lazy, Suspense, type ReactNode } from "react";
+import { CameraIcon, HistoryIcon, LayersIcon, PenLineIcon, XIcon } from "lucide-react";
+import { lazy, Suspense, type ComponentType, type ReactNode } from "react";
 
-import { COMPOSE, NOTE, SETTINGS, THREAD, useOverlay } from "./context.tsx";
+import { COMPOSE, NOTE, THREAD, useOverlay } from "./context.tsx";
 const Composer = lazy(() =>
   import("./composer.tsx").then((module) => ({ default: module.Composer })),
 );
@@ -14,20 +14,22 @@ import { useList, useStore } from "./store.ts";
 import { Thread } from "./thread.tsx";
 import { Button } from "./ui/button.tsx";
 
-// The dock is 36 px tall at a 16 px inset; panels open 8 px beyond it.
+// The hub is 44 px at a 20 px inset; panels open 12 px beyond it and grow out of its corner.
 const PANEL_CORNER = {
-  "top-left": "top-15 left-4",
-  "top-right": "top-15 right-4",
-  "bottom-left": "bottom-15 left-4",
-  "bottom-right": "bottom-15 right-4",
+  "top-left": "top-19 left-5 origin-top-left slide-in-from-top-2",
+  "top-right": "top-19 right-5 origin-top-right slide-in-from-top-2",
+  "bottom-left": "bottom-19 left-5 origin-bottom-left slide-in-from-bottom-2",
+  "bottom-right": "bottom-19 right-5 origin-bottom-right slide-in-from-bottom-2",
 } satisfies Record<Corner, string>;
 
 function PanelFrame({
   title,
+  icon: Icon,
   close,
   children,
 }: {
   title: string;
+  icon: ComponentType<{ className?: string; strokeWidth?: number }>;
   close(): void;
   children: ReactNode;
 }) {
@@ -39,20 +41,25 @@ function PanelFrame({
       aria-label={t(title)}
       data-testid="pka-panel"
       className={cn(
-        "fixed flex max-h-[min(36rem,calc(100vh-6rem))] w-[min(24rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl bg-popover text-popover-foreground shadow-lg ring-1 ring-foreground/10",
-        "animate-in duration-150 fade-in-0 zoom-in-[0.98] motion-reduce:animate-none",
+        "fixed flex max-h-[min(38rem,calc(100vh-7rem))] w-[min(25rem,calc(100vw-2.5rem))] flex-col overflow-hidden rounded-[20px] bg-popover text-popover-foreground ring-1 ring-foreground/10",
+        "shadow-[0_1px_2px_rgb(0_0_0/0.08),0_24px_48px_-16px_rgb(0_0_0/0.3)] dark:shadow-[0_1px_2px_rgb(0_0_0/0.3),0_24px_56px_-12px_rgb(0_0_0/0.6)]",
+        "animate-in duration-200 ease-out fade-in-0 zoom-in-[0.96] motion-reduce:animate-none",
         PANEL_CORNER[corner],
       )}
     >
-      <header className="flex h-10 shrink-0 items-center justify-between gap-2 border-b pr-1.5 pl-3">
-        <h2 className="text-sm font-medium">{t(title)}</h2>
+      <header className="flex h-12 shrink-0 items-center gap-2.5 border-b border-border/70 pr-2 pl-4">
+        <Icon className="size-4 text-muted-foreground" strokeWidth={1.75} />
+        <h2 className="min-w-0 flex-1 truncate text-[13px] font-semibold tracking-[-0.005em]">
+          {t(title)}
+        </h2>
         <Button
           variant="ghost"
-          size="icon-xs"
+          size="icon-sm"
+          className="rounded-full text-muted-foreground"
           aria-label={`${t("Close")} ${t(title)}`}
           onClick={close}
         >
-          <XIcon />
+          <XIcon strokeWidth={1.75} />
         </Button>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
@@ -60,14 +67,12 @@ function PanelFrame({
   );
 }
 
-/** Renders the one open panel beside the dock. */
+/** Renders the one open panel beside the hub. */
 export function PanelHost() {
   const t = useText();
   const { ui } = useOverlay();
   const panel = useStore(ui, (state) => state.panel);
   const registered = useList(panels);
-  const language = useStore(ui, (state) => state.language);
-  const { thread, exit } = useOverlay();
   const busy = useStore(ui, (state) => state.busy);
   const close = () => {
     if (!busy) ui.set({ panel: null });
@@ -75,52 +80,17 @@ export function PanelHost() {
 
   if (panel === "snapshot")
     return (
-      <PanelFrame title="Screenshot" close={close}>
+      <PanelFrame title="Screenshot" icon={CameraIcon} close={close}>
         <ScreenshotPanel />
-      </PanelFrame>
-    );
-  if (panel === SETTINGS)
-    return (
-      <PanelFrame title="Settings" close={close}>
-        <div className="space-y-3 p-3">
-          <Button
-            variant="ghost"
-            className="w-full justify-start"
-            onClick={() => {
-              thread.set({ unread: false });
-              ui.set({ panel: THREAD });
-            }}
-          >
-            <HistoryIcon />
-            {t("History")}
-          </Button>
-          <label className="flex items-center justify-between gap-3 text-sm">
-            {t("Language")}
-            <select
-              aria-label={t("Language")}
-              value={language}
-              className="rounded-md border bg-background px-2 py-1"
-              onChange={(event) => {
-                const next = event.target.value;
-                if (next !== "en" && next !== "ko") throw new Error("Unsupported language");
-                localStorage.setItem("pka:language", next);
-                ui.set({ language: next });
-              }}
-            >
-              <option value="en">English</option>
-              <option value="ko">한국어</option>
-            </select>
-          </label>
-          <Button variant="ghost" className="w-full justify-start text-destructive" onClick={exit}>
-            <LogOutIcon />
-            {t("Exit annotator")}
-          </Button>
-        </div>
       </PanelFrame>
     );
   if (panel === COMPOSE || panel === NOTE) {
     return (
-      <PanelFrame title={panel === COMPOSE ? "Composer" : "Annotation"} close={close}>
+      <PanelFrame
+        title={panel === COMPOSE ? "Composer" : "Annotation"}
+        icon={panel === COMPOSE ? LayersIcon : PenLineIcon}
+        close={close}
+      >
         <Suspense
           fallback={<p className="p-3 text-sm text-muted-foreground">{t("Loading editor…")}</p>}
         >
@@ -131,7 +101,7 @@ export function PanelHost() {
   }
   if (panel === THREAD) {
     return (
-      <PanelFrame title="History" close={close}>
+      <PanelFrame title="History" icon={HistoryIcon} close={close}>
         <Thread />
       </PanelFrame>
     );
@@ -139,7 +109,7 @@ export function PanelHost() {
   const definition = registered.find((candidate) => candidate.id === panel);
   if (definition === undefined) return null;
   return (
-    <PanelFrame title={definition.label} close={close}>
+    <PanelFrame title={definition.label} icon={definition.icon} close={close}>
       <definition.component close={close} />
     </PanelFrame>
   );

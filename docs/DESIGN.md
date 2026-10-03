@@ -79,28 +79,31 @@ The consumer passes `import.meta.hot` because a pre-bundled dependency has no HM
 
 ```tsx
 <pk-annotator> shadow root, a child of <html>
-  launcher.ts  plain DOM button with an error badge; no React until first open
-  <Dock>  React root, loaded on first open; draggable, snaps to a corner
-    Pick ▾ · Capture ▾ · Annotate ▾ | Debug ▾ · Composer | Settings · Minimize   (named icon buttons, Tab-reachable)
+  launcher.ts  the hub: plain DOM button with an error badge; draggable, snaps to a corner; no React until first open
   <PickLayer>  takes pointer events only while picking
     <HoverBox> component name + file:line
     <SelectionBox n> numbered tab outside the element's box, so it never covers the element
     <MarqueeRect> | <LassoPolygon>
   <MarkLayer>  cropped screenshot, recording region, rectangle, circle, freehand
-  <Panel>  one open at a time, beside the dock
+  <Panel>  one open at a time, beside the hub
     <RecordPanel> | <NetworkPanel> | <ConsolePanel> | <PerfPanel>
     <Composer>  lazily loaded Tiptap block editor
       <ElementChips>     one per selected element, removable; details open beside the panel
       <AttachmentChips>  recording, error groups, requests, perf snapshot
-      <PromptEditor> + Send / Save / Copy (Markdown)
+      <PromptEditor> + Copy (Markdown) / Save / Send
     <Composer batch> saved marks, editing, global comment, Send all
-    <Settings> History, language, Exit
     <Thread>  History: agent replies and status for annotations sent from this tab
+  <RadialMenu>  React, loaded on first open; rings of named menu items around the hub
+    Pick ▸ · Capture ▸ · Annotate ▸ · Debug ▸ · Composer · Settings ▸
 ```
 
-Picking or capturing opens the prompt editor immediately. Enter creates a block; Ctrl/Cmd+Enter sends. The editor supports headings, lists, quotes, code blocks, and inline formatting. A mark can be sent immediately or saved in this tab. Saved marks retain their prompts, elements, and capture snapshots while the dock is minimized; reload or Exit discards unsent marks. Composer edits these marks and an optional global comment. Send all creates one annotation with numbered mark sections and one deduplicated element list. Capture paths are unique per attachment, so multiple recordings cannot overwrite each other.
+The hub sits 20 px from its corner. Clicking it opens the radial menu; the hub's glyph, three moons on a quarter orbit, previews the quadrant the menu opens into. The first ring sweeps counterclockwise through the quadrant that faces the page, with angles measured counterclockwise from the positive x axis: 0° to 90° from bottom-left, 90° to 180° from bottom-right, 180° to 270° from top-right, and 270° to 360° from top-left. A band draws along the ring and its items land on it in sweep order. Hovering or choosing a group sweeps its items out the same way on a second, concentric ring, centered on the group and kept inside the quadrant. Leaving one group for another waits 140 ms, so a pointer crossing a neighbor on its way outward keeps the open group. Choosing an item closes the menu, which retracts in reverse; Language switches in place and keeps it open. A click outside the menu only closes it. The hub shows the pick accent while picking or drawing and a pulsing core while recording.
 
-Pick groups Single, Box, and Lasso. Capture groups Record, Screenshot, Crop screenshot, and Recording area. Annotate groups Rectangle, Circle, and Freehand. Debug groups Console, Network, and Performance. Settings holds History, English/Korean language, and Exit. Capture is pressed while Record is open, Debug while one of its panels is open, and Composer and Settings while their panels are open; a pressed button shows the accent surface and a 2 px `--foreground` underline, because a consumer's selected surface can sit within 1.2:1 of the dock. Pick keeps its `--pka-pick` fill. Minimize retains the launcher; Exit unmounts the overlay and stops capture. Language is stored on the origin; captured content and prompts retain their original language.
+The menu follows the ARIA menu pattern. Enter or Space on the hub opens it with focus on the first item; Up and Down move within a ring, Home and End jump to its ends, Right opens a group and Left or Escape returns to it, and Escape on the first ring closes the menu and returns focus to the hub. Tab leaves the menu and closes it. Toggles such as pick modes, drawing tools, and panels are checkbox items. Arrow keys on the focused hub move it to another corner. Escape and Enter inside any menu, including a panel's, never reach picking.
+
+Picking or capturing opens the prompt editor immediately. Enter creates a block; Ctrl/Cmd+Enter sends. The editor supports headings, lists, quotes, code blocks, and inline formatting. A mark can be sent immediately or saved in this tab. Saved marks retain their prompts, elements, and capture snapshots while the overlay is minimized; reload or Exit discards unsent marks. Composer edits these marks and an optional global comment. Send all creates one annotation with numbered mark sections and one deduplicated element list. Capture paths are unique per attachment, so multiple recordings cannot overwrite each other.
+
+Pick groups Single, Box, and Lasso. Capture groups Record, Screenshot, Crop screenshot, and Recording area. Annotate groups Rectangle, Circle, and Freehand. Debug groups Console, Network, and Performance. Settings groups History, English/Korean language, Minimize, and Exit. A group is marked while one of its tools or panels is active, and so are the active item and Composer while its panel is open. The mark is the `--pka-pick` color and tint, never `--accent` alone, because a consumer's selected surface can sit within 1.2:1 of the menu. Minimize hides panels and selection outlines and keeps the hub; Exit unmounts the overlay and stops capture. Language is stored on the origin; captured content and prompts retain their original language.
 
 ## Data flow
 
@@ -128,7 +131,7 @@ The store is the only shared state. The plugin writes annotations and the live e
 
 Nothing runs that you are not using, and production carries zero bytes.
 
-| Piece | Idle (dock closed, not recording) | In use |
+| Piece | Idle (menu closed, not recording) | In use |
 |---|---|---|
 | Launcher | One DOM button in a shadow root; React, AI Elements, and Tailwind not loaded | UI chunk loads on first open by dynamic import |
 | Console and errors | Wrappers append to fixed ring buffers (500 entries). Arguments are serialized at capture time with depth and length caps, so the buffer never holds app objects. An error group that is new, recurs, or changes status is sent to the plugin for the live error snapshot, at most once per second; the timer exists only while a group waits | Panels subscribe to the in-page buffers and read them directly. A recording copies each new entry through a tap, so the ring cap cannot drop it. Nothing else reaches the plugin until you send an annotation |
@@ -269,7 +272,7 @@ Each recording attachment points to its own summary; the manifest, timeline, net
 
 Redaction happens in the page: keyframe inputs are masked, auth and cookie headers dropped, bodies kept only for allowlisted same-origin API paths, and storage never read. Video and GIF pixels are not redacted; the capture controls say so.
 
-**Overlay exclusion.** The video is restricted to body, and the `<pk-annotator>` host is a child of `<html>` from mount on, so the video never contains the overlay. This placement is safe when a consumer hydrates the whole document. React 19 starts hydrating a document at body's first child and resolves html, head, and body by reference, so it never visits another child of `<html>` (react-dom 19.3.0, `beginWork` for the root and for host singletons). It also skips, without an error, an unexpected element that is a direct child of head or body. In the fixture on 2026-10-03, neither placement produced a hydration error in at least 60 loads each. Those loads covered fresh contexts, 4x and 6x CPU throttling, a cold Vite dependency cache, navigation between `/` and `/lab`, reloads with the dock open, and clicks before hydration ended. An injected mismatch was reported every time.
+**Overlay exclusion.** The video is restricted to body, and the `<pk-annotator>` host is a child of `<html>` from mount on, so the video never contains the overlay. This placement is safe when a consumer hydrates the whole document. React 19 starts hydrating a document at body's first child and resolves html, head, and body by reference, so it never visits another child of `<html>` (react-dom 19.3.0, `beginWork` for the root and for host singletons). It also skips, without an error, an unexpected element that is a direct child of head or body. In the fixture on 2026-10-03, neither placement produced a hydration error in at least 60 loads each. Those loads covered fresh contexts, 4x and 6x CPU throttling, a cold Vite dependency cache, navigation between `/` and `/lab`, reloads with the overlay open, and clicks before hydration ended. An injected mismatch was reported every time.
 
 **Content Security Policy.** Keyframes and selection crops come from snapdom, which renders the page as an SVG `<foreignObject>` image and draws it into a canvas. Chromium lets such a canvas be exported only when the image loads from a `data:` URL. Loaded from a `blob:` URL, the image taints the canvas and `toBlob` throws; `createImageBitmap` cannot decode it, and `OffscreenCanvas` is tainted the same way (probed in Playwright 1.63 Chromium on 2026-10-03). A page CSP must therefore allow `img-src data:`, and `blob:` for images pasted into the composer. Without `data:`, sending fails with an error that names the CSP. The fixture's dev server sends `img-src 'self' blob: data:` so that this minimum stays tested.
 
@@ -293,7 +296,7 @@ The overlay follows these isolation and integration rules. The original investig
 3. **`@property`.** Collect the sheet's `CSSPropertyRule`s and adopt them once on `document`.
 4. **Focus.** Radix Select and Menu compare `document.activeElement`, which is retargeted to the host element. While mounted, an instance getter on `document` returns `shadow.activeElement` only when the native value is our host; unmount removes it.
 5. **Portals.** A context supplies a portal container inside the shadow root, a sibling of the app root, to every shadcn portal.
-6. **Stacking.** The host is the only stacking context; the dock carries no z-index, so portal content stacks above it.
+6. **Stacking.** The host is the only stacking context; the menu and the hub carry no z-index, so portal content stacks above them. The hub follows the app root in the shadow root, so it stays clickable above the pick and drawing layers.
 7. **No modal primitives.** Modal Select, Dialog, and DropdownMenu lock host scrolling, set `pointer-events: none` on `body`, and put `aria-hidden` on host elements. Use non-modal variants only: `modal={false}` menus, and a non-modal menu or popover in place of Select (including editor block controls).
 8. **Theming.** Consumers theme through custom properties on the host element (`pk-annotator { --primary: var(--app-accent); --radius: 4px; }`), which beat `:host` and inherit across the boundary. Dark mode needs `data-theme="dark"` on the host, which switches the `:host` variables, and a `.dark` class on `.pka-root` for Tailwind's dark variant; the `theme` option and `setTheme` set both (see Public API).
 
