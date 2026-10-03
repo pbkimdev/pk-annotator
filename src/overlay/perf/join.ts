@@ -1,4 +1,5 @@
-import type { LiteFiberSummary } from "react-scan/lite";
+import { getDisplayName, type Fiber, type Props } from "bippy";
+import { formatOwnerStack, parseStack } from "bippy/source";
 
 import type {
   ActionEntry,
@@ -140,68 +141,123 @@ export type HotSpot = {
   cascades: number;
 };
 
-// React work tags: MemoComponent, SimpleMemoComponent; HostComponent, HostHoistable, HostSingleton.
-const MEMO_TAGS = new Set([14, 15]);
-const HOST_TAGS = new Set([5, 26, 27]);
+type OwnSite = { site: FiberSite; kind: HotSpot["siteKind"] };
 
-function siteOf(fiber: LiteFiberSummary): FiberSite | undefined {
-  const source = fiber.source;
+// React work tags and the fiber flag React sets when a component's render ran.
+const CLASS_TAG = 1;
+const COMPOSITE_TAGS = new Set([0, CLASS_TAG, 11, 14, 15]);
+const HOST_TAGS = new Set([5, 26, 27]);
+const PERFORMED_WORK = 1;
+
+function siteOf(fiber: Fiber): FiberSite | undefined {
+  const stack = fiber._debugStack?.stack;
+  if (stack === undefined) return undefined;
+  const frame = parseStack(formatOwnerStack(stack))[0];
   if (
-    source === undefined ||
-    source === null ||
-    source.lineNumber === undefined ||
-    source.columnNumber === undefined
+    frame?.fileName === undefined ||
+    frame.lineNumber === undefined ||
+    frame.columnNumber === undefined
   ) {
     return undefined;
   }
   return {
-    fileName: source.fileName,
-    lineNumber: source.lineNumber,
-    columnNumber: source.columnNumber,
+    fileName: frame.fileName,
+    lineNumber: frame.lineNumber,
+    columnNumber: frame.columnNumber,
   };
 }
 
+function ownedBy(fiber: Fiber, owner: Fiber): boolean {
+  return fiber._debugOwner === owner || fiber._debugOwner === owner.alternate;
+}
+
+// Reading a debug stack formats it, so each component instance resolves its site once, at
+// its first counted render. Both fibers of an instance share the entry; null records an
+// instance with no project site, such as a library's internal component.
+const sites = new WeakMap<Fiber, OwnSite | null>();
+
 // A library-created component (a route component, for example) has its element created in
 // node_modules; its own JSX is the first descendant host element it owns.
-function ownSite(
-  tree: readonly LiteFiberSummary[],
-  index: number,
-  isProject: (fileName: string) => boolean,
-): { site: FiberSite; kind: HotSpot["siteKind"] } | undefined {
-  const fiber = tree[index];
-  if (fiber === undefined) return undefined;
+function ownSite(fiber: Fiber, isProject: (fileName: string) => boolean): OwnSite | undefined {
+  const cached =
+    sites.get(fiber) ?? (fiber.alternate === null ? undefined : sites.get(fiber.alternate));
+  if (cached !== undefined) return cached ?? undefined;
+  let own: OwnSite | null = null;
   const site = siteOf(fiber);
-  if (site !== undefined && isProject(site.fileName)) return { site, kind: "used-at" };
-  for (let next = index + 1; next < tree.length; next += 1) {
-    const descendant = tree[next];
-    if (descendant === undefined || descendant.depth <= fiber.depth) return undefined;
-    const descendantSite = siteOf(descendant);
-    if (
-      HOST_TAGS.has(descendant.tag) &&
-      descendant.ownerName === fiber.name &&
-      descendantSite !== undefined &&
-      isProject(descendantSite.fileName)
-    ) {
-      return { site: descendantSite, kind: "renders" };
+  if (site !== undefined && isProject(site.fileName)) own = { site, kind: "used-at" };
+  const pending = fiber.child === null ? [] : [fiber.child];
+  for (let next = pending.pop(); own === null && next !== undefined; next = pending.pop()) {
+    if (next.sibling !== null) pending.push(next.sibling);
+    if (next.child !== null) pending.push(next.child);
+    if (!HOST_TAGS.has(next.tag) || !ownedBy(next, fiber)) continue;
+    const hostSite = siteOf(next);
+    if (hostSite !== undefined && isProject(hostSite.fileName)) {
+      own = { site: hostSite, kind: "renders" };
     }
   }
-  return undefined;
+  sites.set(fiber, own);
+  return own ?? undefined;
 }
 
 export function hotSpotKey(spot: Pick<HotSpot, "name" | "site">): string {
   return `${spot.name}@${spot.site.fileName}:${spot.site.lineNumber}:${spot.site.columnNumber}`;
 }
 
-function record(
-  hotSpots: Map<string, HotSpot>,
-  fiber: LiteFiberSummary,
-  own: { site: FiberSite; kind: HotSpot["siteKind"] },
-): void {
-  const change = fiber.changeDescription;
-  if (change === undefined || change === null) return;
-  const key = hotSpotKey({ name: fiber.name, site: own.site });
+type Change = { props: string[]; state: boolean; hooks: boolean; context: boolean };
+
+// Props, or a class component's state object.
+function changedKeys(next: Props, prior: Props): string[] {
+  return [...new Set([...Object.keys(next), ...Object.keys(prior)])].filter(
+    (key) => !Object.is(next[key], prior[key]),
+  );
+}
+
+// Function components keep their hooks as a list; any changed value counts.
+function hooksChanged(fiber: Fiber, previous: Fiber): boolean {
+  let next = fiber.memoizedState;
+  let prior = previous.memoizedState;
+  while (next !== null || prior !== null) {
+    if (next === null || prior === null) return false;
+    if (!Object.is(next.memoizedState, prior.memoizedState)) return true;
+    next = next.next;
+    prior = prior.next;
+  }
+  return false;
+}
+
+function contextChanged(fiber: Fiber, previous: Fiber): boolean {
+  let next = fiber.dependencies?.firstContext ?? null;
+  let prior = previous.dependencies?.firstContext ?? null;
+  while (next !== null && prior !== null && next.context === prior.context) {
+    if (!Object.is(next.memoizedValue, prior.memoizedValue)) return true;
+    next = next.next;
+    prior = prior.next;
+  }
+  return false;
+}
+
+function changeOf(fiber: Fiber, previous: Fiber): Change {
+  // A class component keeps its state object where a function component keeps hooks.
+  const isClass = fiber.tag === CLASS_TAG;
+  const state = fiber.memoizedState;
+  const priorState = previous.memoizedState;
+  return {
+    props: changedKeys(fiber.memoizedProps, previous.memoizedProps),
+    state:
+      isClass &&
+      (state === null || priorState === null
+        ? state !== priorState
+        : changedKeys(state, priorState).length > 0),
+    hooks: !isClass && hooksChanged(fiber, previous),
+    context: contextChanged(fiber, previous),
+  };
+}
+
+function record(hotSpots: Map<string, HotSpot>, fiber: Fiber, previous: Fiber, own: OwnSite): void {
+  const name = getDisplayName(fiber.type) ?? "Anonymous";
+  const key = hotSpotKey({ name, site: own.site });
   const spot = hotSpots.get(key) ?? {
-    name: fiber.name,
+    name,
     site: own.site,
     siteKind: own.kind,
     renders: 0,
@@ -212,67 +268,57 @@ function record(
     contextChanges: 0,
     cascades: 0,
   };
+  const change = changeOf(fiber, previous);
   spot.renders += 1;
-  spot.selfMs += fiber.selfBaseDuration;
-  for (const prop of change.props ?? []) {
+  spot.selfMs += fiber.selfBaseDuration ?? 0;
+  for (const prop of change.props) {
     if (!spot.props.includes(prop) && spot.props.length < MAX_PROPS) spot.props.push(prop);
   }
   if (change.state) spot.stateChanges += 1;
-  if (change.hooks.length > 0) spot.hookChanges += 1;
+  if (change.hooks) spot.hookChanges += 1;
   if (change.context) spot.contextChanges += 1;
-  if (selfChanges(change) === 0) spot.cascades += 1;
+  if (change.props.length === 0 && !change.state && !change.hooks && !change.context) {
+    spot.cascades += 1;
+  }
   hotSpots.set(key, spot);
 }
 
-function selfChanges(change: NonNullable<LiteFiberSummary["changeDescription"]>): number {
-  return (
-    (change.props?.length ?? 0) +
-    change.hooks.length +
-    (change.state ? 1 : 0) +
-    (change.context ? 1 : 0)
-  );
-}
-
 /**
- * Adds the components that re-rendered in one react-scan/lite commit tree to `hotSpots`.
+ * Adds the components that re-rendered in one commit to `hotSpots`, given the committed
+ * HostRoot fiber.
  *
- * The tree lists every committed fiber, including ones that bailed out on the update path
- * and stale ones whose change description compares old alternates. A component counts as
- * rendered when it was processed in this commit (actualStartTime at or after the root's) and
- * either something of its own changed or its nearest composite ancestor rendered and it is
- * not memoized. First mounts are skipped. Only components with a project source are kept,
- * which also drops the overlay's own root.
+ * The walk follows only the work React did: a subtree whose children React reused as they
+ * were did not render, so its fibers are not visited, however large the tree. A component
+ * counts when React ran its render in this commit (the PerformedWork flag, which React
+ * clears on every fiber it processes). First mounts are skipped. Only components with a
+ * project source are kept, which also drops the overlay's own root; the source is read
+ * only for components that rendered.
  */
 export function addCommit(
   hotSpots: Map<string, HotSpot>,
-  tree: readonly LiteFiberSummary[],
+  root: Fiber,
   isProject: (fileName: string) => boolean,
 ): boolean {
-  const rootStart = tree[0]?.actualStartTime;
-  if (rootStart === undefined) return false;
-  // rendered[d]: whether the nearest composite at depth d or above rendered in this commit.
-  const rendered: boolean[] = [];
   let changed = false;
-  tree.forEach((fiber, index) => {
-    rendered.length = fiber.depth;
-    const parentRendered = rendered[fiber.depth - 1] ?? false;
-    const change = fiber.changeDescription;
-    if (change === undefined || change === null) {
-      rendered.push(parentRendered);
-      return;
+  const pending = [root];
+  for (let fiber = pending.pop(); fiber !== undefined; fiber = pending.pop()) {
+    const previous = fiber.alternate;
+    // Mounted in this commit, and so was everything below it.
+    if (previous === null) continue;
+    if (COMPOSITE_TAGS.has(fiber.tag) && (fiber.flags & PERFORMED_WORK) !== 0) {
+      const own = ownSite(fiber, isProject);
+      if (own !== undefined) {
+        record(hotSpots, fiber, previous, own);
+        changed = true;
+      }
     }
-    const fresh = fiber.actualStartTime >= rootStart;
-    const didRender =
-      fresh &&
-      (change.isFirstMount ||
-        selfChanges(change) > 0 ||
-        (parentRendered && !MEMO_TAGS.has(fiber.tag)));
-    rendered.push(didRender);
-    if (!didRender || change.isFirstMount) return;
-    const own = ownSite(tree, index, isProject);
-    if (own === undefined) return;
-    record(hotSpots, fiber, own);
-    changed = true;
-  });
+    if (fiber.child === previous.child) continue;
+    const children: Fiber[] = [];
+    for (let child = fiber.child; child !== null; child = child.sibling) children.push(child);
+    for (let index = children.length - 1; index >= 0; index -= 1) {
+      const child = children[index];
+      if (child !== undefined) pending.push(child);
+    }
+  }
   return changed;
 }

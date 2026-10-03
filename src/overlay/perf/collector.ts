@@ -1,4 +1,4 @@
-import { instrument, type LiteEvent, type LiteHandle } from "react-scan/lite";
+import { getRDTHook, instrument, type FiberRoot } from "bippy";
 import {
   onCLS,
   onINP,
@@ -339,7 +339,7 @@ function isProject(fileName: string): boolean {
 }
 
 const hotSpots = new Map<string, HotSpot>();
-let scan: { handle: LiteHandle; owned: boolean; unsubscribe(): void } | undefined;
+let unsubscribe: (() => void) | undefined;
 let publishQueued = false;
 
 function publishHotSpots(): void {
@@ -351,33 +351,27 @@ function publishHotSpots(): void {
   perf.set({ hotSpots: ranked.slice(0, MAX_HOT_SPOTS) });
 }
 
-function onCommit(event: LiteEvent): void {
-  if (event.kind !== "commit" || event.tree === undefined) return;
-  if (!addCommit(hotSpots, event.tree, isProject) || publishQueued) return;
+function onCommit(root: FiberRoot): void {
+  if (!addCommit(hotSpots, root.current, isProject) || publishQueued) return;
   publishQueued = true;
   queueMicrotask(publishHotSpots);
 }
 
-/** Starts react-scan/lite render tracking; runs only while the Perf panel is open. */
+/** Starts render tracking on the React DevTools hook; runs only while the Perf panel is open. */
 export function startScan(): void {
-  if (scan !== undefined) return;
-  // instrument() returns the page's own handle when the app already runs react-scan/lite.
-  const owned = window.__REACT_SCAN_LITE__ === undefined;
-  const handle = instrument({
-    recordChangeDescriptions: true,
-    includeFiberSource: true,
-    includeProfilingHooks: false,
-    includeLaneLabels: false,
+  if (unsubscribe !== undefined) return;
+  unsubscribe = instrument({
+    onActive: () => perf.set({ scanning: true }),
+    onCommitFiberRoot: (_rendererId, root) => onCommit(root),
   });
-  scan = { handle, owned, unsubscribe: handle.subscribe(onCommit) };
-  perf.set({ scanning: handle.isActive() });
+  // A hook installed after React loaded never receives a renderer.
+  perf.set({ scanning: getRDTHook().renderers.size > 0 });
 }
 
 export function stopScan(): void {
-  if (scan === undefined) return;
-  scan.unsubscribe();
-  if (scan.owned) scan.handle.stop();
-  scan = undefined;
+  if (unsubscribe === undefined) return;
+  unsubscribe();
+  unsubscribe = undefined;
   perf.set({ scanning: false });
 }
 

@@ -5,7 +5,7 @@ import { claimObservers } from "../perf/observer.ts";
 import { registerPanel } from "../registry.ts";
 import { Spinner } from "../ui/spinner.tsx";
 
-// web-vitals and react-scan live in the panel's own chunk, loaded when the panel first opens.
+// web-vitals lives in the panel's own chunk, loaded when the panel first opens.
 const load = () => claimObservers(() => import("./perf-panel.tsx"));
 let loaded: ReturnType<typeof load> | undefined;
 const Body = lazy(() => (loaded ??= load()));
