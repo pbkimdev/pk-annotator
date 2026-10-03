@@ -54,6 +54,8 @@ export interface RunMetric {
   resource?: string | undefined;
   breakdown: Record<string, number>;
   script?: LoafScript | undefined;
+  /** The Event Timing interactionId of an INP value. */
+  interaction?: number | undefined;
 }
 
 export interface InsightSummary {
@@ -66,7 +68,15 @@ export interface InsightSummary {
 export interface TraceAnalysis {
   insights: InsightSummary[];
   unavailable: Array<{ name: string; reason: string }>;
-  hotFunction: HotFunction | undefined;
+  longestInteraction: { id: number; hotFunction: HotFunction | undefined } | undefined;
+}
+
+/** What the separate traced run contributes; its metrics are not samples. */
+export interface Diagnostic {
+  insights: InsightSummary[];
+  unavailable: Array<{ name: string; reason: string }>;
+  /** The heaviest function of the traced run's INP interaction, and where that interaction was. */
+  hot: { hotFunction: HotFunction; page: string; element: string | undefined } | undefined;
 }
 
 /** One untraced run: a verdict sample. */
@@ -87,8 +97,7 @@ export interface VerdictInput {
   budgets: Budgets;
   runs: RunResult[];
   failures: RunFailure[];
-  /** From the separate traced run, whose metrics are not samples. */
-  diagnostic: TraceAnalysis;
+  diagnostic: Diagnostic;
   traces: string[];
 }
 
@@ -125,7 +134,7 @@ function culpritFor(
   metric: LabMetric,
   result: RunResult,
   measured: RunMetric,
-  diagnostic: TraceAnalysis,
+  diagnostic: Diagnostic,
 ): Culprit {
   const insights = diagnostic.insights.filter(
     (insight) => insight.name === CULPRIT_INSIGHT[metric],
@@ -144,9 +153,6 @@ function culpritFor(
   if (measured.resource !== undefined) culprit.resource = measured.resource;
   if (measured.script !== undefined) {
     culprit.script = { ...measured.script, durationMs: Math.round(measured.script.durationMs) };
-  }
-  if (metric === "INP" && diagnostic.hotFunction !== undefined) {
-    culprit.hotFunction = diagnostic.hotFunction;
   }
   if (insight !== undefined) culprit.insight = insight.summary;
   return culprit;
@@ -266,6 +272,26 @@ export function computeVerdict(input: VerdictInput): Verdict {
   const unavailable = new Map<string, { name: string; reason: string }>();
   for (const missing of input.diagnostic.unavailable) {
     if (!computed.has(missing.name)) {
+      unavailable.set(`${missing.name}\u0000${missing.reason}`, missing);
+    }
+  }
+  // The hot function comes from another run; it names the culprit's work only
+  // when that run's INP was on the same element and page.
+  const culprit = metrics.INP.culprit;
+  const hot = input.diagnostic.hot;
+  if (culprit !== undefined && hot !== undefined) {
+    if (
+      hot.element !== undefined &&
+      hot.element === culprit.element &&
+      pagePath(hot.page) === pagePath(culprit.page)
+    ) {
+      culprit.hotFunction = hot.hotFunction;
+    } else {
+      const where = `${hot.element ?? "an unnamed element"} on ${pagePath(hot.page)}`;
+      const missing = {
+        name: "hotFunction",
+        reason: `the traced run's INP was ${where}, not the INP culprit's interaction`,
+      };
       unavailable.set(`${missing.name}\u0000${missing.reason}`, missing);
     }
   }

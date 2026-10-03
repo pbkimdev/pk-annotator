@@ -186,12 +186,13 @@ function longestInteraction(sets: InsightSet[]) {
   return longest;
 }
 
-// Sums the CPU-sample self time per function inside the longest interaction
-// and returns the heaviest page function. LoAF names the event dispatcher;
-// the samples name the handler that did the work.
-function hotFunction(parsed: Trace.TraceModel.ParsedTrace, sets: InsightSet[]) {
-  const interaction = longestInteraction(sets);
-  if (interaction === undefined) return undefined;
+// Sums the CPU-sample self time per function inside one interaction and
+// returns the heaviest page function. LoAF names the event dispatcher; the
+// samples name the handler that did the work.
+function hotFunction(
+  parsed: Trace.TraceModel.ParsedTrace,
+  interaction: Trace.Types.Events.SyntheticInteractionPair,
+): HotFunction | undefined {
   const thread = parsed.data.Renderer.processes.get(interaction.pid)?.threads.get(interaction.tid);
   if (thread === undefined) return undefined;
   const start = interaction.ts;
@@ -265,5 +266,13 @@ export async function analyzeTrace(events: unknown[]): Promise<TraceAnalysis> {
       });
     }
   }
-  return { insights, unavailable, hotFunction: hotFunction(parsed, sets) };
+  const longest = longestInteraction(sets);
+  return {
+    insights,
+    unavailable,
+    longestInteraction:
+      longest === undefined
+        ? undefined
+        : { id: longest.interactionId, hotFunction: hotFunction(parsed, longest) },
+  };
 }

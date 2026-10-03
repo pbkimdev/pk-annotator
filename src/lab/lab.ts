@@ -25,8 +25,8 @@ import {
   type Budgets,
   type RunFailure,
   type RunMetric,
+  type Diagnostic,
   type RunResult,
-  type TraceAnalysis,
 } from "./verdict.ts";
 
 export type FlowStep = ActionEntry | NavigationEntry;
@@ -189,6 +189,7 @@ const PageMetric = z.strictObject({
   resource: z.string().optional(),
   breakdown: z.record(z.string(), z.number()),
   script: LoafScript.optional(),
+  interaction: z.number().int().optional(),
 });
 type PageMetric = z.infer<typeof PageMetric>;
 
@@ -276,6 +277,7 @@ webVitals.onINP((metric) => {
   const longest = a.longestScript;
   send(metric, {
     target: a.interactionTarget,
+    interaction: metric.entries[0]?.interactionId,
     breakdown: {
       inputDelay: a.inputDelay,
       processingDuration: a.processingDuration,
@@ -681,6 +683,7 @@ function worstPerMetric(reports: Map<string, PageMetric>): RunResult["metrics"] 
       resource: report.resource,
       breakdown: report.breakdown,
       script: report.script,
+      interaction: report.interaction,
     };
     metrics[report.name] = measured;
   }
@@ -757,7 +760,7 @@ async function measure(run: number, options: RunContext): Promise<RunResult> {
 // The replay that supplies insights and the hot function. CPU sampling and the
 // timeline categories slow the page (a 4x CPU click measured median INP 56 ms
 // untraced and 64 ms traced), so its metrics never enter the verdict.
-async function diagnose(options: RunContext, file: string): Promise<TraceAnalysis> {
+async function diagnose(options: RunContext, file: string): Promise<Diagnostic> {
   const session = await openSession(options);
   const { cdp } = session;
   await startTrace(cdp);
@@ -782,7 +785,26 @@ async function diagnose(options: RunContext, file: string): Promise<TraceAnalysi
   const handle = await endTrace(cdp);
   checkReports(session, "The traced run");
   const trace = await saveTrace(cdp, handle, file);
-  return await analyzeTrace(TraceFile.parse(JSON.parse(trace)));
+  const analysis = await analyzeTrace(TraceFile.parse(JSON.parse(trace)));
+  const diagnostic: Diagnostic = {
+    insights: analysis.insights,
+    unavailable: analysis.unavailable,
+    hot: undefined,
+  };
+  const longest = analysis.longestInteraction;
+  if (longest?.hotFunction === undefined) return diagnostic;
+  // The samples belong to the trace's longest interaction; they describe the
+  // INP culprit only if web-vitals reported that same interaction as INP.
+  const inp = worstPerMetric(session.reports).INP;
+  if (inp?.interaction === longest.id) {
+    diagnostic.hot = { hotFunction: longest.hotFunction, page: inp.page, element: inp.element };
+  } else {
+    diagnostic.unavailable.push({
+      name: "hotFunction",
+      reason: "the traced run's longest interaction is not the INP interaction it reported",
+    });
+  }
+  return diagnostic;
 }
 
 export interface LabOptions {
@@ -850,7 +872,7 @@ export async function runLab(options: LabOptions): Promise<{ verdict: Verdict; f
     }
     const traces: string[] = [];
     // With no completed run the failures already explain the verdict.
-    let diagnostic: TraceAnalysis = { insights: [], unavailable: [], hotFunction: undefined };
+    let diagnostic: Diagnostic = { insights: [], unavailable: [], hot: undefined };
     if (results.length > 0) {
       const trace = path.join(out, "trace.json.gz");
       const context = await browser.newContext({ viewport: VIEWPORT });
