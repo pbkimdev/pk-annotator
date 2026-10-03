@@ -23,7 +23,6 @@ const korean = new Map<string, string>(
     Perf: "성능",
     Composer: "모아 보내기",
     Settings: "설정",
-    Minimize: "최소화",
     History: "기록",
     Language: "언어",
     "Exit annotator": "주석 도구 종료",

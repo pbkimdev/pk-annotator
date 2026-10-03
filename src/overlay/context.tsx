@@ -51,7 +51,6 @@ export type Overlay = {
   theme: ThemeSignal;
   ui: Store<UiState>;
   thread: ThreadStore;
-  hide(): void;
   exit(): void;
 };
 

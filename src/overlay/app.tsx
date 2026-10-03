@@ -126,17 +126,6 @@ export function open(context: UiContext): UiController {
     ui,
     thread,
     exit: context.exit,
-    hide() {
-      ui.set({
-        visible: false,
-        menu: "closed",
-        picking: null,
-        gesture: null,
-        hover: null,
-        marquee: null,
-      });
-      context.hidden();
-    },
   };
 
   const stopPanels = [

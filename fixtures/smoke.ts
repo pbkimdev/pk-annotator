@@ -218,9 +218,6 @@ test(
       await page.getByTestId("pka-save").click();
     }
     assert.equal(await page.getByTestId("pka-saved-mark").count(), 5);
-    await choose("Settings", "Minimize", "menuitem");
-    await hub.click();
-    assert.equal(await page.getByTestId("pka-saved-mark").count(), 5);
     const global = "Fix these marks together";
     await page.getByTestId("pka-prompt").fill(global);
     await page.getByTestId("pka-send").click();
@@ -364,7 +361,7 @@ test(
     await page.locator("pk-annotator").waitFor({ state: "detached" });
     assert.deepEqual(errors, []);
     t.diagnostic(
-      "Direct send, saved marks, editing, cropped/drawn captures, two region GIF/WebM recordings, batch send, the practice page, language, minimize, Exit and CLI artifacts passed.",
+      "Direct send, saved marks, editing, cropped/drawn captures, two region GIF/WebM recordings, batch send, the practice page, language, Exit and CLI artifacts passed.",
     );
   },
 );

@@ -11,7 +11,6 @@ import {
   LassoSelectIcon,
   LayersIcon,
   LineSquiggleIcon,
-  Minimize2Icon,
   MousePointer2Icon,
   MousePointerClickIcon,
   PenToolIcon,
@@ -117,7 +116,7 @@ function branchAngles(start: number, parent: number, count: number): number[] {
 
 function useEntries(): Entry[] {
   const t = useText();
-  const { ui, thread, hide, exit } = useOverlay();
+  const { ui, thread, exit } = useOverlay();
   const picking = useStore(ui, (state) => state.picking);
   const gesture = useStore(ui, (state) => state.gesture);
   const panel = useStore(ui, (state) => state.panel);
@@ -284,7 +283,6 @@ function useEntries(): Entry[] {
             ui.set({ language: next });
           },
         },
-        { id: "minimize", label: t("Minimize"), icon: Minimize2Icon, run: hide },
         { id: "exit", label: t("Exit annotator"), icon: PowerIcon, run: exit },
       ],
     },
