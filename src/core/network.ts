@@ -70,6 +70,11 @@ let recordFetch: FetchRecorder | undefined;
 const forwarded = new WeakSet<RequestInit>();
 let forwarding = false;
 
+function isPlain(init: RequestInit): boolean {
+  const prototype: unknown = Object.getPrototypeOf(init);
+  return prototype === Object.prototype || prototype === null;
+}
+
 // fetch reads each init member with [[Get]], own or inherited, so a Request or class
 // instance passed as the init supplies its method, body, and signal through getters. A
 // copy of such an init loses them; a proxy that runs its getters on the original keeps them.
@@ -83,6 +88,18 @@ function memberOf(init: RequestInit, key: string | symbol): RequestInit[keyof Re
   // SAFETY: fetch reads any key it knows, including members newer than this lib's
   // RequestInit; a key the init lacks reads as undefined, as it would on the init.
   return init[key as keyof RequestInit];
+}
+
+// The init with `headers` replaced. Undefined when an init that is not a plain object owns
+// a non-configurable `headers`, which a proxy may not replace.
+function withHeaders(init: RequestInit | undefined, headers: Headers): RequestInit | undefined {
+  if (init === undefined) return { headers };
+  // Spreading a plain object keeps every member, and works when it is frozen.
+  if (isPlain(init)) return { ...init, headers };
+  if (Object.getOwnPropertyDescriptor(init, "headers")?.configurable === false) return undefined;
+  return new Proxy(init, {
+    get: (target, key) => (key === "headers" ? headers : memberOf(target, key)),
+  });
 }
 
 function forward(
@@ -238,6 +255,7 @@ export function installNetwork(hooks: NetworkHooks): Network {
     method: string,
     rawUrl: string,
     headers: Headers,
+    injectable: boolean,
   ): Tracked {
     const start = performance.now();
     const url = new URL(rawUrl, location.href);
@@ -256,7 +274,7 @@ export function installNetwork(hooks: NetworkHooks): Network {
       requestHeaders: {},
       responseHeaders: {},
     };
-    if (sameOrigin && !headers.has("traceparent")) {
+    if (injectable && sameOrigin && !headers.has("traceparent")) {
       entry.traceparent = traceparent();
       headers.set("traceparent", entry.traceparent);
     }
@@ -411,8 +429,10 @@ export function installNetwork(hooks: NetworkHooks): Network {
       const isRequest = input instanceof Request;
       const headers = new Headers(init?.headers ?? (isRequest ? input.headers : undefined));
       const method = init?.method ?? (isRequest ? input.method : "GET");
-      item = begin("fetch", method, isRequest ? input.url : String(input), headers);
-      if (item.entry.traceparent !== undefined) nextInit = { ...init, headers };
+      const injected = withHeaders(init, headers);
+      const url = isRequest ? input.url : String(input);
+      item = begin("fetch", method, url, headers, injected !== undefined);
+      if (item.entry.traceparent !== undefined) nextInit = injected;
       recordRequestBody(item, init?.body, headers.get("content-type"));
     } catch (cause) {
       hooks.fail("fetch capture", cause);
@@ -518,7 +538,7 @@ export function installNetwork(hooks: NetworkHooks): Network {
     request: { method: string; url: string; headers: Headers },
     body: XhrBody,
   ): (cause: unknown) => void {
-    const item = begin("xhr", request.method, request.url, request.headers);
+    const item = begin("xhr", request.method, request.url, request.headers, true);
     if (item.entry.traceparent !== undefined) {
       originalSetRequestHeader.call(xhr, "traceparent", item.entry.traceparent);
     }

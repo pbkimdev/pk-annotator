@@ -347,15 +347,28 @@ describe("network capture", () => {
       const shared = { method: "POST", body: "shared" };
       await Promise.all([second.fetch("/api/overlay", shared), held("/api/page", shared)]);
       await Promise.all([fetch("/api/a", shared), fetch("/api/b", shared)]);
+      // A Request passed as the init supplies its members through getters.
+      await fetch("/api/request", new Request("/api/x", { method: "PUT", body: "put" }));
+      await fetch("/api/frozen", Object.freeze({ method: "POST", body: "frozen" }));
       expect(first.snapshot().requests).toHaveLength(0);
       const recorded = second.snapshot().requests.map((entry) => new URL(entry.url).pathname);
-      expect(recorded).toEqual(["/api/items", "/api/global", "/api/page", "/api/a", "/api/b"]);
+      expect(recorded).toEqual([
+        "/api/items",
+        "/api/global",
+        "/api/page",
+        "/api/a",
+        "/api/b",
+        "/api/request",
+        "/api/frozen",
+      ]);
       const byPath = (a: { path: string }, b: { path: string }) => a.path.localeCompare(b.path);
       expect(sent.slice(4).toSorted(byPath)).toEqual([
         { path: "/api/a", method: "POST", body: "shared", traceparent: true },
         { path: "/api/b", method: "POST", body: "shared", traceparent: true },
+        { path: "/api/frozen", method: "POST", body: "frozen", traceparent: true },
         { path: "/api/overlay", method: "POST", body: "shared", traceparent: false },
         { path: "/api/page", method: "POST", body: "shared", traceparent: true },
+        { path: "/api/request", method: "PUT", body: "put", traceparent: true },
       ]);
     },
   );
