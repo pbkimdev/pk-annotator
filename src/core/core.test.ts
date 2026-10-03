@@ -518,6 +518,17 @@ describe("request metadata", () => {
     expect(later).toMatchObject({ durationMs: 7, performanceMs: 200, transferSize: 300 });
     expect(early).toMatchObject({ durationMs: 0, performanceMs: 100 });
     expect(early?.transferSize).toBeUndefined();
+
+    // Starts closer than the clock tolerance cannot be told apart, so neither is guessed.
+    const pairUrl = `${location.origin}/api/pair`;
+    clock = 500;
+    await fetch("/api/pair");
+    clock = 500.4;
+    await fetch("/api/pair");
+    queued.push(new Timing(pairUrl, 500.5, 9), new Timing(pairUrl, 500.1, 5));
+    clock = 520;
+    const pair = current.snapshot().requests.slice(3);
+    expect(pair.map((request) => request.transferSize)).toEqual([undefined, undefined]);
   });
 
   it("settles a synchronous XMLHttpRequest whose send throws, and reads no body it cannot keep", () => {

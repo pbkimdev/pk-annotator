@@ -21,6 +21,8 @@ const EVENT_STREAM = /^\s*text\/event-stream/i;
 const JSON_DOCUMENT = /^\s*application\/(?!stream\+)(?:[\w.-]+\+)?json\s*(?:;|$)/i;
 // After a request settles, how long to keep looking for its resource timing entry.
 const TIMING_GRACE_MS = 10_000;
+// Browsers coarsen both clocks, so starts this close cannot be ordered.
+const CLOCK_TOLERANCE_MS = 1;
 
 export interface NetworkHooks {
   bodies: readonly string[];
@@ -578,7 +580,7 @@ export function installNetwork(hooks: NetworkHooks): Network {
   // A resource timing entry starts when its request is sent, so it belongs to the
   // same-URL request sent closest before it; a request still waiting for a timing that
   // never came cannot take a later request's one. A timing whose owner has not settled
-  // yet stays for that owner.
+  // yet stays for that owner, and one that two requests could own is dropped.
   function resolveTimings(): boolean {
     collectTimings(timingObserver.takeRecords());
     if (!tracked.some((item) => item.timingUntil !== undefined)) return false;
@@ -595,12 +597,23 @@ export function installNetwork(hooks: NetworkHooks): Network {
       const candidate = timings[index];
       if (candidate === undefined) throw new Error(`No resource timing at index ${index}`);
       const { name, timing } = candidate;
+      const candidates = (byUrl.get(name) ?? []).filter(
+        (item) => !item.timed && item.start <= timing.startTime + CLOCK_TOLERANCE_MS,
+      );
       let owner: Tracked | undefined;
-      for (const item of byUrl.get(name) ?? []) {
-        // Clocks are coarsened, so a request can appear to start just after its timing.
-        if (item.timed || item.start > timing.startTime + 1) continue;
+      for (const item of candidates) {
         const gap = Math.abs(timing.startTime - item.start);
         if (owner === undefined || gap < Math.abs(timing.startTime - owner.start)) owner = item;
+      }
+      // Two requests sent within the tolerance could own either timing; neither gets one.
+      if (
+        owner !== undefined &&
+        candidates.some(
+          (item) => item !== owner && Math.abs(item.start - owner.start) <= CLOCK_TOLERANCE_MS,
+        )
+      ) {
+        timings.splice(index, 1);
+        continue;
       }
       if (owner?.timingUntil === undefined) {
         index += 1;
