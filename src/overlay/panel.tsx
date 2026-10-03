@@ -80,7 +80,7 @@ export function PanelHost() {
   if (panel === COMPOSE || panel === NOTE) {
     return (
       <PanelFrame
-        title={panel === COMPOSE ? "Composer" : "Annotation"}
+        title={panel === COMPOSE ? "Send" : "Annotation"}
         icon={panel === COMPOSE ? LayersIcon : PenLineIcon}
         close={close}
       >

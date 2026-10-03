@@ -390,3 +390,50 @@
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+.pka-editor .pka-mark-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin: 0 2px;
+  padding: 0 2px 0 7px;
+  border-radius: 9999px;
+  background: var(--pka-pick);
+  color: var(--pka-pick-foreground);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+  vertical-align: 1px;
+  cursor: grab;
+  user-select: none;
+}
+.pka-editor .pka-mark-badge.ProseMirror-selectednode {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+.pka-editor .pka-mark-badge [role="button"] {
+  cursor: pointer;
+}
+.pka-editor .pka-mark-remove {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.7;
+}
+.pka-editor .pka-mark-remove:hover {
+  opacity: 1;
+  background: color-mix(in oklch, var(--pka-pick-foreground) 15%, transparent);
+}
+.pka-editor .pka-interim {
+  color: var(--muted-foreground);
+}
+/* ProseMirror places these between inline atoms; preflight would make them blocks. */
+.pka-editor img.ProseMirror-separator {
+  display: inline;
+  border: none;
+  margin: 0;
+}
