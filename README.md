@@ -72,7 +72,7 @@ Debug groups Console, Network, and Performance. Settings holds History, English/
 
 ## MCP
 
-`pka-mcp` is a stdio server with tools only. Launch it from `node_modules/.bin` directly; `pnpm exec` adds a second process.
+`pka-mcp` is a stdio server with tools only. Launch it from `node_modules/.bin` directly; `pnpm exec` adds a second process. It finds the store from `--root` or `PKA_ROOT`, then `CLAUDE_PROJECT_DIR`, then the nearest `_interim/annotations` above the working directory, and prints the store it uses to stderr. It starts in a checkout that has no store yet: tool calls report the missing store until the app's Vite dev server creates it, and then work without a restart.
 
 ```jsonc
 // .mcp.json (Claude Code)

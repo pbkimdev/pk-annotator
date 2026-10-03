@@ -233,3 +233,31 @@ it("names a 2026-07-28 client from its envelope, drops dead and invalid records,
   expect(await exists(presence)).toBe(false);
   expect(await readdir(agentsDir(store))).toEqual([]);
 }, 30_000);
+
+it("starts without a store and serves tools once the dev server creates one", async () => {
+  const project = await mkdtemp(path.join(tmpdir(), "pka-mcp-empty-"));
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: [path.join(PACKAGE_ROOT, "dist", "pka-mcp.mjs")],
+    cwd: project,
+    stderr: "pipe",
+  });
+  const client = new Client({ name: "pka-test", version: "0.0.0" });
+  await client.connect(transport);
+  try {
+    expect((await client.listTools()).tools.map((tool) => tool.name).sort()).toEqual(TOOLS);
+    const missing = await client.callTool({ name: "list_annotations", arguments: {} });
+    expect(missing.isError).toBe(true);
+    expect(missing.content).toEqual([
+      { type: "text", text: expect.stringContaining("Start the app's Vite dev server") },
+    ]);
+
+    const created = await createStore(project);
+    const listed = await client.callTool({ name: "list_annotations", arguments: {} });
+    expect(listed.structuredContent).toEqual({ items: [] });
+    await waitForFile(agentFile(created, "pka-test", transport.pid ?? 0));
+  } finally {
+    await client.close();
+    await rm(project, { recursive: true, force: true });
+  }
+}, 30_000);
