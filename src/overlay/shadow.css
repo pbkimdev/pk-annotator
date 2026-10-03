@@ -109,13 +109,13 @@
   }
 }
 
-/* Radial menu. .pka-radial is a zero-size box at the hub's center; items and bands are
+/* Radial menu. .pka-radial is a zero-size box at the hub's center; items and the body are
    placed around it. Opening sweeps counterclockwise; closing retracts in reverse. */
 .pka-radial {
   position: fixed;
   width: 0;
   height: 0;
-  --pka-sweep: 340ms;
+  --pka-sweep: 300ms;
   --pka-draw: cubic-bezier(0.3, 0.45, 0.35, 1);
   --pka-spring: cubic-bezier(0.34, 1.36, 0.64, 1);
   --pka-out: cubic-bezier(0.22, 1, 0.36, 1);
@@ -143,43 +143,65 @@
   opacity: 1;
   pointer-events: auto;
 }
-.pka-band {
+/* A missing filter degrades to plain bands in the surface color. Under the filter only
+   alpha counts, so an opacity fade grows or shrinks a ring's blob instead of dimming it. */
+.pka-body {
   position: absolute;
   overflow: visible;
   pointer-events: none;
+  visibility: hidden;
   filter: drop-shadow(0 14px 22px rgb(0 0 0 / 0.16)) drop-shadow(0 1px 1.5px rgb(0 0 0 / 0.1));
+  transition: visibility 0s linear 300ms;
 }
-.dark .pka-band {
+.dark .pka-body {
   filter: drop-shadow(0 16px 28px rgb(0 0 0 / 0.5)) drop-shadow(0 1px 1.5px rgb(0 0 0 / 0.3));
 }
-.pka-band path {
+.pka-body[data-open] {
+  visibility: visible;
+  transition-delay: 0s;
+}
+.pka-body circle {
+  fill: var(--pka-surface);
+}
+.pka-body-edge {
+  flood-color: color-mix(in oklch, var(--foreground) 14%, transparent);
+}
+.pka-body-fill {
+  flood-color: var(--pka-surface);
+}
+.pka-ring path {
   fill: none;
+  stroke: var(--pka-surface);
   stroke-linecap: round;
   stroke-dasharray: 1 2;
   stroke-dashoffset: 1;
   opacity: 0;
-  transition:
-    stroke-dashoffset 220ms var(--pka-in),
-    opacity 100ms linear 160ms;
 }
-.pka-band[data-open] path {
+.pka-ring-stem {
+  stroke-width: 16px;
+  transition:
+    stroke-dashoffset 110ms var(--pka-in) 150ms,
+    opacity 60ms linear 230ms;
+}
+.pka-ring-band {
+  stroke-width: 52px;
+  transition:
+    stroke-dashoffset 200ms var(--pka-in),
+    opacity 80ms linear 150ms;
+}
+.pka-ring[data-open] path {
   stroke-dashoffset: 0;
   opacity: 1;
+}
+.pka-ring[data-open] .pka-ring-stem {
   transition:
-    stroke-dashoffset var(--pka-sweep) var(--pka-draw),
-    opacity 60ms linear;
+    stroke-dashoffset 120ms var(--pka-out),
+    opacity 40ms linear;
 }
-.pka-band-edge {
-  stroke: color-mix(in oklch, var(--foreground) 12%, transparent);
-  stroke-width: 54px;
-}
-.pka-band-fill {
-  stroke: var(--popover);
-  stroke-width: 52px;
-}
-/* Lifted in dark, so the band stays distinct over an open panel of the same surface. */
-.dark .pka-band-fill {
-  stroke: color-mix(in oklch, var(--popover), var(--foreground) 5%);
+.pka-ring[data-open] .pka-ring-band {
+  transition:
+    stroke-dashoffset var(--pka-sweep) var(--pka-draw) 80ms,
+    opacity 80ms linear 80ms;
 }
 .pka-node {
   position: absolute;
@@ -202,7 +224,7 @@
 .pka-node[data-open] {
   opacity: 1;
   visibility: visible;
-  transition-duration: 460ms, 160ms, 0s, 140ms, 140ms;
+  transition-duration: 400ms, 160ms, 0s, 140ms, 140ms;
   transition-timing-function: var(--pka-spring), ease-out, linear, ease-out, ease-out;
 }
 .pka-node:hover,
@@ -248,7 +270,7 @@
   border-radius: 9999px;
   background: var(--pka-pick);
   color: var(--pka-pick-foreground);
-  box-shadow: 0 0 0 2px var(--popover);
+  box-shadow: 0 0 0 2px var(--pka-surface);
   font-size: 10px;
   font-weight: 600;
   line-height: 16px;
@@ -262,10 +284,10 @@
   flex-direction: column;
   align-items: center;
   gap: 1px;
-  max-width: 132px;
+  max-width: 84px;
   padding: 5px 10px 6px;
   border-radius: 12px;
-  background: var(--popover);
+  background: var(--pka-surface);
   color: var(--popover-foreground);
   box-shadow:
     0 0 0 1px color-mix(in oklch, var(--foreground) 10%, transparent),
@@ -273,12 +295,6 @@
   pointer-events: none;
   text-align: center;
   animation: pka-readout-in 140ms var(--pka-out);
-}
-.pka-readout-parent {
-  font-size: 10px;
-  line-height: 12px;
-  letter-spacing: 0.02em;
-  color: var(--muted-foreground);
 }
 .pka-readout-label {
   font-size: 12px;

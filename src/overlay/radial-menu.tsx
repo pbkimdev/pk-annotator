@@ -42,10 +42,13 @@ const MENU_ID = "pka-menu";
 const ITEM = 40;
 const BAND = 52;
 // Radii from the hub's center: items on the first ring, a group's children on the second.
+// The gap keeps the two bands apart under the blur, so they join only at the stem.
 const RING = 156;
-const BRANCH = RING + BAND + 8;
-const HINT_RADIUS = 80;
-const CANVAS = BRANCH + BAND / 2 + 24;
+const BRANCH = RING + BAND + 20;
+// Room past the outermost band and past the hub for the round caps and the blur.
+const MARGIN = BAND / 2 + 24;
+const CANVAS = BRANCH + MARGIN;
+const HINT_RADIUS = 78;
 /** Each corner's menu sweeps counterclockwise through the quadrant that faces the page. */
 const START = {
   "bottom-left": 0,
@@ -55,7 +58,8 @@ const START = {
 } satisfies Record<Corner, number>;
 const SPAN = 90;
 const BRANCH_STEP = ((ITEM + 8) / BRANCH) * (180 / Math.PI);
-const SWEEP_MS = 340;
+const STEM_MS = 100;
+const SWEEP_MS = 300;
 const HOVER_INTENT_MS = 140;
 
 type Icon = ComponentType<{ className?: string; strokeWidth?: number }>;
@@ -73,25 +77,42 @@ type Leaf = {
 };
 type Group = { id: string; label: string; icon: Icon; active: boolean; children: Leaf[] };
 type Entry = Leaf | Group;
-type Hint = { id: string; label: string; parent?: string; shortcut?: string };
+type Hint = { id: string; label: string; shortcut?: string };
 
 function polar(radius: number, degrees: number) {
   const radians = (degrees * Math.PI) / 180;
   return { x: radius * Math.cos(radians), y: -radius * Math.sin(radians) };
 }
 
-/** A counterclockwise arc on screen, so a dash drawn along it sweeps counterclockwise. */
+/** An arc on screen from one angle to the other, so a dash drawn along it grows that way. */
 function arc(radius: number, from: number, to: number): string {
   const a = polar(radius, from);
   const b = polar(radius, to);
-  return `M ${a.x.toFixed(2)} ${a.y.toFixed(2)} A ${radius} ${radius} 0 0 0 ${b.x.toFixed(2)} ${b.y.toFixed(2)}`;
+  const clockwise = to < from ? 1 : 0;
+  return `M ${a.x.toFixed(2)} ${a.y.toFixed(2)} A ${radius} ${radius} 0 0 ${clockwise} ${b.x.toFixed(2)} ${b.y.toFixed(2)}`;
 }
 
-/** Children sit on the outer ring centered on their parent, kept inside the quadrant. */
+/** A straight stroke along a radius, from the inner radius outward. */
+function ray(degrees: number, from: number, to: number): string {
+  const a = polar(from, degrees);
+  const b = polar(to, degrees);
+  return `M ${a.x.toFixed(2)} ${a.y.toFixed(2)} L ${b.x.toFixed(2)} ${b.y.toFixed(2)}`;
+}
+
+/**
+ * Children run counterclockwise from their parent, or clockwise where the quadrant ends
+ * first, so the ring grows out of its parent. A ring too long for either side is pulled
+ * back inside the quadrant.
+ */
 function branchAngles(start: number, parent: number, count: number): number[] {
   const span = (count - 1) * BRANCH_STEP;
-  const first = Math.min(Math.max(parent - span / 2, start), start + SPAN - span);
-  return Array.from({ length: count }, (_, index) => first + index * BRANCH_STEP);
+  let first = parent;
+  let step = BRANCH_STEP;
+  if (parent + span > start + SPAN) {
+    if (parent - span >= start) step = -BRANCH_STEP;
+    else first = start + SPAN - span;
+  }
+  return Array.from({ length: count }, (_, index) => first + index * step);
 }
 
 function useEntries(): Entry[] {
@@ -289,7 +310,7 @@ function Node({
 } & Omit<ComponentProps<"button">, "children" | "className" | "style">) {
   const { x, y } = polar(radius, angle);
   // Items enter in the order the band reaches them and leave in reverse.
-  const enter = Math.round(30 + (order / Math.max(count - 1, 1)) * (SWEEP_MS - 120));
+  const enter = Math.round(STEM_MS + (order / Math.max(count - 1, 1)) * (SWEEP_MS - 120));
   const leave = (count - 1 - order) * 18;
   const tick = polar(15, angle);
   return (
@@ -326,17 +347,44 @@ function Node({
   );
 }
 
-function Band({ d, open }: { d: string; open: boolean }) {
+type Ring = { id: string; stem: string; band: string; open: boolean };
+
+/**
+ * The menu's surface. A disk under the hub and each ring's stem and band are blurred and
+ * thresholded into one shape, so the joins round off; the shape is then filled and edged.
+ */
+function Body({ x, y, rings }: { x: number; y: number; rings: Ring[] }) {
+  const area = { x, y, width: CANVAS + MARGIN, height: CANVAS + MARGIN };
   return (
     <svg
       aria-hidden="true"
-      className="pka-band"
-      data-open={open ? "" : undefined}
-      viewBox={`${-CANVAS} ${-CANVAS} ${CANVAS * 2} ${CANVAS * 2}`}
-      style={{ left: -CANVAS, top: -CANVAS, width: CANVAS * 2, height: CANVAS * 2 }}
+      className="pka-body"
+      data-open={rings.some((ring) => ring.open) ? "" : undefined}
+      viewBox={`${x} ${y} ${area.width} ${area.height}`}
+      style={{ left: x, top: y, width: area.width, height: area.height }}
     >
-      <path className="pka-band-edge" d={d} pathLength={1} />
-      <path className="pka-band-fill" d={d} pathLength={1} />
+      <filter id="pka-body" filterUnits="userSpaceOnUse" colorInterpolationFilters="sRGB" {...area}>
+        <feGaussianBlur in="SourceAlpha" stdDeviation={8} />
+        <feColorMatrix values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 20 -8.5" result="shape" />
+        <feMorphology in="shape" operator="dilate" radius={1} result="outline" />
+        <feFlood className="pka-body-edge" />
+        <feComposite in2="outline" operator="in" result="edge" />
+        <feFlood className="pka-body-fill" />
+        <feComposite in2="shape" operator="in" result="fill" />
+        <feMerge>
+          <feMergeNode in="edge" />
+          <feMergeNode in="fill" />
+        </feMerge>
+      </filter>
+      <g filter="url(#pka-body)">
+        <circle r={HUB_SIZE / 2 + 1} />
+        {rings.map((ring) => (
+          <g key={ring.id} className="pka-ring" data-open={ring.open ? "" : undefined}>
+            <path className="pka-ring-stem" d={ring.stem} pathLength={1} />
+            <path className="pka-ring-band" d={ring.band} pathLength={1} />
+          </g>
+        ))}
+      </g>
     </svg>
   );
 }
@@ -465,12 +513,33 @@ export function RadialMenu() {
   const center = HUB_INSET + HUB_SIZE / 2;
   const vertical = corner.startsWith("top") ? "top" : "bottom";
   const horizontal = corner.endsWith("left") ? "left" : "right";
-  const hintAt = polar(HINT_RADIUS, start + SPAN / 2);
+  // Past the hollow's middle, away from the stem.
+  const hintAt = polar(HINT_RADIUS, start + 55);
   const groups = entries.flatMap((entry, index) =>
     "children" in entry
-      ? [{ group: entry, angles: branchAngles(start, start + index * step, entry.children.length) }]
+      ? [
+          {
+            group: entry,
+            parent: start + index * step,
+            angles: branchAngles(start, start + index * step, entry.children.length),
+          },
+        ]
       : [],
   );
+  const rings: Ring[] = [
+    {
+      id: MENU_ID,
+      stem: ray(start, HUB_SIZE / 2 - 6, RING - BAND / 2 + 8),
+      band: arc(RING, start, start + SPAN),
+      open,
+    },
+    ...groups.map(({ group, parent, angles }) => ({
+      id: group.id,
+      stem: ray(parent, RING + BAND / 2 - 8, BRANCH - BAND / 2 + 8),
+      band: arc(BRANCH, angles[0] ?? parent, angles.at(-1) ?? parent),
+      open: open && branch === group.id,
+    })),
+  ];
 
   return (
     <>
@@ -491,14 +560,11 @@ export function RadialMenu() {
         onKeyDown={onKeyDown}
         onBlur={onBlur}
       >
-        <Band d={arc(RING, start, start + SPAN)} open={open} />
-        {groups.map(({ group, angles }) => (
-          <Band
-            key={group.id}
-            d={arc(BRANCH, angles[0] ?? start, angles.at(-1) ?? start)}
-            open={open && branch === group.id}
-          />
-        ))}
+        <Body
+          x={horizontal === "right" ? -CANVAS : -MARGIN}
+          y={vertical === "bottom" ? -CANVAS : -MARGIN}
+          rings={rings}
+        />
         <div
           id={MENU_ID}
           role="menu"
@@ -554,11 +620,7 @@ export function RadialMenu() {
                 />
                 <div id={`${MENU_ID}-${entry.id}`} role="menu" aria-label={entry.label}>
                   {entry.children.map((child, order) => {
-                    const next: Hint = {
-                      id: `${entry.id}/${child.id}`,
-                      label: child.label,
-                      parent: entry.label,
-                    };
+                    const next: Hint = { id: `${entry.id}/${child.id}`, label: child.label };
                     if (child.shortcut !== undefined) next.shortcut = child.shortcut;
                     return (
                       <Node
@@ -598,7 +660,6 @@ export function RadialMenu() {
             className="pka-readout"
             style={{ transform: `translate(${hintAt.x}px, ${hintAt.y}px) translate(-50%, -50%)` }}
           >
-            {hint.parent !== undefined && <span className="pka-readout-parent">{hint.parent}</span>}
             <span className="pka-readout-label">{hint.label}</span>
             {hint.shortcut !== undefined && <kbd className="pka-readout-key">{hint.shortcut}</kbd>}
           </div>

@@ -84,13 +84,14 @@ const LAUNCHER_CSS = `
   position: fixed !important;
   inset: 0 auto auto 0 !important;
   z-index: 2147483647 !important;
-  --pka-hub-surface: var(--popover, oklch(1 0 0));
+  --pka-surface: var(--popover, oklch(1 0 0));
   --pka-hub-ink: var(--popover-foreground, oklch(0.145 0 0));
   --pka-hub-accent: var(--pka-pick, oklch(0.6 0.19 255));
   --pka-hub-alert: var(--destructive, oklch(0.577 0.245 27.325));
 }
 :host([data-theme="dark"]) {
-  --pka-hub-surface: var(--popover, oklch(0.205 0 0));
+  /* Lifted, so the hub and its menu stay distinct over a panel of the same surface. */
+  --pka-surface: color-mix(in oklch, var(--popover, oklch(0.205 0 0)), var(--popover-foreground, oklch(0.985 0 0)) 5%);
   --pka-hub-ink: var(--popover-foreground, oklch(0.985 0 0));
   --pka-hub-accent: var(--pka-pick, oklch(0.7 0.16 255));
   --pka-hub-alert: var(--destructive, oklch(0.704 0.191 22.216));
@@ -108,7 +109,7 @@ const LAUNCHER_CSS = `
   touch-action: none;
   -webkit-tap-highlight-color: transparent;
   color: var(--pka-hub-ink);
-  background: var(--pka-hub-surface);
+  background: var(--pka-surface);
   box-shadow:
     0 0 0 1px color-mix(in oklch, var(--pka-hub-ink) 12%, transparent),
     0 1px 2px rgb(0 0 0 / 0.1),
@@ -135,6 +136,8 @@ const LAUNCHER_CSS = `
     0 1px 2px rgb(0 0 0 / 0.1),
     0 12px 28px -10px rgb(0 0 0 / 0.4);
 }
+/* Open, the hub is the root of the menu's shape, which draws the edge and shadow. */
+.pka-launcher[aria-expanded="true"] { box-shadow: none; }
 .pka-glyph { width: 26px; height: 26px; overflow: visible; fill: currentColor; }
 .pka-launcher[data-corner="bottom-left"] .pka-glyph { rotate: 90deg; }
 .pka-launcher[data-corner="top-left"] .pka-glyph { rotate: 180deg; }
@@ -182,7 +185,7 @@ const LAUNCHER_CSS = `
   box-sizing: border-box;
   border-radius: 9999px;
   background: var(--pka-hub-alert);
-  box-shadow: 0 0 0 2px var(--pka-hub-surface);
+  box-shadow: 0 0 0 2px var(--pka-surface);
   color: #fff;
   font: 600 10px/18px system-ui, sans-serif;
   font-variant-numeric: tabular-nums;
