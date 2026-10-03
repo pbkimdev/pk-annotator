@@ -291,49 +291,70 @@ describe("network capture", () => {
     }
   });
 
-  it("keeps later wrappers on stop and records a kept fetch reference only in the running capture", async () => {
-    vi.spyOn(console, "log").mockImplementation(() => {});
-    const native = vi.fn(async () => new Response("ok"));
-    vi.stubGlobal("fetch", native);
-    // Lets restoreAllMocks put back the prototype's own send after this test replaces it.
-    vi.spyOn(XMLHttpRequest.prototype, "send");
-    const first = start();
-    const held = globalThis.fetch;
-    const downstream = (...args: Parameters<typeof fetch>) => held(...args);
-    globalThis.fetch = downstream;
-    const log = console.log;
-    const laterLog = (...args: unknown[]) => log(...args);
-    console.log = laterLog;
-    const send = XMLHttpRequest.prototype.send;
-    const laterSend = function (
-      this: XMLHttpRequest,
-      body?: Document | XMLHttpRequestBodyInit | null,
-    ) {
-      send.call(this, body);
-    };
-    XMLHttpRequest.prototype.send = laterSend;
-    first.stop();
-    expect(globalThis.fetch).toBe(downstream);
-    expect(console.log).toBe(laterLog);
-    expect(XMLHttpRequest.prototype.send).toBe(laterSend);
+  it.each(["sync", "async"])(
+    "keeps later wrappers on stop and records a kept fetch reference only in the running capture, with a %s library wrapper",
+    async (mode) => {
+      vi.spyOn(console, "log").mockImplementation(() => {});
+      const native = vi.fn(
+        async (_input: RequestInfo | URL, _init?: RequestInit) => new Response("ok"),
+      );
+      vi.stubGlobal("fetch", native);
+      // Lets restoreAllMocks put back the prototype's own send after this test replaces it.
+      vi.spyOn(XMLHttpRequest.prototype, "send");
+      const first = start();
+      const held = globalThis.fetch;
+      const downstream = async (...args: Parameters<typeof fetch>) => {
+        if (mode === "async") await Promise.resolve();
+        return held(...args);
+      };
+      globalThis.fetch = downstream;
+      const log = console.log;
+      const laterLog = (...args: unknown[]) => log(...args);
+      console.log = laterLog;
+      const send = XMLHttpRequest.prototype.send;
+      const laterSend = function (
+        this: XMLHttpRequest,
+        body?: Document | XMLHttpRequestBodyInit | null,
+      ) {
+        send.call(this, body);
+      };
+      XMLHttpRequest.prototype.send = laterSend;
+      first.stop();
+      expect(globalThis.fetch).toBe(downstream);
+      expect(console.log).toBe(laterLog);
+      expect(XMLHttpRequest.prototype.send).toBe(laterSend);
 
-    await held("/api/stopped");
-    console.log("stopped");
-    expect(first.snapshot().requests).toHaveLength(0);
-    expect(first.snapshot().console).toHaveLength(0);
+      await held("/api/stopped");
+      console.log("stopped");
+      expect(first.snapshot().requests).toHaveLength(0);
+      expect(first.snapshot().console).toHaveLength(0);
 
-    const second = createCapture({ send: () => {}, bodies: [] });
-    capture = second;
-    await held("/api/items");
-    await fetch("/api/global");
-    await second.fetch("/api/untracked");
-    expect(native).toHaveBeenCalledTimes(4);
-    expect(first.snapshot().requests).toHaveLength(0);
-    expect(second.snapshot().requests.map((request) => new URL(request.url).pathname)).toEqual([
-      "/api/items",
-      "/api/global",
-    ]);
-  });
+      const second = createCapture({ send: () => {}, bodies: [] });
+      capture = second;
+      await held("/api/items");
+      await fetch("/api/global");
+      await second.fetch("/api/untracked");
+      // A page may reuse one init for concurrent calls, or pass a Request as the init.
+      const shared = { method: "POST" };
+      // Cross-origin calls get no traceparent, so the init reaches the wrapped fetch unchanged.
+      await Promise.all([
+        fetch("https://example.com/a", shared),
+        fetch("https://example.com/b", shared),
+      ]);
+      const request = new Request("https://example.com/x", { method: "PUT" });
+      await fetch("https://example.com/x", request);
+      expect(native).toHaveBeenCalledTimes(7);
+      expect(native.mock.calls.at(-1)?.[1]).toBe(request);
+      expect(first.snapshot().requests).toHaveLength(0);
+      expect(second.snapshot().requests.map((entry) => new URL(entry.url).pathname)).toEqual([
+        "/api/items",
+        "/api/global",
+        "/a",
+        "/b",
+        "/x",
+      ]);
+    },
+  );
 
   it("reads a JSON body of unknown length up to the cap, and never clones NDJSON", async () => {
     const chunked = (parts: string[], type: string) =>
