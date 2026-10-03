@@ -14,7 +14,10 @@ import { SOURCE_ATTRIBUTE } from "../../select/source.ts";
 import { HOST_TAG } from "../launcher.ts";
 import { createStore } from "../store.ts";
 import { addCommit, hotSpotKey, type HotSpot } from "./join.ts";
-import { disconnectPerf, resumeImported } from "./observer.ts";
+import { claimRecent, pausePerf, resumePerf } from "./observer.ts";
+
+// web-vitals has evaluated by now; the resource observer it creates at import is Perf's.
+claimRecent();
 
 const MAX_FRAMES = 10;
 const MAX_GROUPS = 100;
@@ -94,18 +97,16 @@ export type PerfState = {
   scanning: boolean;
 };
 
-// What the vitals observers report; cleared when they stop because a later start replays
-// the buffered entries.
-const NO_VITALS = {
+const EMPTY: PerfState = {
   lcp: undefined,
   inp: undefined,
   cls: undefined,
   frames: [],
   groups: [],
+  hotSpots: [],
   loafSupported: true,
-} satisfies Partial<PerfState>;
-
-const EMPTY: PerfState = { ...NO_VITALS, hotSpots: [], scanning: false };
+  scanning: false,
+};
 
 export const perf = createStore<PerfState>(EMPTY);
 
@@ -267,64 +268,41 @@ function addFrames(entries: readonly PerformanceLongAnimationFrameTiming[]): voi
   });
 }
 
-// web-vitals cannot stop its callbacks: after the observers disconnect, a page hide, a
-// click, or a back/forward restore can still report from an earlier start. Each start is
-// a generation, and reports from any other are dropped.
-let generation = 0;
+let started = false;
 let observing = false;
 
 /**
- * Starts web-vitals and the long-animation-frame observer while the Perf panel is open;
- * buffered entries arrive too, so a reopened panel recomputes the current navigation.
+ * Runs web-vitals and the long-animation-frame observer while the Perf panel is open.
+ * web-vitals starts once per page because each start adds listeners it never removes; a
+ * later opening resumes its observers, which pick up the entries buffered while closed.
  */
 export function startObservers(): void {
   if (observing) return;
   observing = true;
-  resumeImported();
-  generation += 1;
-  const started = generation;
-  const report =
-    <T>(apply: (value: T) => void) =>
-    (value: T): void => {
-      if (observing && generation === started) apply(value);
-    };
+  if (started) {
+    resumePerf();
+    return;
+  }
+  started = true;
   const options = { reportAllChanges: true, reportSoftNavs: true, generateTarget };
-  onLCP(
-    report((metric) => perf.set({ lcp: toLcp(metric) })),
-    options,
-  );
-  onINP(
-    report((metric) => perf.set({ inp: toInp(metric) })),
-    options,
-  );
-  onCLS(
-    report((metric) => perf.set({ cls: toCls(metric) })),
-    options,
-  );
+  onLCP((metric) => perf.set({ lcp: toLcp(metric) }), options);
+  onINP((metric) => perf.set({ inp: toInp(metric) }), options);
+  onCLS((metric) => perf.set({ cls: toCls(metric) }), options);
   if (!PerformanceObserver.supportedEntryTypes.includes("long-animation-frame")) {
     perf.set({ loafSupported: false });
     return;
   }
-  const observer = new PerformanceObserver(
-    report((list: PerformanceObserverEntryList) => {
-      // SAFETY: the observer is registered only for "long-animation-frame" entries.
-      addFrames(list.getEntries() as PerformanceLongAnimationFrameTiming[]);
-    }),
-  );
+  const observer = new PerformanceObserver((list) => {
+    // SAFETY: the observer is registered only for "long-animation-frame" entries.
+    addFrames(list.getEntries() as PerformanceLongAnimationFrameTiming[]);
+  });
   observer.observe({ type: "long-animation-frame", buffered: true });
 }
 
-/**
- * Disconnects every Perf observer when the panel closes, leaving capture's own. That
- * includes web-vitals' resource observer, which runs from chunk load even if no panel
- * body started.
- */
+/** Pauses every Perf observer when the panel closes, leaving capture's own. */
 export function stopObservers(): void {
-  disconnectPerf();
-  if (!observing) return;
   observing = false;
-  groups.clear();
-  perf.set(NO_VITALS);
+  pausePerf();
 }
 
 // The overlay's own chunks load from the same directory as this one; in a consumer they sit
@@ -375,10 +353,10 @@ export function stopScan(): void {
   perf.set({ scanning: false });
 }
 
-/** Stops everything; called when the overlay unmounts. A later open starts afresh. */
+/** Stops everything and drops the hot spots; called when the overlay unmounts. */
 export function stopAll(): void {
   stopScan();
   stopObservers();
   hotSpots.clear();
-  perf.set(EMPTY);
+  perf.set({ hotSpots: [] });
 }

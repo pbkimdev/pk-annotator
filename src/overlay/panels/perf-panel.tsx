@@ -454,6 +454,17 @@ function Footer() {
   );
 }
 
+/** Starts the observers and render tracking while the panel is shown. */
+export function open(): void {
+  startObservers();
+  startScan();
+}
+
+export function close(): void {
+  stopScan();
+  stopObservers();
+}
+
 /** Stops every perf observer and drops collected data; called when the overlay unmounts. */
 export function stopAll(): void {
   stopCollector();
@@ -461,14 +472,6 @@ export function stopAll(): void {
 }
 
 export default function PerfPanel() {
-  useEffect(() => {
-    startObservers();
-    startScan();
-    return () => {
-      stopScan();
-      stopObservers();
-    };
-  }, []);
   return (
     <div data-testid="pka-perf" className="divide-y">
       <p className="px-3 py-2 text-xs text-muted-foreground">
