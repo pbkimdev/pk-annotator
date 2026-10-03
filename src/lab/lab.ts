@@ -907,6 +907,8 @@ export async function runLab(options: LabOptions): Promise<{ verdict: Verdict; f
           flow: options.flowLabel,
           steps: options.flow.length,
           runs: options.runs,
+          measurementTracing: false,
+          diagnosticRuns: results.length > 0 ? 1 : 0,
           cpuRate: options.cpuRate,
           network: options.network,
           networkConditions: network === null ? null : { ...network },

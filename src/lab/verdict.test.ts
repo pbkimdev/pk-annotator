@@ -37,6 +37,8 @@ function input(element: string): VerdictInput {
       flow: "/tmp/flow.jsonl",
       steps: 4,
       runs: 4,
+      measurementTracing: false,
+      diagnosticRuns: 1,
       cpuRate: 4,
       network: "slow4g",
       networkConditions: {
