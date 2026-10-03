@@ -42,6 +42,8 @@ export type UiState = {
   /** The open panel: COMPOSE, THREAD, or a registered panel id. */
   panel: string | null;
   selection: readonly Element[];
+  /** The size of the last pick refused for exceeding MAX_ELEMENTS, until a pick is accepted. */
+  tooMany: number | null;
   hover: Element | null;
   lasso: readonly Point[] | null;
   marquee: { box: Box; containment: Containment } | null;

@@ -11,7 +11,7 @@ import { startPicking } from "../select/pick.ts";
 import { NOTE, elementKey, nextSelection, useOverlay } from "./context.tsx";
 import { useText } from "./language.ts";
 import { cn } from "./lib/utils.ts";
-import { remember } from "./send.ts";
+import { MAX_ELEMENTS, remember } from "./send.ts";
 import { useStore } from "./store.ts";
 
 /** Re-renders on scroll and resize while `active`, so boxes follow their elements. */
@@ -154,15 +154,21 @@ export function PickLayer() {
     const stop = startPicking(host, layer.current, picking, {
       hover: (element) => ui.set({ hover: element }),
       select: (elements, how) => {
+        const next = nextSelection(ui.get().selection, elements, how);
+        // Refused before describing, locating, or badging a large box or lasso hit set.
+        if (next.length > MAX_ELEMENTS) {
+          ui.set({ tooMany: next.length, panel: NOTE });
+          return;
+        }
         remember(elements);
-        ui.set({ selection: nextSelection(ui.get().selection, elements, how), panel: NOTE });
+        ui.set({ selection: next, tooMany: null, panel: NOTE });
       },
       marquee: (box, containment) =>
         ui.set({ marquee: box === null ? null : { box, containment } }),
       lasso: (points) => ui.set({ lasso: points }),
       escape: () => {
-        if (ui.get().selection.length > 0) ui.set({ selection: [] });
-        else ui.set({ picking: null });
+        if (ui.get().selection.length > 0) ui.set({ selection: [], tooMany: null });
+        else ui.set({ picking: null, tooMany: null });
       },
       enter: () => ui.set({ picking: null, panel: NOTE }),
     });

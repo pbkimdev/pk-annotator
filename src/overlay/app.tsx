@@ -214,6 +214,7 @@ export function open(context: UiContext): UiController {
     selectTip: false,
     panel: null,
     selection: [],
+    tooMany: null,
     hover: null,
     lasso: null,
     marquee: null,

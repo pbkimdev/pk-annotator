@@ -131,7 +131,7 @@ function canSubmit(state: UiState, batch: boolean): boolean {
   if (state.busy || state.recording) return false;
   if (batch)
     return state.editing === null && (state.marks.length > 0 || state.globalPrompt.trim() !== "");
-  return state.prompt.trim() !== "" && state.selection.length <= MAX_ELEMENTS;
+  return state.prompt.trim() !== "";
 }
 
 export function Composer({ batch = false }: { batch?: boolean }) {
@@ -144,6 +144,7 @@ export function Composer({ batch = false }: { batch?: boolean }) {
   const recording = useStore(ui, (state) => state.recording);
   const language = useStore(ui, (state) => state.language);
   const busy = useStore(ui, (state) => state.busy);
+  const tooMany = useStore(ui, (state) => state.tooMany);
   const extra = useList(attachmentList);
   const ready = useStore(ui, (state) => canSubmit(state, batch));
   const [phase, setPhase] = useState<SendPhase | null>(null);
@@ -185,6 +186,7 @@ export function Composer({ batch = false }: { batch?: boolean }) {
         marks: next,
         prompt: "",
         selection: [],
+        tooMany: null,
         editing: null,
         picking: null,
         panel: COMPOSE,
@@ -266,7 +268,15 @@ export function Composer({ batch = false }: { batch?: boolean }) {
   /** Drops the current mark and returns the overlay to idle; `marks` are the saved marks to keep. */
   const flush = (marks: readonly SavedMark[]) => {
     attachmentList.clear();
-    ui.set({ marks, selection: [], prompt: "", editing: null, picking: null, panel: null });
+    ui.set({
+      marks,
+      selection: [],
+      tooMany: null,
+      prompt: "",
+      editing: null,
+      picking: null,
+      panel: null,
+    });
   };
 
   const edit = (mark: SavedMark) => {
@@ -413,7 +423,7 @@ export function Composer({ batch = false }: { batch?: boolean }) {
                   size="sm"
                   className="rounded-full"
                   data-testid="pka-save"
-                  disabled={busy || recording || !hasCurrent || selection.length > MAX_ELEMENTS}
+                  disabled={busy || recording || !hasCurrent}
                   onClick={() => void save()}
                 >
                   {t("Save")}
@@ -440,8 +450,10 @@ export function Composer({ batch = false }: { batch?: boolean }) {
       {recording && (
         <p className="text-xs text-muted-foreground">Stop recording before saving or sending.</p>
       )}
-      {selection.length > MAX_ELEMENTS && (
-        <p className="text-xs text-destructive">Select at most {MAX_ELEMENTS} elements.</p>
+      {!batch && tooMany !== null && (
+        <p role="alert" className="text-xs text-destructive" data-testid="pka-too-many">
+          Select at most {MAX_ELEMENTS} elements; that pick had {tooMany}.
+        </p>
       )}
       {/* Empty, it cancels the gap above it; it stays mounted so changes are announced. */}
       <div aria-live="polite" className="text-xs empty:-mt-3">
