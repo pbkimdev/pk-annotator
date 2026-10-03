@@ -115,7 +115,8 @@
   position: fixed;
   width: 0;
   height: 0;
-  --pka-sweep: 300ms;
+  --pka-sweep: 160ms;
+  --pka-stem: 40ms;
   --pka-draw: cubic-bezier(0.3, 0.45, 0.35, 1);
   --pka-spring: cubic-bezier(0.34, 1.36, 0.64, 1);
   --pka-out: cubic-bezier(0.22, 1, 0.36, 1);
@@ -134,7 +135,7 @@
   inset: 0;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 220ms var(--pka-out, ease-out);
+  transition: opacity 140ms var(--pka-out, ease-out);
 }
 .dark .pka-radial-scrim {
   --pka-scrim: rgb(0 0 0 / 0.1);
@@ -151,7 +152,7 @@
   pointer-events: none;
   visibility: hidden;
   filter: drop-shadow(0 14px 22px rgb(0 0 0 / 0.16)) drop-shadow(0 1px 1.5px rgb(0 0 0 / 0.1));
-  transition: visibility 0s linear 300ms;
+  transition: visibility 0s linear 150ms;
 }
 .dark .pka-body {
   filter: drop-shadow(0 16px 28px rgb(0 0 0 / 0.5)) drop-shadow(0 1px 1.5px rgb(0 0 0 / 0.3));
@@ -169,6 +170,10 @@
 .pka-body-fill {
   flood-color: var(--pka-surface);
 }
+.pka-ring + .pka-ring {
+  --pka-sweep: 120ms;
+  --pka-stem: 24ms;
+}
 .pka-ring path {
   fill: none;
   stroke: var(--pka-surface);
@@ -180,14 +185,14 @@
 .pka-ring-stem {
   stroke-width: 16px;
   transition:
-    stroke-dashoffset 110ms var(--pka-in) 150ms,
-    opacity 60ms linear 230ms;
+    stroke-dashoffset 60ms var(--pka-in) 80ms,
+    opacity 40ms linear 100ms;
 }
 .pka-ring-band {
   stroke-width: 52px;
   transition:
-    stroke-dashoffset 200ms var(--pka-in),
-    opacity 80ms linear 150ms;
+    stroke-dashoffset 100ms var(--pka-in),
+    opacity 40ms linear 80ms;
 }
 .pka-ring[data-open] path {
   stroke-dashoffset: 0;
@@ -195,13 +200,13 @@
 }
 .pka-ring[data-open] .pka-ring-stem {
   transition:
-    stroke-dashoffset 120ms var(--pka-out),
+    stroke-dashoffset 60ms var(--pka-out),
     opacity 40ms linear;
 }
 .pka-ring[data-open] .pka-ring-band {
   transition:
-    stroke-dashoffset var(--pka-sweep) var(--pka-draw) 80ms,
-    opacity 80ms linear 80ms;
+    stroke-dashoffset var(--pka-sweep) var(--pka-draw) var(--pka-stem),
+    opacity 40ms linear var(--pka-stem);
 }
 .pka-node {
   position: absolute;
@@ -217,15 +222,15 @@
   cursor: pointer;
   opacity: 0;
   visibility: hidden;
-  transition-property: transform, opacity, visibility, background-color, color, box-shadow;
-  transition-duration: 180ms, 120ms, 0s, 140ms, 140ms, 140ms;
-  transition-timing-function: var(--pka-in), linear, linear, ease-out, ease-out, ease-out;
+  transition-property: transform, opacity, visibility;
+  transition-duration: 100ms, 70ms, 0s;
+  transition-timing-function: var(--pka-in), linear, linear;
 }
 .pka-node[data-open] {
   opacity: 1;
   visibility: visible;
-  transition-duration: 400ms, 160ms, 0s, 140ms, 140ms, 140ms;
-  transition-timing-function: var(--pka-spring), ease-out, linear, ease-out, ease-out, ease-out;
+  transition-duration: 100ms, 80ms, 0s;
+  transition-timing-function: var(--pka-spring), ease-out, linear;
 }
 .pka-node:hover,
 .pka-node:focus-visible,
@@ -256,7 +261,6 @@
   height: 4px;
   border-radius: 9999px;
   background: color-mix(in oklch, var(--popover-foreground) 30%, transparent);
-  transition: background-color 140ms ease-out;
 }
 .pka-node[aria-expanded="true"] .pka-node-tick,
 .pka-node[data-active] .pka-node-tick {
@@ -296,7 +300,8 @@
     0 6px 16px -6px rgb(0 0 0 / 0.3);
   pointer-events: none;
   text-align: center;
-  animation: pka-readout-in 140ms var(--pka-out);
+  contain: layout style;
+  animation: pka-readout-in 100ms var(--pka-out);
 }
 .pka-readout-label {
   font-size: 12px;
@@ -324,6 +329,10 @@
     transition-delay: 0s !important;
     animation: none !important;
   }
+}
+
+.pka-panel {
+  contain: layout style;
 }
 
 .pka-editor {

@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ComponentProps,
@@ -53,8 +54,6 @@ const START = {
 } satisfies Record<Corner, number>;
 const SPAN = 90;
 const BRANCH_STEP = ((ITEM + 8) / BRANCH) * (180 / Math.PI);
-const STEM_MS = 100;
-const SWEEP_MS = 300;
 const HOVER_INTENT_MS = 140;
 const TOOL_GROUPS = ["pick", "capture", "annotate"] as const;
 const TOOL_KEY = "pka:tool:";
@@ -306,10 +305,16 @@ function Node({
 } & Omit<ComponentProps<"button">, "children" | "className" | "style">) {
   const { x, y } = polar(radius, angle);
   // Items enter in the order the band reaches them and leave in reverse.
-  const enter = Math.round(STEM_MS + (order / Math.max(count - 1, 1)) * (SWEEP_MS - 120));
-  const leave = (count - 1 - order) * 18;
+  const enter = Math.round(
+    (radius === RING ? 40 : 20) + (order / Math.max(count - 1, 1)) * (radius === RING ? 60 : 40),
+  );
+  const leave = (count - 1 - order) * 8;
   const tick = polar(15, angle);
   const face = "tool" in entry && entry.tool !== undefined ? entry.tool : entry;
+  const icon = useMemo(
+    () => <AgentIcon name={face.id} icon={face.icon} className="size-[18px]" />,
+    [face.id, face.icon],
+  );
   return (
     <button
       type="button"
@@ -322,12 +327,12 @@ function Node({
           ? `translate(${x}px, ${y}px)`
           : `translate(${x * 0.82}px, ${y * 0.82}px) scale(0.5)`,
         transitionDelay: shown
-          ? `${enter}ms, ${enter}ms, 0ms, 0ms, 0ms`
-          : `${leave}ms, ${leave}ms, ${leave + 180}ms, 0ms, 0ms`,
+          ? `${enter}ms, ${enter}ms, 0ms`
+          : `${leave}ms, ${leave}ms, ${leave + 100}ms`,
       }}
       {...props}
     >
-      <AgentIcon name={face.id} icon={face.icon} className="size-[18px]" />
+      {icon}
       {"children" in entry && (
         <span
           aria-hidden="true"
@@ -361,9 +366,13 @@ function Body({ x, y, rings }: { x: number; y: number; rings: Ring[] }) {
       style={{ left: x, top: y, width: area.width, height: area.height }}
     >
       <filter id="pka-body" filterUnits="userSpaceOnUse" colorInterpolationFilters="sRGB" {...area}>
-        <feGaussianBlur in="SourceAlpha" stdDeviation={8} />
+        <feGaussianBlur in="SourceAlpha" stdDeviation={8} result="blur" />
         <feColorMatrix values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 20 -8.5" result="shape" />
-        <feMorphology in="shape" operator="dilate" radius={1} result="outline" />
+        <feColorMatrix
+          in="blur"
+          values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 20 -7.5"
+          result="outline"
+        />
         <feFlood className="pka-body-edge" />
         <feComposite in2="outline" operator="in" result="edge" />
         <feFlood className="pka-body-fill" />

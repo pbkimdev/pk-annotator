@@ -47,9 +47,9 @@ function PanelFrame({
       data-testid="pka-panel"
       hidden={menuOpen}
       className={cn(
-        "fixed flex max-h-[min(38rem,calc(100vh-7rem))] w-[min(25rem,calc(100vw-2.5rem))] flex-col overflow-hidden rounded-[20px] bg-popover text-popover-foreground ring-1 ring-foreground/10",
+        "pka-panel fixed flex max-h-[min(38rem,calc(100vh-7rem))] w-[min(25rem,calc(100vw-2.5rem))] flex-col overflow-hidden rounded-[20px] bg-popover text-popover-foreground ring-1 ring-foreground/10",
         "shadow-[0_1px_2px_rgb(0_0_0/0.08),0_24px_48px_-16px_rgb(0_0_0/0.3)] dark:shadow-[0_1px_2px_rgb(0_0_0/0.3),0_24px_56px_-12px_rgb(0_0_0/0.6)]",
-        "animate-in duration-200 ease-out fade-in-0 zoom-in-[0.96] motion-reduce:animate-none",
+        "animate-in duration-150 ease-out fade-in-0 zoom-in-[0.96] motion-reduce:animate-none",
         PANEL_CORNER[corner],
       )}
     >
