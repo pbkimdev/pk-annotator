@@ -166,6 +166,12 @@ test(
       () => "SpeechRecognition" in window || "webkitSpeechRecognition" in window,
     );
     assert.equal(await page.getByTestId("pka-dictate").count(), speech ? 1 : 0);
+    // Opening the menu hides the composer and keeps its draft; closing the menu restores it.
+    await hub.click();
+    await page.getByTestId("pka-panel").waitFor({ state: "hidden" });
+    await page.keyboard.press("Escape");
+    await page.getByTestId("pka-panel").waitFor({ state: "visible" });
+    assert.match(await page.getByTestId("pka-prompt").innerText(), /Fixture smoke recording/);
     await page.getByTestId("pka-send").click();
     await page.getByTestId("pka-thread-item").filter({ hasText: prompt }).waitFor();
 

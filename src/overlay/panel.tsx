@@ -35,10 +35,13 @@ function PanelFrame({
   const t = useText();
   const { ui } = useOverlay();
   const corner = useStore(ui, (state) => state.corner);
+  // Hidden rather than unmounted, so drafts, dictation, and panel state survive the menu.
+  const menuOpen = useStore(ui, (state) => state.menu !== "closed");
   return (
     <section
       aria-label={t(title)}
       data-testid="pka-panel"
+      hidden={menuOpen}
       className={cn(
         "fixed flex max-h-[min(38rem,calc(100vh-7rem))] w-[min(25rem,calc(100vw-2.5rem))] flex-col overflow-hidden rounded-[20px] bg-popover text-popover-foreground ring-1 ring-foreground/10",
         "shadow-[0_1px_2px_rgb(0_0_0/0.08),0_24px_48px_-16px_rgb(0_0_0/0.3)] dark:shadow-[0_1px_2px_rgb(0_0_0/0.3),0_24px_56px_-12px_rgb(0_0_0/0.6)]",
