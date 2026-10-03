@@ -92,17 +92,23 @@ export function filterHeaders(headers: Headers): HeaderRecord {
   return out;
 }
 
-// Replaces the value of every credential-like key, at any depth. Bodies that
-// do not parse are kept as sent; the server produced them and they explain failures.
-export function redactBody(text: string, contentType: string): string {
-  if (!/json/i.test(contentType)) return text;
+// Replaces the value of every credential-like key, at any depth, in any body that parses as
+// a JSON object or array: a declared type does not show what a body holds. Bodies that do
+// not parse are kept as sent; the server produced them and they explain failures.
+export function redactBody(text: string): string {
+  if (!/^\s*[[{]/.test(text)) return text;
+  let redacted = false;
+  let parsed: unknown;
   try {
-    return JSON.stringify(
-      JSON.parse(text, (key, value) => (SECRET_JSON_KEY.test(key) ? "[redacted]" : value)),
-    );
+    parsed = JSON.parse(text, (key, value) => {
+      if (!SECRET_JSON_KEY.test(key)) return value;
+      redacted = true;
+      return "[redacted]";
+    });
   } catch {
     return text;
   }
+  return redacted ? JSON.stringify(parsed) : text;
 }
 
 export function utf8Length(text: string): number {
@@ -214,7 +220,7 @@ export function installNetwork(hooks: NetworkHooks): Network {
     if (size !== undefined) item.entry.requestSize = size;
     const type = contentType ?? (text === undefined ? "" : "text/plain");
     if (item.bodyAllowed && text !== undefined && TEXT_TYPE.test(type)) {
-      storeBody(item, "requestBody", redactBody(text, type));
+      storeBody(item, "requestBody", redactBody(text));
     }
   }
 
@@ -305,7 +311,7 @@ export function installNetwork(hooks: NetworkHooks): Network {
       (read) => {
         if (read !== undefined) {
           if (length === undefined) item.entry.responseSize = read.bytes;
-          storeBody(item, "responseBody", redactBody(read.text, type));
+          storeBody(item, "responseBody", redactBody(read.text));
         }
         settle(item, "done");
       },
@@ -464,7 +470,7 @@ export function installNetwork(hooks: NetworkHooks): Network {
       TEXT_TYPE.test(type) &&
       (item.entry.responseSize ?? 0) <= MAX_BODY_BYTES
     ) {
-      storeBody(item, "responseBody", redactBody(text, type));
+      storeBody(item, "responseBody", redactBody(text));
     }
     settle(item, "done");
   }

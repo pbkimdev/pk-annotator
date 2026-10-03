@@ -205,8 +205,9 @@ describe("network capture", () => {
       const body = url.includes("/big")
         ? JSON.stringify({ data: "y".repeat(MAX_BODY_BYTES) })
         : JSON.stringify({ ok: true, access_token: "secret-value" });
+      const type = url.includes("/plain") ? "text/plain;charset=UTF-8" : "application/json";
       return new Response(body, {
-        headers: { "content-type": "application/json", "content-length": String(body.length) },
+        headers: { "content-type": type, "content-length": String(body.length) },
       });
     });
     const current = start();
@@ -224,12 +225,15 @@ describe("network capture", () => {
     await fetch("/other/data");
     await fetch("/api/big");
     await fetch("https://example.com/api/data");
+    // A string body is sent as text/plain unless the page declares a type.
+    await fetch("/api/plain", { method: "POST", body: '{"user":"paul","password":"hunter2"}' });
     // Overlay requests go around capture.
     await current.fetch("/api/overlay-source.js");
     await vi.waitFor(() => expect(current.snapshot().requests[0]?.state).toBe("done"));
 
-    expect(current.snapshot().requests).toHaveLength(4);
-    const [login, other, big, crossOrigin] = current.snapshot().requests;
+    await vi.waitFor(() => expect(current.snapshot().requests[4]?.state).toBe("done"));
+    expect(current.snapshot().requests).toHaveLength(5);
+    const [login, other, big, crossOrigin, plain] = current.snapshot().requests;
     expect(login?.url).toBe("http://localhost:3000/api/login?token=REDACTED&page=2");
     expect(login?.requestHeaders).toEqual({
       "content-type": "application/json",
@@ -248,6 +252,8 @@ describe("network capture", () => {
     expect(big?.responseSize).toBeGreaterThan(MAX_BODY_BYTES);
     expect(crossOrigin?.traceparent).toBeUndefined();
     expect(seen[3]).toEqual({});
+    expect(JSON.parse(plain?.requestBody ?? "")).toEqual({ user: "paul", password: "[redacted]" });
+    expect(JSON.parse(plain?.responseBody ?? "")).toEqual({ ok: true, access_token: "[redacted]" });
     for (const entry of current.snapshot().requests) {
       expect(TimelineEntry.parse(entry)).toEqual(entry);
     }
