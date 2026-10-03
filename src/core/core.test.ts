@@ -61,30 +61,35 @@ describe("console capture", () => {
     expect(value.keys["…"]).toBe("[+5 keys]");
   });
 
-  it("bounds one call's serialized text, counting keys and descriptions", () => {
+  it("bounds the JSON text of one call, escapes, keys, descriptions, and arguments included", () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     const current = start();
     const long = "v".repeat(5000);
-    const keyed = Object.fromEntries(
-      Array.from({ length: 40 }, (_, index) => [`${index}${long}`, 1]),
-    );
-    const named = Array.from({ length: 40 }, () =>
-      Object.defineProperty(() => {}, "name", { value: long }),
-    );
-    console.log(Array.from({ length: 40 }, () => long));
-    console.log(keyed);
-    console.log(named);
+    const calls: unknown[][] = [
+      Array.from({ length: 40 }, () => long),
+      Array.from({ length: 40 }, () => "\u0001".repeat(5000)),
+      Array.from({ length: 40 }, () => '"'.repeat(5000)),
+      [Object.fromEntries(Array.from({ length: 40 }, (_, index) => [`${index}${long}`, 1]))],
+      [Array.from({ length: 40 }, () => Object.defineProperty(() => {}, "name", { value: long }))],
+      [new Map(Array.from({ length: 40 }, (_, index) => [index, long]))],
+      Array.from({ length: 10_000 }, () => "x"),
+    ];
+    for (const args of calls) console.log(...args);
 
     const entries = current.snapshot().console;
-    expect(entries).toHaveLength(3);
+    expect(entries).toHaveLength(calls.length);
     for (const entry of entries) {
-      const text = JSON.stringify(entry.args);
-      expect(text.length).toBeGreaterThan(MAX_CALL_CHARS - 100);
-      expect(text.length).toBeLessThan(MAX_CALL_CHARS + 100);
+      expect(JSON.stringify(entry.args).length).toBeLessThanOrEqual(MAX_CALL_CHARS);
     }
-    expect(entries[0]?.args[0]).toContain("[+36 items]");
-    expect(entries[1]?.args[0]).toMatchObject({ "…": "[+36 keys]" });
-    expect(entries[2]?.args[0]).toContain("[+36 items]");
+    // Every call but the many short arguments fills most of the budget before its note.
+    for (const entry of entries.slice(0, -1)) {
+      expect(JSON.stringify(entry.args).length).toBeGreaterThan(MAX_CALL_CHARS - 200);
+    }
+    expect(entries[1]?.args.at(-1)).toMatch(/^\[\+\d+ args\]$/);
+    expect(entries[3]?.args[0]).toMatchObject({ "…": expect.stringMatching(/keys\]$/) });
+    const many = entries.at(-1)?.args ?? [];
+    expect(many).toHaveLength(51);
+    expect(many[50]).toBe("[+9950 args]");
   });
 });
 
