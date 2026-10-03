@@ -14,6 +14,9 @@ const live = new Set<TrackedPerformanceObserver>();
 const paused = new Set<TrackedPerformanceObserver>();
 const perfOwned = new WeakSet<PerformanceObserver>();
 const observed = new WeakMap<PerformanceObserver, PerformanceObserverInit[]>();
+// While Perf is closed, a Perf observer that observes (web-vitals creates its CLS observer
+// from a callback, which a back/forward restore can run) waits for the panel to open.
+let perfPaused = false;
 // Observers created since the last microtask checkpoint; module evaluation has none.
 let recent: TrackedPerformanceObserver[] = [];
 
@@ -58,6 +61,10 @@ export class TrackedPerformanceObserver extends NativePerformanceObserver {
     const types = options.entryTypes ?? (options.type === undefined ? [] : [options.type]);
     if (types.some((type) => type !== "resource")) perfOwned.add(this);
     observed.set(this, [...(observed.get(this) ?? []), options]);
+    if (perfPaused && perfOwned.has(this)) {
+      paused.add(this);
+      return;
+    }
     live.add(this);
     super.observe(options);
   }
@@ -84,6 +91,7 @@ export function claimRecent(): void {
 
 /** Disconnects every Perf observer, remembering what each observed. */
 export function pausePerf(): void {
+  perfPaused = true;
   for (const observer of live) {
     if (!perfOwned.has(observer)) continue;
     NativePerformanceObserver.prototype.disconnect.call(observer);
@@ -94,6 +102,7 @@ export function pausePerf(): void {
 
 /** Observes again what each paused observer observed; buffered entries cover the pause. */
 export function resumePerf(): void {
+  perfPaused = false;
   for (const observer of paused) {
     for (const options of observed.get(observer) ?? []) {
       NativePerformanceObserver.prototype.observe.call(observer, options);
