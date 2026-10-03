@@ -271,6 +271,91 @@ test(
       assert.equal(saved.gif.height, 120);
       assert.ok(saved.gif.frames > 0);
     }
+    // A coding-test page with a 20 px root font, in-page code, and a slow judge request.
+    await page.getByTestId("nav-practice").click();
+    await page.getByTestId("practice-editor").waitFor();
+    const hubBox = await hub.boundingBox();
+    assert.deepEqual([hubBox?.width, hubBox?.height], [44, 44]);
+    await choose("Capture", "Record", "menuitemcheckbox");
+    await page.getByTestId("pka-record-start").click();
+    await page.getByTestId("practice-submit").click();
+    await page.getByTestId("practice-result").getByText("Accepted").waitFor();
+    await page.getByTestId("pka-record-stop").click();
+    const judged = "Practice smoke: judge the submission";
+    await page.getByTestId("pka-prompt").fill(judged);
+    await page.getByTestId("pka-send").click();
+    await page.getByTestId("pka-thread-item").filter({ hasText: judged }).waitFor();
+    const titleBox = await page.getByTestId("practice-title").boundingBox();
+    assert.ok(titleBox);
+    await choose("Pick elements", "Single", "menuitemcheckbox");
+    await page.mouse.click(titleBox.x + titleBox.width / 2, titleBox.y + titleBox.height / 2);
+    const picked = "Practice smoke: rename the problem";
+    await page.getByTestId("pka-prompt").fill(picked);
+    await page.getByTestId("pka-send").click();
+    await page.getByTestId("pka-thread-item").filter({ hasText: picked }).waitFor();
+    const practiceItems = ListResult.parse(
+      JSON.parse(
+        (
+          await exec(process.execPath, [
+            cli,
+            "--root",
+            workspace,
+            "--json",
+            "list",
+            "--status",
+            "all",
+          ])
+        ).stdout,
+      ),
+    ).items;
+    const practice = await Promise.all(
+      practiceItems.map(
+        async (candidate) =>
+          GetResult.parse(
+            JSON.parse(
+              (
+                await exec(process.execPath, [
+                  cli,
+                  "--root",
+                  workspace,
+                  "--json",
+                  "get",
+                  candidate.id,
+                ])
+              ).stdout,
+            ),
+          ).annotation,
+      ),
+    );
+    const judgedAnnotation = practice.find((annotation) => annotation.prompt === judged);
+    assert.ok(judgedAnnotation);
+    assert.equal(judgedAnnotation.route, "/practice");
+    const judgedRecording = judgedAnnotation.attachments.find(
+      (attachment) => attachment.kind === "recording",
+    );
+    assert.ok(judgedRecording);
+    const judgedNetwork = (
+      await readFile(
+        path.join(
+          path.dirname(path.join(judgedAnnotation.dir, judgedRecording.path)),
+          "network.jsonl",
+        ),
+        "utf8",
+      )
+    )
+      .trim()
+      .split("\n")
+      .map((line) => NetworkLine.parse(JSON.parse(line)));
+    const submitted = judgedNetwork.find(
+      (entry) => new URL(entry.request.url).pathname === "/api/submit",
+    );
+    assert.ok(submitted, "The practice recording must contain the judge request");
+    assert.equal(submitted.response.status, 200);
+    assert.match(submitted.response.content.text ?? "", /Accepted/);
+    const pickedAnnotation = practice.find((annotation) => annotation.prompt === picked);
+    assert.ok(pickedAnnotation);
+    assert.match(pickedAnnotation.elements[0]?.source ?? "", /routes\/practice\.tsx:\d+:\d+$/);
+
     // Language switches in place, so the menu stays open on the Settings group.
     await choose("Settings", "Language: English", "menuitem");
     await page.getByRole("menuitem", { name: "설정", exact: true }).waitFor();
@@ -279,7 +364,7 @@ test(
     await page.locator("pk-annotator").waitFor({ state: "detached" });
     assert.deepEqual(errors, []);
     t.diagnostic(
-      "Direct send, saved marks, editing, cropped/drawn captures, two region GIF/WebM recordings, batch send, language, minimize, Exit and CLI artifacts passed.",
+      "Direct send, saved marks, editing, cropped/drawn captures, two region GIF/WebM recordings, batch send, the practice page, language, minimize, Exit and CLI artifacts passed.",
     );
   },
 );

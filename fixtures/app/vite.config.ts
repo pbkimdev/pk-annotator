@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 import { defineConfig, type Connect, type Plugin } from "vite";
+import { z } from "zod";
 import { annotator } from "../../src/vite/index.ts";
 
 function sendJson(response: ServerResponse, statusCode: number, json: string) {
@@ -49,6 +50,14 @@ const api: Plugin = {
   },
 };
 
+const Submission = z.strictObject({
+  problem: z.string(),
+  language: z.string(),
+  code: z.string(),
+  passed: z.number().int().nonnegative(),
+  total: z.number().int().positive(),
+});
+
 function handleApi(request: IncomingMessage, response: ServerResponse, next: Connect.NextFunction) {
   const route = `${request.method} ${request.url?.split("?")[0]}`;
   if (route === "GET /items") {
@@ -81,6 +90,20 @@ function handleApi(request: IncomingMessage, response: ServerResponse, next: Con
   if (route === "POST /echo") {
     readBody(request)
       .then((body) => sendJson(response, 200, JSON.stringify({ echo: JSON.parse(body) })))
+      .catch(next);
+    return;
+  }
+  // Slow like a real judge, so a recording sees the request in flight.
+  if (route === "POST /submit") {
+    readBody(request)
+      .then((body) => {
+        const { passed, total } = Submission.parse(JSON.parse(body));
+        const status = passed === total ? "Accepted" : "Wrong Answer";
+        setTimeout(
+          () => sendJson(response, 200, JSON.stringify({ status, passed, total, runtimeMs: 52 })),
+          400,
+        );
+      })
       .catch(next);
     return;
   }

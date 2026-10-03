@@ -29,7 +29,7 @@ pnpm install --frozen-lockfile
 pnpm fixture
 ```
 
-The fixture listens at `http://127.0.0.1:3200`; `PORT=3310 pnpm fixture` selects another port and refuses to use an occupied one. `/` exercises picking across JSX wrappers and portals. `/lab` provides console errors, requests, an event stream, a slow interaction, and a form. API routes and the screenshot CSP live in [fixtures/app/vite.config.ts](../fixtures/app/vite.config.ts).
+The fixture listens at `http://127.0.0.1:3200`; `PORT=3310 pnpm fixture` selects another port and refuses to use an occupied one. `/` exercises picking across JSX wrappers and portals. `/lab` provides console errors, requests, an event stream, a slow interaction, and a form. `/practice` is a coding-test page with a 20 px root font size, a light and dark theme, code that runs in the page and logs, and a `POST /api/submit` judge that answers after 400 ms. API routes and the screenshot CSP live in [fixtures/app/vite.config.ts](../fixtures/app/vite.config.ts).
 
 The fixture imports the Vite plugin from source but consumes the overlay from `dist/overlay.mjs`, like a published package. `pnpm fixture` builds once before starting Vite. After changing overlay code or build injection, stop the fixture and run `pnpm fixture` again; source edits alone do not rebuild the overlay. Use Ctrl+C in the terminal that owns the fixture.
 
@@ -44,7 +44,7 @@ pnpm exec playwright install chromium
 pnpm fixture:smoke
 ```
 
-[fixtures/smoke.ts](../fixtures/smoke.ts) builds on the same fixture and uses a temporary workspace under `/tmp/pk-annotator/` with an ephemeral loopback port. It checks the automation guard, drives the hub's radial menu, records a request, sends the prompt, and reads the saved annotation through the built CLI. It also saves and edits marks, captures crops and drawings, records two region GIF/WebM clips, sends one combined annotation, and checks minimize, language, and Exit. It validates the recording manifests, network body, summary, WebP keyframes, GIF/WebM signatures, and distinct attachment paths. Full Chromium is required; headless-shell cannot perform Element Capture. It closes Chromium and Vite and removes its workspace after success or failure. It never uses an existing annotation store.
+[fixtures/smoke.ts](../fixtures/smoke.ts) builds on the same fixture and uses a temporary workspace under `/tmp/pk-annotator/` with an ephemeral loopback port. It checks the automation guard, drives the hub's radial menu, records a request, sends the prompt, and reads the saved annotation through the built CLI. It also saves and edits marks, captures crops and drawings, records two region GIF/WebM clips, sends one combined annotation. On `/practice`, it checks the hub size under the page's root font, records a judged submission, and picks the problem title. It then checks minimize, language, and Exit. It validates the recording manifests, network body, summary, WebP keyframes, GIF/WebM signatures, and distinct attachment paths. Full Chromium is required; headless-shell cannot perform Element Capture. It closes Chromium and Vite and removes its workspace after success or failure. It never uses an existing annotation store.
 
 This is a browser integration check, separate from `pnpm verify`. It does not establish visual quality, video fidelity, Electron behavior, MCP client integration, or production performance. Run it after overlay, plugin, recording, or packaging changes; use the affected component tests for narrower logic changes.
 

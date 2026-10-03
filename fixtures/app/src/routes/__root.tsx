@@ -39,6 +39,9 @@ function RootLayout() {
           </Link>{" "}
           <Link to="/lab" data-testid="nav-lab">
             Lab
+          </Link>{" "}
+          <Link to="/practice" data-testid="nav-practice">
+            Practice
           </Link>
         </nav>
       </header>
