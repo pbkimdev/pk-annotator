@@ -96,6 +96,8 @@ The tools are `list_annotations`, `get_annotation`, `wait_for_annotation`, `set_
 
 Codex stops a tool call after `tool_timeout_sec`, 300 seconds by default, and progress does not extend it. Raise it in `[mcp_servers.pka]` if agents should wait longer than that for an annotation.
 
+`set_status acknowledged` claims an annotation for one `pka-mcp` process, which `claim.json` records. When that process has exited, for example after a client reconnect or restart, `wait_for_annotation` offers the annotation again, another session may take it over with `set_status acknowledged`, and a reply from the overlay returns it to pending. A claim made from another PID namespace, such as a container, is judged only by the 60-second rule below, which applies while the annotation is still pending.
+
 ## CLI
 
 ```text
@@ -109,7 +111,7 @@ pka prune                                                         remove closed 
 pka lab --url URL --flow ID                                       replay a recording against a production build
 ```
 
-Every command takes `--json` and `--root DIR`. `pka status <id> acknowledged` claims an annotation as `$PKA_CLAIMANT` (default `pka-cli`); later status changes, replies, and `lab --attach` must use the same claimant. If a claimant stops before the acknowledge is written, another claimant may take over the claim once it is 60 seconds old and the annotation is still `pending`. `pka lab` needs Playwright; it writes `verdict.json` and exits 3 when the verdict fails a budget or is incomplete. Run `pka --help` for every option.
+Every command takes `--json` and `--root DIR`. `pka status <id> acknowledged` claims an annotation as `$PKA_CLAIMANT` (default `pka-cli`); later status changes, replies, and `lab --attach` must use the same claimant. If a claimant stops before the acknowledge is written, another claimant may take over the claim once it is 60 seconds old and the annotation is still `pending`. A CLI claim names no process, so it is never released because its claimant exited; continue it from another shell with the same `$PKA_CLAIMANT`. `pka lab` needs Playwright; it writes `verdict.json` and exits 3 when the verdict fails a budget or is incomplete. Run `pka --help` for every option.
 
 ## Resource budget
 

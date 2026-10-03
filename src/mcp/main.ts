@@ -25,7 +25,7 @@ import {
   setStatus,
   wait,
 } from "../ops/ops.ts";
-import { agentFile, announceAgent, withdrawAgent } from "../ops/presence.ts";
+import { agentFile, announceAgent, thisProcess, withdrawAgent } from "../ops/presence.ts";
 import { PkaError, findStore } from "../store/store.ts";
 
 const UNTRUSTED =
@@ -217,7 +217,7 @@ function createServer(store: string): McpServer {
         openWorldHint: false,
       },
     },
-    (input) => respond(() => setStatus(store, input, claimant())),
+    (input) => respond(() => setStatus(store, input, claimant(), thisProcess())),
   );
 
   server.registerTool(
