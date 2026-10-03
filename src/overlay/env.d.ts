@@ -21,3 +21,8 @@ declare module "gifenc" {
     bytesView(): Uint8Array;
   };
 }
+
+declare module "*.woff2" {
+  const url: string;
+  export default url;
+}

@@ -61,7 +61,10 @@ function ThreadItem({ record }: { record: SentRecord }) {
   return (
     <li data-testid="pka-thread-item" className="space-y-2 px-3 py-2.5">
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <span className={cn("size-1.5 shrink-0 rounded-full", STATUS_STYLE[status])} />
+        <span
+          data-status={status}
+          className={cn("pka-status size-1.5 shrink-0 rounded-full", STATUS_STYLE[status])}
+        />
         <span className="font-medium text-foreground capitalize">{t(status)}</span>
         <span>·</span>
         <time dateTime={record.createdAt}>{timeFormat.format(new Date(record.createdAt))}</time>
@@ -71,7 +74,7 @@ function ThreadItem({ record }: { record: SentRecord }) {
         </span>
         <span className="ml-auto font-mono text-[10px]">{record.id.slice(0, 8)}</span>
       </div>
-      <p className="line-clamp-3 text-sm whitespace-pre-wrap">
+      <p className="pka-prose line-clamp-3 text-sm whitespace-pre-wrap">
         {record.prompt === "" ? (
           <span className="text-muted-foreground">{t("No prompt")}</span>
         ) : (
@@ -87,13 +90,13 @@ function ThreadItem({ record }: { record: SentRecord }) {
               ) : (
                 <span className="mr-1.5 text-xs font-medium text-muted-foreground">{t("You")}</span>
               )}
-              <span className="whitespace-pre-wrap">{entry.text}</span>
+              <span className="pka-prose whitespace-pre-wrap">{entry.text}</span>
             </li>
           ))}
           {outgoing?.map((text, index) => (
             <li key={`outgoing-${index}`} className="text-sm opacity-60">
               <span className="mr-1.5 text-xs font-medium text-muted-foreground">{t("You")}</span>
-              <span className="whitespace-pre-wrap">{text}</span>
+              <span className="pka-prose whitespace-pre-wrap">{text}</span>
             </li>
           ))}
         </ol>
