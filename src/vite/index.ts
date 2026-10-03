@@ -570,9 +570,11 @@ function channelPlugin(maxStoreBytes: number, bodies: string[]): Plugin {
   };
 }
 
-/** Dev-server plugins: source attributes, the overlay channel, symbolication, and the store watcher. Nothing runs in builds. */
+/** Dev-server plugins: source attributes, the overlay channel, symbolication, and the store watcher. Nothing runs in builds or under Vitest. */
 export function annotator(options: AnnotatorOptions = {}): Plugin[] {
   const parsed = AnnotatorOptions.parse(options);
+  // Vitest also serves through Vite; source attributes would change rendered HTML in tests.
+  if (process.env.VITEST) return [];
   return [
     sourcePlugin(),
     channelPlugin(parsed.maxStoreBytes ?? DEFAULT_SIZE_CAP_BYTES, parsed.bodies ?? []),

@@ -54,7 +54,7 @@ type AnnotatorOptions = {
   bodies?: string[];        // same-origin path prefixes whose JSON or text bodies are captured
   maxStoreBytes?: number;   // store size cap; new video is refused above it (default 500 MB)
 };
-function annotator(options?: AnnotatorOptions): Plugin[];
+function annotator(options?: AnnotatorOptions): Plugin[];   // [] under Vitest
 
 // @srv/pk-annotator/overlay
 type ThemeSetting = "light" | "dark" | "system";
@@ -136,7 +136,7 @@ Nothing runs that you are not using, and production carries zero bytes.
 | Recording | Off | Keyframes only at actions, navigations, and errors (one per error group). GIF/video are opt-in; frame callbacks run only during recording. GIF encoding loads on demand, with at most 120 frames, a 480 px longest edge and 32 MB. WebM is capped at 256 MB and a 1920 px longest edge |
 | Saved marks | At most 50 marks and 256 MB of saved captures; no timers | Each Save freezes attachment data. A current mark holds at most 50 pasted/drawn image captures |
 | Automation | Nothing mounts when `navigator.webdriver` is true (Playwright, e2e runs) | n/a |
-| Vite plugin | One `fs.watch` on the store root plus one per open annotation's directory; source transform runs only under `serve` | Writes on events only |
+| Vite plugin | One `fs.watch` on the store root plus one per open annotation's directory; source transform runs only under `serve`. Under Vitest (`process.env.VITEST`) `annotator()` returns no plugins | Writes on events only |
 | pka-mcp | Not running until a client spawns it. Between calls it holds no timers or watchers. It exits on stdin EOF | `wait_for_annotation` holds one inotify watcher for its bounded duration, then closes it |
 | pka CLI | No process | `pka watch --once` exists only while waiting |
 | Store | `pka prune` removes resolved and dismissed annotations older than 7 days; new video is refused above a size cap (default 500 MB) | n/a |
