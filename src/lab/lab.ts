@@ -212,9 +212,12 @@ const HistoryChange = z.enum(["push", "replace", "reload", "traverse"]);
 const NavigationReport = z.strictObject({ type: HistoryChange, url: z.url() });
 
 interface ReplayState {
-  /** Navigations the page started since the last step the replay performed. */
-  changes: Array<z.infer<typeof NavigationReport>>;
-  /** The document holds values the replay entered, which differ from the recorded ones. */
+  /**
+   * Navigations the page started since the last step the replay performed,
+   * each with whether its document then held values the replay entered.
+   */
+  changes: Array<z.infer<typeof NavigationReport> & { entered: boolean }>;
+  /** The current document holds values the replay entered, which differ from the recorded ones. */
   entered: boolean;
 }
 
@@ -439,8 +442,9 @@ function samePage(current: string, target: string): boolean {
 // A recorded push or replace is the consequence of the last performed step
 // when that step also pushed or replaced to the same path, and a traverse when
 // it traversed there; the recorded URL is then not loaded. The query may differ
-// only after the replay entered its own values (placeholder text, another
-// option), which reach the URL as `/?q=pka+lab` for a recorded `/?q=he`.
+// only when the navigation started from a document holding values the replay
+// entered (placeholder text, another option), which reach the URL as
+// `/?q=pka+lab` for a recorded `/?q=he`.
 // Anything else, such as a second push to another path or the browser's Back
 // button, still goes to its recorded URL.
 export function producedByReplay(
@@ -449,11 +453,11 @@ export function producedByReplay(
   state: ReplayState,
 ): boolean {
   const want = new URL(target);
-  return state.changes.some(({ type, url }) => {
+  return state.changes.some(({ type, url, entered }) => {
     if (type === "reload" || (type === "traverse") !== (step.type === "traverse")) return false;
     const got = new URL(url);
     if (got.origin !== want.origin || got.pathname !== want.pathname) return false;
-    return state.entered || got.search === want.search;
+    return entered || got.search === want.search;
   });
 }
 
@@ -576,7 +580,6 @@ async function replay(
         if (step.type === "reload") {
           await flushVitals(page);
           state.changes.length = 0;
-          state.entered = false;
           await page.reload({ timeout: NAVIGATION_TIMEOUT_MS });
         } else if (
           step.type === "load" ||
@@ -584,7 +587,6 @@ async function replay(
         ) {
           await flushVitals(page);
           state.changes.length = 0;
-          state.entered = false;
           await page.goto(target, { timeout: NAVIGATION_TIMEOUT_MS });
         }
       } else {
@@ -723,11 +725,16 @@ async function openSession(options: RunContext): Promise<Session> {
   });
   await context.exposeBinding(NAVIGATION_BINDING, (_source, type: string, url: string) => {
     const parsed = NavigationReport.safeParse({ type, url });
-    if (parsed.success) state.changes.push(parsed.data);
+    if (parsed.success) state.changes.push({ ...parsed.data, entered: state.entered });
     else invalid.push(z.prettifyError(parsed.error));
   });
   await context.addInitScript({ content: await pageScript() });
   const page = await context.newPage();
+  // A new document, from the replay's goto or the page's own link or form,
+  // holds none of the values the replay entered.
+  page.on("domcontentloaded", () => {
+    state.entered = false;
+  });
   const cdp = await context.newCDPSession(page);
   await cdp.send("Emulation.setCPUThrottlingRate", { rate: options.cpuRate });
   const network = NETWORK_PRESETS[options.network];

@@ -12,15 +12,16 @@ function step(type: NavigationEntry["type"], to: string): NavigationEntry {
 describe("producedByReplay", () => {
   it("skips only a recorded history change the replayed step made to the same destination", () => {
     const typed = {
-      changes: [{ type: "replace" as const, url: `${origin}/?q=pka%20lab` }],
+      changes: [{ type: "replace" as const, url: `${origin}/?q=pka%20lab`, entered: true }],
       entered: true,
     };
     expect(producedByReplay(step("replace", "/?q=he"), `${origin}/?q=he`, typed)).toBe(true);
     expect(producedByReplay(step("push", "/b"), `${origin}/b`, typed)).toBe(false);
     expect(producedByReplay(step("traverse", "/?q=he"), `${origin}/?q=he`, typed)).toBe(false);
 
+    // A click after typing, in a document loaded since then.
     const clicked = {
-      changes: [{ type: "push" as const, url: `${origin}/?tab=3` }],
+      changes: [{ type: "push" as const, url: `${origin}/?tab=3`, entered: false }],
       entered: false,
     };
     expect(producedByReplay(step("push", "/?tab=2"), `${origin}/?tab=2`, clicked)).toBe(false);
