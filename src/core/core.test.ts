@@ -6,7 +6,8 @@ import { ErrorGroup } from "../shared/schema.ts";
 import { TimelineEntry } from "../shared/timeline.ts";
 import { fingerprintError } from "./errors.ts";
 import { createCapture, type Capture } from "./index.ts";
-import { MAX_BODY_BYTES } from "./network.ts";
+import { MAX_BODY_BYTES, MAX_URL } from "./network.ts";
+import { MAX_CALL_CHARS } from "./serialize.ts";
 
 let capture: Capture | undefined;
 const sent: ErrorsMessage[] = [];
@@ -58,6 +59,32 @@ describe("console capture", () => {
     expect(value.items[50]).toBe("[+10 items]");
     expect(Object.keys(value.keys)).toHaveLength(51);
     expect(value.keys["…"]).toBe("[+5 keys]");
+  });
+
+  it("bounds one call's serialized text, counting keys and descriptions", () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const current = start();
+    const long = "v".repeat(5000);
+    const keyed = Object.fromEntries(
+      Array.from({ length: 40 }, (_, index) => [`${index}${long}`, 1]),
+    );
+    const named = Array.from({ length: 40 }, () =>
+      Object.defineProperty(() => {}, "name", { value: long }),
+    );
+    console.log(Array.from({ length: 40 }, () => long));
+    console.log(keyed);
+    console.log(named);
+
+    const entries = current.snapshot().console;
+    expect(entries).toHaveLength(3);
+    for (const entry of entries) {
+      const text = JSON.stringify(entry.args);
+      expect(text.length).toBeGreaterThan(MAX_CALL_CHARS - 100);
+      expect(text.length).toBeLessThan(MAX_CALL_CHARS + 100);
+    }
+    expect(entries[0]?.args[0]).toContain("[+36 items]");
+    expect(entries[1]?.args[0]).toMatchObject({ "…": "[+36 keys]" });
+    expect(entries[2]?.args[0]).toContain("[+36 items]");
   });
 });
 
@@ -339,6 +366,27 @@ describe("network capture", () => {
       contentType: "text/event-stream",
     });
     expect(current.snapshot().requests[0]?.responseBody).toBeUndefined();
+  });
+});
+
+describe("request metadata", () => {
+  it("cuts huge request and resource error URLs", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal("fetch", async () => new Response("ok"));
+    const current = start();
+    const huge = `data:image/png;base64,${"A".repeat(1_000_000)}`;
+    await fetch(huge);
+    const image = document.createElement("img");
+    image.setAttribute("src", huge);
+    document.body.append(image);
+    image.dispatchEvent(new Event("error"));
+    image.remove();
+
+    const [request] = current.snapshot().requests;
+    const [error] = current.snapshot().errors;
+    expect(request?.url.length).toBeLessThan(MAX_URL + 20);
+    expect(error?.resource?.url.length).toBeLessThan(MAX_URL + 20);
+    expect(error?.message.length).toBeLessThan(MAX_URL + 40);
   });
 });
 

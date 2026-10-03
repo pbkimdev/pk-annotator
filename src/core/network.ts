@@ -1,8 +1,11 @@
 import type { RequestEntry } from "../shared/timeline.ts";
+import { capString } from "./serialize.ts";
 
 export const MAX_REQUESTS = 500;
 export const MAX_BODY_BYTES = 64 * 1024;
 export const MAX_BODY_TOTAL_BYTES = 8 * 1024 * 1024;
+// A data: URL can be megabytes long; a kept URL is cut after redaction.
+export const MAX_URL = 2000;
 const MAX_HEADERS = 50;
 const MAX_HEADER_VALUE = 1000;
 // Matches authorization, proxy-authorization, cookie, set-cookie, x-api-key,
@@ -67,7 +70,7 @@ export function redactUrl(raw: string): string {
     const params = new URLSearchParams(url.hash.slice(1));
     if (redactParams(params)) url.hash = params.toString();
   }
-  return url.href;
+  return capString(url.href, MAX_URL);
 }
 
 function redactParams(params: URLSearchParams): boolean {

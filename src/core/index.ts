@@ -13,8 +13,8 @@ import type {
   TimelineEntry,
 } from "../shared/timeline.ts";
 import { fingerprintError, fingerprintResource, isOverlayError } from "./errors.ts";
-import { installNetwork, redactUrl } from "./network.ts";
-import { capString, errorText, formatArgs, serializeArgs } from "./serialize.ts";
+import { installNetwork, MAX_URL, redactUrl } from "./network.ts";
+import { capString, detach, errorText, formatArgs, serializeArgs } from "./serialize.ts";
 
 const HOST_TAG = "pk-annotator";
 const MAX_ENTRIES = 500;
@@ -147,9 +147,11 @@ function callerStack(error: Error): string {
 function shortText(element: Element): string | undefined {
   const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
   let text = "";
-  while (text.length < 80 && walker.nextNode() !== null) text += ` ${walker.currentNode.nodeValue}`;
+  while (text.length < 80 && walker.nextNode() !== null) {
+    text += ` ${(walker.currentNode.nodeValue ?? "").slice(0, 80)}`;
+  }
   const trimmed = text.replace(/\s+/g, " ").trim().slice(0, 40);
-  return trimmed === "" ? undefined : trimmed;
+  return trimmed === "" ? undefined : detach(trimmed);
 }
 
 function isField(element: Element): boolean {
@@ -178,7 +180,7 @@ function fieldLabel(element: Element): string | undefined {
     element.getAttribute("name") ??
     element.getAttribute("placeholder");
   const trimmed = label?.replace(/\s+/g, " ").trim().slice(0, 40);
-  return trimmed === undefined || trimmed === "" ? undefined : trimmed;
+  return trimmed === undefined || trimmed === "" ? undefined : detach(trimmed);
 }
 
 function describeTarget(element: Element): ActionTarget {
@@ -447,7 +449,9 @@ export function createCapture(options: CaptureOptions): Capture {
       const value = event.error;
       if (value instanceof Error) return recordValue("window", value, "Error");
       const where =
-        event.filename === "" ? "" : `    at ${event.filename}:${event.lineno}:${event.colno}`;
+        event.filename === ""
+          ? ""
+          : `    at ${capString(event.filename, MAX_URL)}:${event.lineno}:${event.colno}`;
       return recordThrown(
         "window",
         { type: "Error", message: capString(event.message), stack: where },
