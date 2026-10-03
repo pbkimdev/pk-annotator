@@ -428,32 +428,38 @@ async function readLockOwner(store: string, lock: string): Promise<LockOwner | u
  * Start it before rechecking the lock, so a release in between still wakes the caller.
  */
 interface LockWake {
-  changed: Promise<void>;
+  /** Resolves on a change or at the deadline; throws the watcher's error, if it had one. */
+  changed: () => Promise<void>;
   close: () => void;
 }
 
 function lockChange(lock: string, deadline: number): LockWake {
   const name = path.basename(lock);
-  let close = (): void => {};
-  const changed = new Promise<void>((resolve, reject) => {
-    const watcher = watch(path.dirname(lock), (_event, changedName) => {
-      if (changedName === null || changedName === name) finish();
-    });
-    const timer = setTimeout(finish, Math.max(0, deadline - Date.now()));
-    watcher.on("error", (cause) => {
-      close();
-      reject(cause);
-    });
-    close = () => {
+  const watcher = watch(path.dirname(lock));
+  let failure: Error | undefined;
+  let finish = (): void => {};
+  // Never rejects, so an error while nobody awaits it cannot become an unhandled rejection.
+  const settled = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  watcher.on("change", (_event, changedName) => {
+    if (changedName === null || changedName === name) finish();
+  });
+  watcher.on("error", (cause) => {
+    failure = cause;
+    finish();
+  });
+  const timer = setTimeout(finish, Math.max(0, deadline - Date.now()));
+  return {
+    async changed() {
+      await settled;
+      if (failure !== undefined) throw failure;
+    },
+    close() {
       watcher.close();
       clearTimeout(timer);
-    };
-    function finish(): void {
-      close();
-      resolve();
-    }
-  });
-  return { changed, close };
+    },
+  };
 }
 
 /**
@@ -490,7 +496,7 @@ async function acquireLock(store: string, lock: string, deadline: number): Promi
               "A process in another PID namespace cannot be checked from here: remove the file only after that process has exited.",
           );
         }
-        await wake.changed;
+        await wake.changed();
       } finally {
         wake.close();
       }
