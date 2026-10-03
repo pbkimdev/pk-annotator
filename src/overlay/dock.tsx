@@ -51,9 +51,10 @@ const CORNER_CLASS = {
 
 // shadcn's Toggle marks its pressed state with accent; consumers map accent to their
 // selected surface. The dark variant outranks the ghost button's dark hover, which
-// would otherwise hide the state under the pointer that just pressed it.
+// would otherwise hide the state under the pointer that just pressed it. A selected
+// surface can sit within 1.2:1 of the dock, so a foreground underline carries the state.
 const PRESSED =
-  "aria-pressed:bg-accent aria-pressed:text-accent-foreground dark:aria-pressed:bg-accent";
+  "aria-pressed:bg-accent aria-pressed:text-accent-foreground dark:aria-pressed:bg-accent aria-pressed:shadow-[inset_0_-2px_0_var(--foreground)]";
 
 function DockButton({
   label,
@@ -209,7 +210,7 @@ export function Dock() {
             label="Capture"
             disabled={busy}
             aria-pressed={panel === "record"}
-            className="w-10"
+            className={cn("w-10", PRESSED)}
           >
             <CaptureIcon />
             <ChevronDownIcon className="size-2.5" />
@@ -270,7 +271,12 @@ export function Dock() {
       <Separator />
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <DockButton label="Debug" disabled={busy} className="w-10">
+          <DockButton
+            label="Debug"
+            disabled={busy}
+            aria-pressed={panel !== "record" && registered.some(({ id }) => id === panel)}
+            className={cn("w-10", PRESSED)}
+          >
             <BugIcon />
             <ChevronDownIcon className="size-2.5" />
           </DockButton>
