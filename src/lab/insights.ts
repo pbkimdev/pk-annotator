@@ -22,6 +22,9 @@ export const REQUESTED_INSIGHTS = [
 
 const SUMMARY_CAP = 400;
 
+/** A trace that could not be recorded, saved, or parsed; it costs the insights, not the verdict. */
+export class TraceError extends Error {}
+
 let engine: Promise<Engine> | undefined;
 
 // The trace engine is DevTools code and constructs DOMRect, which Node lacks.
@@ -225,9 +228,14 @@ function hotFunction(
 export async function analyzeTrace(events: unknown[]): Promise<TraceAnalysis> {
   const Engine = await loadEngine();
   const model = Engine.TraceModel.Model.createWithAllHandlers();
-  // SAFETY: the events are Chrome's own Tracing output for this run, the input
-  // the engine is written for; it checks each event's name and phase itself.
-  await model.parse(events as Trace.Types.Events.Event[]);
+  try {
+    // SAFETY: the events are Chrome's own Tracing output for this run, the input
+    // the engine is written for; it checks each event's name and phase itself.
+    await model.parse(events as Trace.Types.Events.Event[]);
+  } catch (thrown) {
+    const reason = thrown instanceof Error ? thrown.message : String(thrown);
+    throw new TraceError(`trace_engine could not parse the trace: ${reason}`, { cause: thrown });
+  }
   const parsed = model.parsedTrace();
   if (parsed === null) throw new Error("trace_engine parsed the trace but returned no data");
   const sets = [...(parsed.insights?.values() ?? [])].filter((set) =>

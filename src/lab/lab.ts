@@ -19,7 +19,7 @@ import { RecordingManifest } from "../shared/recording.ts";
 import { LabMetric, LoafScript, Verdict, type NetworkPreset } from "../shared/verdict.ts";
 import { get } from "../ops/ops.ts";
 import { PkaError, isErrno, readJson, readJsonLines, resolveInside } from "../store/store.ts";
-import { analyzeTrace } from "./insights.ts";
+import { TraceError, analyzeTrace } from "./insights.ts";
 import {
   computeVerdict,
   type Budgets,
@@ -764,13 +764,24 @@ async function measure(run: number, options: RunContext): Promise<RunResult> {
   return { run, metrics: worstPerMetric(session.reports) };
 }
 
+// Chrome and the filesystem can fail at each trace operation; that costs the
+// insights, so it becomes a TraceError with the operation as context.
+async function traceStep<T>(what: string, work: () => Promise<T>): Promise<T> {
+  try {
+    return await work();
+  } catch (thrown) {
+    const reason = thrown instanceof Error ? thrown.message.split("\n")[0] : String(thrown);
+    throw new TraceError(`${what}: ${reason}`, { cause: thrown });
+  }
+}
+
 // The replay that supplies insights and the hot function. CPU sampling and the
 // timeline categories slow the page, which near a budget can change the
 // verdict, so its metrics never enter the verdict.
 async function diagnose(options: RunContext, file: string): Promise<Diagnostic> {
   const session = await openSession(options);
   const { cdp } = session;
-  await startTrace(cdp);
+  await traceStep("starting the trace failed", () => startTrace(cdp));
   try {
     await replay(session.page, session.tracker, session.state, options.steps, options.base);
   } catch (thrown) {
@@ -789,10 +800,15 @@ async function diagnose(options: RunContext, file: string): Promise<Diagnostic> 
     }
     throw thrown;
   }
-  const handle = await endTrace(cdp);
+  const handle = await traceStep("ending the trace failed", () => endTrace(cdp));
   checkReports(session, "The traced run");
-  const trace = await saveTrace(cdp, handle, file);
-  const analysis = await analyzeTrace(TraceFile.parse(JSON.parse(trace)));
+  const trace = await traceStep(`saving the trace to ${file} failed`, () =>
+    saveTrace(cdp, handle, file),
+  );
+  const events = await traceStep(`the trace in ${file} is not Chrome trace JSON`, async () =>
+    TraceFile.parse(JSON.parse(trace)),
+  );
+  const analysis = await analyzeTrace(events);
   const diagnostic: Diagnostic = {
     insights: analysis.insights,
     unavailable: analysis.unavailable,
@@ -888,7 +904,7 @@ export async function runLab(options: LabOptions): Promise<{ verdict: Verdict; f
         traces.push(trace);
         options.onRun("trace", undefined);
       } catch (thrown) {
-        if (!(thrown instanceof StepError)) throw thrown;
+        if (!(thrown instanceof StepError) && !(thrown instanceof TraceError)) throw thrown;
         diagnostic.unavailable.push({
           name: "trace",
           reason: `the traced run failed: ${thrown.message}`,
