@@ -79,6 +79,7 @@ const QUIET_MS = 500;
 const SETTLE_MAX_MS = 10_000;
 const TEXT_CAP = 40;
 const BINDING = "__pkaLabReport";
+const NAVIGATION_BINDING = "__pkaLabNavigate";
 
 /** A step that could not be replayed; it fails the run, not the command. */
 class StepError extends Error {
@@ -201,6 +202,11 @@ const PageReport = z
   })
   .pipe(PageMetric);
 
+// The Navigation API's navigationType, the same classification the recorder
+// writes into the timeline.
+const HistoryChange = z.enum(["push", "replace", "reload", "traverse"]);
+type HistoryChange = z.infer<typeof HistoryChange>;
+
 function webVitalsSource(): string {
   // The IIFE build is not in web-vitals' export map; it sits next to the UMD entry.
   const require = createRequire(import.meta.url);
@@ -237,6 +243,10 @@ const send = (metric, extra) => {
     ...extra,
   }));
 };
+navigation.addEventListener("navigate", (event) => {
+  const report = window[${JSON.stringify(NAVIGATION_BINDING)}];
+  if (typeof report === "function") report(event.navigationType);
+});
 const options = { reportAllChanges: true, reportSoftNavs: true, generateTarget: describe };
 webVitals.onLCP((metric) => {
   const a = metric.attribution;
@@ -414,6 +424,17 @@ function samePage(current: string, target: string): boolean {
   return a.origin === b.origin && a.pathname === b.pathname && a.search === b.search;
 }
 
+// The replay types placeholder text, so the URL a step writes need not equal
+// the recorded one (`/?q=pka+lab` for a recorded `/?q=he`). A recorded push or
+// replace is the consequence of the last performed step when that step also
+// pushed or replaced, and a traverse when it also traversed; the recorded URL
+// is then not loaded. A traverse the replay did not produce, such as the
+// browser's Back button, still goes to its recorded URL.
+function producedByReplay(step: NavigationEntry, changes: HistoryChange[]): boolean {
+  if (step.type === "traverse") return changes.includes("traverse");
+  return changes.includes("push") || changes.includes("replace");
+}
+
 interface Field {
   kind: "checkable" | "select" | "text";
   inputType: string;
@@ -450,6 +471,7 @@ async function replayAction(
   step: ActionEntry,
   previous: FlowStep | undefined,
   index: number,
+  changes: HistoryChange[],
 ): Promise<void> {
   // A submit right after a click or Enter is that gesture's consequence.
   if (step.type === "submit" && previous?.kind === "action") {
@@ -459,6 +481,7 @@ async function replayAction(
   const locator = await locate(page, step.target, index);
   const field = await fieldOf(locator);
   if (alreadyCaused(step, previous, field)) return;
+  changes.length = 0;
   switch (step.type) {
     case "click":
       await locator.click({ timeout: LOCATE_TIMEOUT_MS });
@@ -503,7 +526,17 @@ function rebase(recorded: string, appOrigin: string | undefined, base: URL): str
   return new URL(url.pathname + url.search + url.hash, base).href;
 }
 
-async function replay(page: Page, tracker: Tracker, steps: FlowStep[], base: URL): Promise<void> {
+/**
+ * Replays the steps in order. `changes` receives the page's navigation types as
+ * they happen; the replay empties it before each step it performs.
+ */
+async function replay(
+  page: Page,
+  tracker: Tracker,
+  changes: HistoryChange[],
+  steps: FlowStep[],
+  base: URL,
+): Promise<void> {
   const first = steps.find((step) => step.kind === "navigation");
   const appOrigin = first === undefined ? undefined : new URL(first.to, base).origin;
   if (steps[0]?.kind !== "navigation") {
@@ -516,14 +549,18 @@ async function replay(page: Page, tracker: Tracker, steps: FlowStep[], base: URL
         const target = rebase(step.to, appOrigin, base);
         if (step.type === "reload") {
           await flushVitals(page);
+          changes.length = 0;
           await page.reload({ timeout: NAVIGATION_TIMEOUT_MS });
-          // A push, replace, or traverse the previous action already caused is skipped.
-        } else if (step.type === "load" || !samePage(page.url(), target)) {
+        } else if (
+          step.type === "load" ||
+          (!producedByReplay(step, changes) && !samePage(page.url(), target))
+        ) {
           await flushVitals(page);
+          changes.length = 0;
           await page.goto(target, { timeout: NAVIGATION_TIMEOUT_MS });
         }
       } else {
-        await replayAction(page, step, steps[index - 1], index);
+        await replayAction(page, step, steps[index - 1], index, changes);
       }
       await settle(page, tracker);
     } catch (thrown) {
@@ -622,6 +659,7 @@ interface RunContext {
 async function runOnce(run: number, options: RunContext): Promise<RunResult> {
   const { context } = options;
   const reports = new Map<string, PageMetric>();
+  const changes: HistoryChange[] = [];
   const invalid: string[] = [];
   await context.exposeBinding(BINDING, (_source, report: string) => {
     const parsed = PageReport.safeParse(report);
@@ -631,6 +669,11 @@ async function runOnce(run: number, options: RunContext): Promise<RunResult> {
     }
     const metric = parsed.data;
     reports.set(`${metric.doc}:${metric.navigation}:${metric.name}`, metric);
+  });
+  await context.exposeBinding(NAVIGATION_BINDING, (_source, type: string) => {
+    const parsed = HistoryChange.safeParse(type);
+    if (parsed.success) changes.push(parsed.data);
+    else invalid.push(z.prettifyError(parsed.error));
   });
   await context.addInitScript({ content: await pageScript() });
   const page = await context.newPage();
@@ -649,7 +692,7 @@ async function runOnce(run: number, options: RunContext): Promise<RunResult> {
   const tracker = trackRequests(page);
   await startTrace(cdp);
   try {
-    await replay(page, tracker, options.steps, options.base);
+    await replay(page, tracker, changes, options.steps, options.base);
   } catch (thrown) {
     // The run already failed; a trace that cannot be ended (target closed,
     // renderer crashed) is dropped so the step error stays the reported cause.
@@ -666,7 +709,7 @@ async function runOnce(run: number, options: RunContext): Promise<RunResult> {
   }
   const trace = await endTrace(cdp);
   if (invalid.length > 0) {
-    throw new Error(`Run ${run}: the page script sent an invalid metric report:\n${invalid[0]}`);
+    throw new Error(`Run ${run}: the page script sent an invalid report:\n${invalid[0]}`);
   }
   await writeFile(options.tracePath, await promisify(gzip)(trace));
   const analysis = await analyzeTrace(TraceFile.parse(JSON.parse(trace)));
