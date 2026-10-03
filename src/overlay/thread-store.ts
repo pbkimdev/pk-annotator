@@ -25,6 +25,8 @@ export type ThreadState = {
   states: ReadonlyMap<string, State>;
   entries: ReadonlyMap<string, readonly ThreadEntry[]>;
   unread: boolean;
+  /** Why unreadable History entries in sessionStorage were discarded at load, for History. */
+  discarded: string | null;
 };
 
 export type ThreadStore = Store<ThreadState> & {
@@ -32,21 +34,40 @@ export type ThreadStore = Store<ThreadState> & {
   disconnect(): void;
 };
 
-function readSent(): SentRecord[] {
+/**
+ * Reads this tab's sent annotations. Unreadable entries are dropped from sessionStorage and
+ * reported, so one bad entry neither hides the readable ones nor stops the overlay.
+ */
+function readSent(): Pick<ThreadState, "sent" | "discarded"> {
   const raw = sessionStorage.getItem(SENT_KEY);
-  if (raw === null) return [];
-  const parsed = z.array(SentRecord).safeParse(JSON.parse(raw));
-  if (!parsed.success) {
-    sessionStorage.removeItem(SENT_KEY);
-    throw new Error(`Discarded unreadable ${SENT_KEY} in sessionStorage: ${parsed.error.message}`);
+  if (raw === null) return { sent: [], discarded: null };
+  const sent: SentRecord[] = [];
+  let problem: string | null = null;
+  let stored: unknown;
+  try {
+    stored = JSON.parse(raw);
+  } catch (cause) {
+    problem = `it is not JSON (${cause instanceof Error ? cause.message : String(cause)})`;
   }
-  return parsed.data;
+  if (problem === null && !Array.isArray(stored)) problem = "it is not a list";
+  if (Array.isArray(stored)) {
+    for (const [index, record] of stored.entries()) {
+      const parsed = SentRecord.safeParse(record);
+      if (parsed.success) sent.push(parsed.data);
+      else problem ??= `entry ${index + 1}: ${z.prettifyError(parsed.error)}`;
+    }
+  }
+  if (problem === null) return { sent, discarded: null };
+  const discarded = `Discarded unreadable History entries in sessionStorage ${SENT_KEY}; ${problem}`;
+  console.error(`[pk-annotator] ${discarded}`);
+  sessionStorage.setItem(SENT_KEY, JSON.stringify(sent));
+  return { sent, discarded };
 }
 
 /** Tracks annotations sent from this tab and follows their status and replies over HMR. */
 export function connectThread(hot: ViteHotContext): ThreadStore {
   const store = createStore<ThreadState>({
-    sent: readSent(),
+    ...readSent(),
     states: new Map(),
     entries: new Map(),
     unread: false,

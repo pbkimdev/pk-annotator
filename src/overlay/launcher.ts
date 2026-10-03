@@ -410,24 +410,40 @@ export function createLauncher(
 
   // The thread store loads with the UI, or at mount when this tab has sent annotations, so
   // the hub shows agent work and reactions after a reload without loading the React UI.
+  // A failed chunk load is reported and forgotten, so the next open tries again.
   let thread: Promise<ThreadStore> | undefined;
   const withThread = () =>
-    (thread ??= import("./thread-store.ts").then(({ connectThread }) => connectThread(hot)));
+    (thread ??= import("./thread-store.ts").then(
+      ({ connectThread }) => connectThread(hot),
+      (cause: unknown) => {
+        thread = undefined;
+        throw cause;
+      },
+    ));
   let ui: Promise<UiController> | undefined;
   const withUi = async (action: (controller: UiController) => void) => {
-    ui ??= Promise.all([import("./app.tsx"), withThread()]).then(([{ open }, store]) =>
-      open({
-        host,
-        shadow,
-        hot,
-        theme: themeSignal,
-        hub: button,
-        thread: store,
-        exit,
-        setMarkCount,
-      }),
+    ui ??= Promise.all([import("./app.tsx"), withThread()]).then(
+      ([{ open }, store]) =>
+        open({
+          host,
+          shadow,
+          hot,
+          theme: themeSignal,
+          hub: button,
+          thread: store,
+          exit,
+          setMarkCount,
+        }),
+      (cause: unknown) => {
+        ui = undefined;
+        throw cause;
+      },
     );
-    action(await ui);
+    try {
+      action(await ui);
+    } catch (cause) {
+      console.error("[pk-annotator] the overlay UI failed to open", cause);
+    }
   };
 
   const moveTo = (corner: Corner) => {
@@ -500,7 +516,11 @@ export function createLauncher(
   };
   window.addEventListener("keydown", onKeyDown, { capture: true });
   const sent = sessionStorage.getItem(SENT_KEY);
-  if (sent !== null && sent !== "[]") void withThread();
+  if (sent !== null && sent !== "[]") {
+    withThread().catch((cause: unknown) => {
+      console.error("[pk-annotator] following this tab's sent annotations failed", cause);
+    });
+  }
 
   return {
     setTheme: themeSignal.set,

@@ -89,11 +89,23 @@ function ThreadItem({ record }: { record: SentRecord }) {
 export function Thread() {
   const { thread } = useOverlay();
   const sent = useStore(thread, (state) => state.sent);
+  const discarded = useStore(thread, (state) => state.discarded);
   return (
-    <ol className="divide-y" data-testid="pka-thread">
-      {sent.map((record) => (
-        <ThreadItem key={record.id} record={record} />
-      ))}
-    </ol>
+    <>
+      {discarded !== null && (
+        <p
+          role="alert"
+          data-testid="pka-thread-discarded"
+          className="px-3 py-2.5 text-xs text-destructive"
+        >
+          {discarded}
+        </p>
+      )}
+      <ol className="divide-y" data-testid="pka-thread">
+        {sent.map((record) => (
+          <ThreadItem key={record.id} record={record} />
+        ))}
+      </ol>
+    </>
   );
 }
