@@ -16,6 +16,7 @@ import {
   type AnnotationDraft,
   type AttachmentKind,
   type Claim,
+  type ClaimProcess,
   type ErrorGroup,
   type StatusEvent,
 } from "../shared/schema.ts";
@@ -34,6 +35,7 @@ import {
   readClaim,
   readJson,
   readJsonLines,
+  releaseClaim,
   removeClaim,
   replaceClaim,
   requireAnnotation,
@@ -43,6 +45,7 @@ import {
   writeJsonAtomic,
   type StagedFiles,
 } from "../store/store.ts";
+import { claimantExited } from "./presence.ts";
 import {
   AnnotationView,
   Detail,
@@ -215,24 +218,32 @@ export async function get(store: string, input: GetInput): Promise<GetResult> {
   return { annotation: annotationView(await loadAnnotation(store, input.id), input.detail) };
 }
 
+/**
+ * An open annotation's claim is orphaned when its claimant's process has exited, or, when
+ * that cannot be told, when it is old and the annotation is still pending.
+ */
 function isOrphaned(state: State, claim: Claim, now: number): boolean {
+  if (isClosed(state.status)) return false;
+  if (claimantExited(claim)) return true;
   return state.status === "pending" && now - Date.parse(claim.at) > ORPHANED_CLAIM_MS;
 }
 
 function isOffered(state: State, claim: Claim | undefined): boolean {
-  return (
-    state.status === "pending" && (claim === undefined || isOrphaned(state, claim, Date.now()))
-  );
+  if (claim === undefined) return state.status === "pending";
+  return isOrphaned(state, claim, Date.now());
 }
 
-async function oldestPendingUnclaimed(
+async function oldestOffered(
   store: string,
   skip: ReadonlySet<string>,
 ): Promise<AnnotationRecord | undefined> {
   const ids = (await listIds(store)).filter((id) => !skip.has(id));
   const offered = async (id: string): Promise<boolean> => {
     const state = await readListedState(store, id);
-    return state?.status === "pending" && isOffered(state, await readClaim(store, id));
+    // Closed annotations are skipped before their claim is read.
+    return (
+      state !== undefined && !isClosed(state.status) && isOffered(state, await readClaim(store, id))
+    );
   };
   for (let start = 0; start < ids.length; start += SCAN_BATCH) {
     for (const id of await firstMatching(
@@ -259,7 +270,8 @@ export interface WaitOptions {
 }
 
 /**
- * Returns the oldest pending, unclaimed annotation at once if there is one.
+ * Returns the oldest offered annotation (pending and unclaimed, or open with an orphaned
+ * claim) at once if there is one.
  * Otherwise holds one fs.watch on the store until one appears, the timeout
  * elapses, or the signal aborts. The watcher and timers are released on every
  * outcome.
@@ -311,7 +323,7 @@ export function wait(store: string, options: WaitOptions): Promise<WaitResult> {
       try {
         do {
           rescan = false;
-          const record = await oldestPendingUnclaimed(store, options.skip);
+          const record = await oldestOffered(store, options.skip);
           if (settled) return;
           if (record !== undefined) {
             settle({ timedOut: false, annotation: annotationView(record, "concise") }, undefined);
@@ -342,7 +354,9 @@ function closedError(id: string, status: Status): PkaError {
 
 function claimedError(id: string, claim: Claim): PkaError {
   return new PkaError(
-    `Annotation ${id} was claimed by ${claim.by} at ${claim.at}. Pick another pending annotation.`,
+    claimantExited(claim)
+      ? `Annotation ${id} was claimed by ${claim.by} at ${claim.at}, whose session has exited. Call set_status acknowledged to take it over, then retry.`
+      : `Annotation ${id} was claimed by ${claim.by} at ${claim.at}. Pick another pending annotation.`,
   );
 }
 
@@ -352,10 +366,12 @@ async function requireClaimant(store: string, id: string, by: string): Promise<v
   if (claim !== undefined && claim.by !== by) throw claimedError(id, claim);
 }
 
+/** `owner` identifies a long-lived claimant's process, so its claim can be taken over once it exits. */
 export async function setStatus(
   store: string,
   input: SetStatusInput,
   by: string,
+  owner?: ClaimProcess,
 ): Promise<SetStatusResult> {
   const files = await requireAnnotation(store, input.id);
   let state = await readJson(store, files.state, State);
@@ -368,24 +384,29 @@ export async function setStatus(
     throw closedError(input.id, state.status);
   }
   if (input.status === "acknowledged") {
-    let claim = await createClaim(store, input.id, { by, at });
+    const mine: Claim = owner === undefined ? { by, at } : { by, at, process: owner };
+    let claim = await createClaim(store, input.id, mine);
     let replaced: Claim | undefined;
     if (!claim.won && claim.claim.by !== by && isOrphaned(state, claim.claim, Date.parse(at))) {
-      replaced = claim.claim;
-      claim = await replaceClaim(store, input.id, replaced, { by, at });
+      const orphan = claim.claim;
+      replaced = orphan;
+      claim = await replaceClaim(store, input.id, orphan, mine, (current) =>
+        isOrphaned(current, orphan, Date.now()),
+      );
     }
     claimedBy = claim.claim.by;
     if (claim.won) {
       // A claimant whose claim was replaced, or removed during a replacement, may have
-      // written its acknowledge since the first read.
+      // written its acknowledge since the first read; one whose process exited cannot.
       state = await readJson(store, files.state, State);
-      if (state.status !== "pending") {
-        if (replaced === undefined) {
+      if (replaced === undefined) {
+        if (state.status !== "pending") {
           await removeClaim(store, input.id);
           throw new PkaError(
             `Annotation ${input.id} is ${state.status}. Pick another pending annotation.`,
           );
         }
+      } else if (!isOrphaned(state, replaced, Date.now())) {
         await restoreClaim(store, input.id, replaced);
         throw claimedError(input.id, replaced);
       }
@@ -428,15 +449,26 @@ export async function reply(
     text: input.text,
   };
   await appendJsonLine(store, files.thread, entry);
+  let note: string | undefined;
   if (closed) {
     // The old claim belongs to the agent that closed it; the next agent must be able to take it.
     await removeClaim(store, input.id);
+    note = "reopened by reply";
+  } else if (author.from === "human" && state.status === "acknowledged") {
+    // A claimant that exited cannot answer; release its claim so a waiting agent gets the reply.
+    const claim = await readClaim(store, input.id);
+    if (
+      claim !== undefined &&
+      claimantExited(claim) &&
+      (await releaseClaim(store, input.id, claim, (current) => current.status === "acknowledged"))
+    ) {
+      note = `released by reply: ${claim.by} exited`;
+    }
+  }
+  if (note !== undefined) {
     await writeJsonAtomic(store, files.state, {
       status: "pending",
-      history: [
-        ...state.history,
-        { status: "pending", at: entry.at, by: "human", note: "reopened by reply" },
-      ],
+      history: [...state.history, { status: "pending", at: entry.at, by: "human", note }],
     });
     await touchAnnotation(store, input.id);
   }

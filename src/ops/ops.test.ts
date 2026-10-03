@@ -1,3 +1,5 @@
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { mkdir, mkdtemp, open, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -5,7 +7,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import type { AnnotationDraft } from "../shared/schema.ts";
+import type { AnnotationDraft, ClaimProcess } from "../shared/schema.ts";
 import {
   PkaError,
   createClaim,
@@ -27,6 +29,7 @@ import {
   type Author,
   type WaitOptions,
 } from "./ops.ts";
+import { thisProcess } from "./presence.ts";
 
 const AGENT_A: Author = { from: "agent", by: "agent-a" };
 const AGENT_B: Author = { from: "agent", by: "agent-b" };
@@ -46,6 +49,13 @@ const OPTIONS: WaitOptions = {
   onProgress: undefined,
   skip: new Set(),
 };
+
+async function exitedProcess(): Promise<ClaimProcess> {
+  const child = spawn(process.execPath, ["--eval", ""]);
+  await once(child, "exit");
+  if (child.pid === undefined) throw new Error("node did not start");
+  return { ...thisProcess(), pid: child.pid };
+}
 
 async function openWatchers(): Promise<number> {
   // A closed fs.watch handle leaves the active list once its close callback has run.
@@ -242,6 +252,49 @@ describe("claims", () => {
     );
   });
 
+  it("offer an acknowledged annotation again once its claimant exits, for takeover or a human reply", async () => {
+    const exited = await exitedProcess();
+    const { id } = await create(store, DRAFT);
+    await setStatus(store, { id, status: "acknowledged" }, `mcp:${exited.pid}`, exited);
+    expect((await wait(store, OPTIONS)).annotation?.id).toBe(id);
+    await expect(reply(store, { id, text: "mine" }, AGENT_B)).rejects.toThrow(
+      /whose session has exited/,
+    );
+
+    const results = await Promise.allSettled([
+      setStatus(store, { id, status: "acknowledged" }, "agent-b", thisProcess()),
+      setStatus(store, { id, status: "acknowledged" }, "agent-c", thisProcess()),
+    ]);
+    const won = results.filter((result) => result.status === "fulfilled");
+    expect(won).toHaveLength(1);
+    const winner = won[0]?.value.claimedBy ?? "";
+    expect((await loadAnnotation(store, id)).claim?.by).toBe(winner);
+    expect((await readdir(path.join(store, id))).filter((name) => name.includes("claim"))).toEqual([
+      "claim.json",
+    ]);
+    await setStatus(store, { id, status: "resolved" }, winner);
+
+    const second = await create(store, DRAFT);
+    await setStatus(store, { id: second.id, status: "acknowledged" }, `mcp:${exited.pid}`, exited);
+    await reply(store, { id: second.id, text: "Any news?" }, { from: "human" });
+    const record = await loadAnnotation(store, second.id);
+    expect(record.state.status).toBe("pending");
+    expect(record.claim).toBeUndefined();
+  });
+
+  it("leave a claim from another PID namespace to the age rule", async () => {
+    const exited = await exitedProcess();
+    const foreign = { ...exited, namespace: "linux:other-host:pid:[4026531836]" };
+    const { id } = await create(store, DRAFT);
+    await setStatus(store, { id, status: "acknowledged" }, `mcp:${exited.pid}`, foreign);
+    expect(await wait(store, { ...OPTIONS, timeoutMs: 100 })).toEqual({ timedOut: true });
+    await expect(setStatus(store, { id, status: "acknowledged" }, "agent-b")).rejects.toThrow(
+      `${id} was claimed by mcp:${exited.pid}`,
+    );
+    await reply(store, { id, text: "Any news?" }, { from: "human" });
+    expect((await loadAnnotation(store, id)).state.status).toBe("acknowledged");
+  });
+
   it("keep an acknowledge that a stalled claimant writes after another session found its claim orphaned", async () => {
     const { id } = await create(store, DRAFT);
     const orphan = { by: "agent-a", at: new Date(Date.now() - 120_000).toISOString() };
@@ -253,7 +306,11 @@ describe("claims", () => {
     });
 
     const late = { by: "agent-b", at: new Date().toISOString() };
-    expect(await replaceClaim(store, id, orphan, late)).toEqual({ won: false, claim: orphan });
+    const pending = (current: { status: string }): boolean => current.status === "pending";
+    expect(await replaceClaim(store, id, orphan, late, pending)).toEqual({
+      won: false,
+      claim: orphan,
+    });
     expect((await loadAnnotation(store, id)).claim).toEqual(orphan);
 
     await removeClaim(store, id);

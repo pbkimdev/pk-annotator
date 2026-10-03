@@ -76,7 +76,7 @@ Debug groups Console, Network, and Performance. Settings holds History, English/
 
 ## MCP
 
-`pka-mcp` is a stdio server with tools only. Launch it from `node_modules/.bin` directly; `pnpm exec` adds a second process.
+`pka-mcp` is a stdio server with tools only. Launch it from `node_modules/.bin` directly; `pnpm exec` adds a second process. It finds the store from `--root` or `PKA_ROOT`, then `CLAUDE_PROJECT_DIR`, then the nearest `_interim/annotations` above the working directory, and prints the store it uses to stderr. It starts in a checkout that has no store yet: tool calls report the missing store until the app's Vite dev server creates it, and then work without a restart.
 
 ```jsonc
 // .mcp.json (Claude Code)
@@ -87,6 +87,7 @@ Debug groups Console, Network, and Performance. Settings holds History, English/
 # .codex/config.toml (Codex)
 [mcp_servers.pka]
 command = "node_modules/.bin/pka-mcp"
+tool_timeout_sec = 1830 # above wait_for_annotation's longest timeoutSec, 1800
 ```
 
 ```jsonc
@@ -98,7 +99,9 @@ Pi 1.0.0's bundled MCP documentation and the [upstream tool-exposure reference](
 
 The tools are `list_annotations`, `get_annotation`, `wait_for_annotation`, `set_status`, `reply`, and `get_errors`.
 
-Codex stops a tool call after `tool_timeout_sec`, 300 seconds by default, and progress does not extend it. Raise it in `[mcp_servers.pka]` if agents should wait longer than that for an annotation.
+Codex stops a tool call after `tool_timeout_sec`, 300 seconds by default, and progress does not extend it, so the example raises it above the longest wait.
+
+`set_status acknowledged` claims an annotation for one `pka-mcp` process, which `claim.json` records. When that process has exited, for example after a client reconnect or restart, `wait_for_annotation` offers the annotation again, another session may take it over with `set_status acknowledged`, and a reply from the overlay returns it to pending. A claim made from another PID namespace, such as a container, is judged only by the 60-second rule below, which applies while the annotation is still pending.
 
 ## CLI
 
@@ -113,7 +116,7 @@ pka prune                                                         remove closed 
 pka lab --url URL --flow ID                                       replay a recording against a production build
 ```
 
-Every command takes `--json` and `--root DIR`. `pka status <id> acknowledged` claims an annotation as `$PKA_CLAIMANT` (default `pka-cli`); later status changes, replies, and `lab --attach` must use the same claimant. If a claimant stops before the acknowledge is written, another claimant may take over the claim once it is 60 seconds old and the annotation is still `pending`. `pka lab` needs Playwright; it writes `verdict.json` and exits 3 when the verdict fails a budget or is incomplete. Run `pka --help` for every option.
+Every command takes `--json` and `--root DIR`. `pka status <id> acknowledged` claims an annotation as `$PKA_CLAIMANT` (default `pka-cli`); later status changes, replies, and `lab --attach` must use the same claimant. If a claimant stops before the acknowledge is written, another claimant may take over the claim once it is 60 seconds old and the annotation is still `pending`. A CLI claim names no process, so it is never released because its claimant exited; continue it from another shell with the same `$PKA_CLAIMANT`. `pka lab` needs Playwright; it writes `verdict.json` and exits 3 when the verdict fails a budget or is incomplete. Run `pka --help` for every option.
 
 ## Resource budget
 

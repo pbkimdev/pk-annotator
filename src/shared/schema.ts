@@ -94,9 +94,20 @@ export const State = z.strictObject({
   history: z.array(StatusEvent).min(1),
 });
 
+/**
+ * The claiming process. A pid means something only inside its PID namespace, so `namespace`
+ * names that namespace on its host; `startTime` (Linux) tells a reused pid apart.
+ */
+export const ClaimProcess = z.strictObject({
+  pid: z.number().int().positive(),
+  namespace: z.string().min(1).max(200),
+  startTime: z.string().regex(/^\d+$/).optional(),
+});
+
 export const Claim = z.strictObject({
   by: z.string().min(1),
   at: Timestamp,
+  process: ClaimProcess.optional(),
 });
 
 export const ThreadEntry = z.strictObject({
@@ -140,6 +151,7 @@ export type AnnotationDraft = z.infer<typeof AnnotationDraft>;
 export type Status = z.infer<typeof Status>;
 export type StatusEvent = z.infer<typeof StatusEvent>;
 export type State = z.infer<typeof State>;
+export type ClaimProcess = z.infer<typeof ClaimProcess>;
 export type Claim = z.infer<typeof Claim>;
 export type ThreadEntry = z.infer<typeof ThreadEntry>;
 export type ErrorGroupStatus = z.infer<typeof ErrorGroupStatus>;

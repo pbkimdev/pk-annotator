@@ -93,7 +93,13 @@ export async function findStore(sources: RootSources): Promise<string> {
     if (store !== undefined) return store;
     if (path.dirname(dir) === dir) break;
   }
-  const checked = [sources.claudeProjectDir, sources.cwd].filter((dir) => dir !== undefined);
+  const checked = [
+    ...new Set(
+      [sources.claudeProjectDir, sources.cwd]
+        .filter((dir) => dir !== undefined)
+        .map((dir) => path.resolve(dir)),
+    ),
+  ];
   throw new PkaError(
     `No ${STORE_SUBDIR} found in ${checked.join(" or ")} or any parent directory. ` +
       "Start the app's Vite dev server with the pk-annotator plugin once to create it, or pass --root <project> (or PKA_ROOT).",
@@ -322,18 +328,18 @@ export async function createClaim(
 }
 
 /**
- * Replaces `orphan` with `claim` while the annotation is still pending. One
- * caller at a time holds the takeover lock for this orphan, and it removes
- * claim.json only after rereading state.json and claim.json, so a newer claim
- * or an acknowledged annotation's claim is never removed. A caller that finds
- * the lock taken loses.
+ * Runs `act` while this caller alone holds the takeover lock for `orphan` and a reread of
+ * state.json and claim.json shows the same claim, still orphaned. A caller that finds the
+ * lock taken, or the claim changed, gets undefined, so a newer claim or one whose annotation
+ * moved on is never removed.
  */
-export async function replaceClaim(
+async function takeOver<T>(
   store: string,
   id: string,
   orphan: Claim,
-  claim: Claim,
-): Promise<{ won: boolean; claim: Claim }> {
+  stillOrphaned: (state: State) => boolean,
+  act: (files: AnnotationFiles) => Promise<T>,
+): Promise<T | undefined> {
   const files = await requireAnnotation(store, id);
   const key = createHash("sha256").update(`${orphan.by}\n${orphan.at}`).digest("hex").slice(0, 16);
   const lock = `${files.claim}.${key}.takeover`;
@@ -341,19 +347,47 @@ export async function replaceClaim(
     await writeExclusive(lock, "");
   } catch (thrown) {
     if (!isErrno(thrown, "EEXIST")) throw thrown;
-    return { won: false, claim: (await readClaim(store, id)) ?? orphan };
+    return undefined;
   }
   try {
     const state = await readJson(store, files.state, State);
     const current = await readClaim(store, id);
-    if (state.status !== "pending" || current?.by !== orphan.by || current.at !== orphan.at) {
-      return { won: false, claim: current ?? orphan };
+    if (!stillOrphaned(state) || current?.by !== orphan.by || current.at !== orphan.at) {
+      return undefined;
     }
-    await unlink(files.claim);
-    return await createClaim(store, id, claim);
+    return await act(files);
   } finally {
     await unlink(lock);
   }
+}
+
+/** Replaces `orphan` with `claim` through the takeover lock; see takeOver. */
+export async function replaceClaim(
+  store: string,
+  id: string,
+  orphan: Claim,
+  claim: Claim,
+  stillOrphaned: (state: State) => boolean,
+): Promise<{ won: boolean; claim: Claim }> {
+  const replaced = await takeOver(store, id, orphan, stillOrphaned, async (files) => {
+    await unlink(files.claim);
+    return createClaim(store, id, claim);
+  });
+  return replaced ?? { won: false, claim: (await readClaim(store, id)) ?? orphan };
+}
+
+/** Removes `orphan` through the takeover lock; false when another caller changed it first. */
+export async function releaseClaim(
+  store: string,
+  id: string,
+  orphan: Claim,
+  stillOrphaned: (state: State) => boolean,
+): Promise<boolean> {
+  const released = await takeOver(store, id, orphan, stillOrphaned, async (files) => {
+    await unlink(files.claim);
+    return true;
+  });
+  return released ?? false;
 }
 
 /** Puts `claim` back over the caller's own claim with one rename, so claim.json never goes missing. */
