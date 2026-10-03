@@ -147,13 +147,18 @@ function handleApi(request: IncomingMessage, response: ServerResponse, next: Con
 }
 
 // The narrowest image policy the overlay works under: screenshots need data: (see
-// captureCanvas in src/overlay/send.ts), pasted images need blob:.
+// captureCanvas in src/overlay/send.ts), pasted images need blob:. Trusted Types is enforced
+// so an HTML string sink in the overlay fails the smoke; src/trusted-types.ts registers the
+// default policy, which accepts only scripts.
 const csp: Plugin = {
   name: "pk-annotator-fixture:csp",
   apply: "serve",
   configureServer(server) {
     server.middlewares.use((_request, response, next) => {
-      response.setHeader("content-security-policy", "img-src 'self' blob: data:");
+      response.setHeader(
+        "content-security-policy",
+        "img-src 'self' blob: data:; require-trusted-types-for 'script'; trusted-types default",
+      );
       next();
     });
   },
