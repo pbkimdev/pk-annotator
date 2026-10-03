@@ -35,11 +35,10 @@ import {
   readClaim,
   readJson,
   readJsonLines,
-  removeClaim,
-  replaceClaim,
   requireAnnotation,
-  restoreClaim,
+  withAnnotationLock,
   writeAnnotationDir,
+  writeClaim,
   writeJsonAtomic,
   type StagedFiles,
 } from "../store/store.ts";
@@ -357,82 +356,78 @@ function claimedError(id: string, claim: Claim): PkaError {
 }
 
 // Agent writes on an acknowledged annotation belong to the session that claimed it.
-async function requireClaimant(store: string, id: string, by: string): Promise<void> {
-  const claim = await readClaim(store, id);
+function requireClaimant(id: string, claim: Claim | undefined, by: string): void {
   if (claim !== undefined && claim.by !== by) throw claimedError(id, claim);
 }
 
-/** `owner` identifies a long-lived claimant's process, so its claim can be taken over once it exits. */
+/**
+ * `owner` identifies a long-lived claimant's process, so its claim can be taken over once it
+ * exits. The decision and the write happen under the annotation lock, so a competing change
+ * from another process is either seen here or sees this one.
+ */
 export async function setStatus(
   store: string,
   input: SetStatusInput,
   by: string,
   owner?: ClaimProcess,
 ): Promise<SetStatusResult> {
-  const files = await requireAnnotation(store, input.id);
-  let state = await readJson(store, files.state, State);
-  const at = new Date().toISOString();
-  let claimedBy: string | undefined;
-  if (isClosed(state.status)) {
-    if (state.status === input.status) {
-      return { id: input.id, status: state.status, changed: false };
+  return withAnnotationLock(store, input.id, async (files) => {
+    const state = await readJson(store, files.state, State);
+    if (isClosed(state.status)) {
+      if (state.status === input.status) {
+        return { id: input.id, status: state.status, changed: false };
+      }
+      throw closedError(input.id, state.status);
     }
-    throw closedError(input.id, state.status);
-  }
-  if (input.status === "acknowledged") {
-    const mine: Claim = owner === undefined ? { by, at } : { by, at, process: owner };
-    let claim = await createClaim(store, input.id, mine);
-    let replaced: Claim | undefined;
-    if (!claim.won && claim.claim.by !== by && isOrphaned(state, claim.claim, Date.parse(at))) {
-      const orphan = claim.claim;
-      replaced = orphan;
-      claim = await replaceClaim(store, input.id, orphan, mine, (current) =>
-        isOrphaned(current, orphan, Date.now()),
-      );
-    }
-    claimedBy = claim.claim.by;
-    if (claim.won) {
-      // A claimant whose claim was replaced, or removed during a replacement, may have
-      // written its acknowledge since the first read; one whose process exited cannot.
-      state = await readJson(store, files.state, State);
-      if (replaced === undefined) {
+    let claim = await readClaim(store, input.id);
+    const at = new Date().toISOString();
+    if (input.status === "acknowledged") {
+      const mine: Claim = owner === undefined ? { by, at } : { by, at, process: owner };
+      let tookOver = false;
+      if (claim === undefined) {
         if (state.status !== "pending") {
-          await removeClaim(store, input.id);
           throw new PkaError(
             `Annotation ${input.id} is ${state.status}. Pick another pending annotation.`,
           );
         }
-      } else if (!isOrphaned(state, replaced, Date.now())) {
-        await restoreClaim(store, input.id, replaced);
-        throw claimedError(input.id, replaced);
+        claim = (await createClaim(store, input.id, mine)).claim;
+      } else if (claim.by !== by && isOrphaned(state, claim, Date.parse(at))) {
+        await writeClaim(store, input.id, mine);
+        claim = mine;
+        tookOver = true;
+      }
+      requireClaimant(input.id, claim, by);
+      // Same claimant: finish an acknowledge whose state write did not happen.
+      if (state.status !== "pending" && !tookOver) {
+        return { id: input.id, status: state.status, changed: false, claimedBy: by };
       }
     } else {
-      if (claim.claim.by !== by) throw claimedError(input.id, claim.claim);
-      // Same claimant: finish an acknowledge whose state write did not happen.
-      if (state.status !== "pending") {
-        return { id: input.id, status: state.status, changed: false, claimedBy };
-      }
+      requireClaimant(input.id, claim, by);
     }
-  } else {
-    await requireClaimant(store, input.id, by);
-  }
-  const event: StatusEvent = { status: input.status, at, by };
-  if (input.note !== undefined) event.note = input.note;
-  await writeJsonAtomic(store, files.state, {
-    status: input.status,
-    history: [...state.history, event],
+    const event: StatusEvent = { status: input.status, at, by };
+    if (input.note !== undefined) event.note = input.note;
+    await writeJsonAtomic(store, files.state, {
+      status: input.status,
+      history: [...state.history, event],
+    });
+    return {
+      id: input.id,
+      status: input.status,
+      changed: true,
+      claimedBy: input.status === "acknowledged" ? by : undefined,
+    };
   });
-  return { id: input.id, status: input.status, changed: true, claimedBy };
 }
 
 export async function reply(store: string, input: ReplyInput, by: string): Promise<ReplyResult> {
-  const files = await requireAnnotation(store, input.id);
-  const state = await readJson(store, files.state, State);
-  if (isClosed(state.status)) throw closedError(input.id, state.status);
-  await requireClaimant(store, input.id, by);
-  const entry: ThreadEntry = { at: new Date().toISOString(), from: "agent", text: input.text };
-  await appendJsonLine(store, files.thread, entry);
-  return { id: input.id, entry };
+  return withAnnotationLock(store, input.id, async (files) => {
+    const state = await readJson(store, files.state, State);
+    if (isClosed(state.status)) throw closedError(input.id, state.status);
+    requireClaimant(input.id, await readClaim(store, input.id), by);
+    const entry: ThreadEntry = { at: new Date().toISOString(), from: "agent", text: input.text };
+    await appendJsonLine(store, files.thread, entry);
+    return { id: input.id, entry };
+  });
 }
 
 async function readErrors(store: string): Promise<LiveErrorsSnapshot | undefined> {
@@ -552,11 +547,6 @@ export async function attach(
   files: AttachFile[],
   by: string,
 ): Promise<{ id: string; attachments: Attachment[] }> {
-  const paths = await requireAnnotation(store, id);
-  const state = await readJson(store, paths.state, State);
-  if (isClosed(state.status)) throw closedError(id, state.status);
-  await requireClaimant(store, id, by);
-  const annotation = await readJson(store, paths.annotation, Annotation);
   const added = files.map((file) => {
     const parsed = Attachment.safeParse({
       kind: file.kind,
@@ -568,28 +558,36 @@ export async function attach(
     }
     return parsed.data;
   });
-  checkCaptureFiles(
-    { ...annotation, elements: [], attachments: added },
-    added.map((attachment) => attachment.path),
-  );
-  const listed = new Set(annotation.attachments.map((attachment) => attachment.path));
-  const relisted = added.filter((attachment) => listed.has(attachment.path));
-  if (relisted.length > 0) {
-    throw new PkaError(`Annotation ${id} already lists ${relisted.map((a) => a.path).join(", ")}`);
-  }
-  const placed = await placeNewFiles(
-    store,
-    paths.dir,
-    files.map((file) => ({ path: file.path, data: file.data })),
-  );
-  const next: Annotation = { ...annotation, attachments: [...annotation.attachments, ...added] };
-  try {
-    await writeJsonAtomic(store, paths.annotation, next);
-  } catch (thrown) {
-    await Promise.all(placed.map((file) => rm(file, { force: true })));
-    throw thrown;
-  }
-  return { id, attachments: next.attachments };
+  return withAnnotationLock(store, id, async (paths) => {
+    const state = await readJson(store, paths.state, State);
+    if (isClosed(state.status)) throw closedError(id, state.status);
+    requireClaimant(id, await readClaim(store, id), by);
+    const annotation = await readJson(store, paths.annotation, Annotation);
+    checkCaptureFiles(
+      { ...annotation, elements: [], attachments: added },
+      added.map((attachment) => attachment.path),
+    );
+    const listed = new Set(annotation.attachments.map((attachment) => attachment.path));
+    const relisted = added.filter((attachment) => listed.has(attachment.path));
+    if (relisted.length > 0) {
+      throw new PkaError(
+        `Annotation ${id} already lists ${relisted.map((a) => a.path).join(", ")}`,
+      );
+    }
+    const placed = await placeNewFiles(
+      store,
+      paths.dir,
+      files.map((file) => ({ path: file.path, data: file.data })),
+    );
+    const next: Annotation = { ...annotation, attachments: [...annotation.attachments, ...added] };
+    try {
+      await writeJsonAtomic(store, paths.annotation, next);
+    } catch (thrown) {
+      await Promise.all(placed.map((file) => rm(file, { force: true })));
+      throw thrown;
+    }
+    return { id, attachments: next.attachments };
+  });
 }
 
 export interface PruneResult {

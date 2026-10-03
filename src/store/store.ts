@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { constants, readFileSync, readlinkSync } from "node:fs";
 import {
   link,
@@ -14,16 +14,17 @@ import {
 } from "node:fs/promises";
 import { hostname } from "node:os";
 import path from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { z } from "zod";
 
 import type { AgentPresence } from "../shared/agent.ts";
 import {
   Claim,
+  ClaimProcess,
   ID_PATTERN,
   State,
   type Annotation,
-  type ClaimProcess,
   type LiveErrorsSnapshot,
   type ThreadEntry,
 } from "../shared/schema.ts";
@@ -391,58 +392,10 @@ export async function createClaim(
   }
 }
 
-/**
- * Runs `act` while this caller alone holds the takeover lock for `orphan` and a reread of
- * state.json and claim.json shows the same claim, still orphaned. A caller that finds the
- * lock taken, or the claim changed, gets undefined, so a newer claim or one whose annotation
- * moved on is never removed.
- */
-async function takeOver<T>(
-  store: string,
-  id: string,
-  orphan: Claim,
-  stillOrphaned: (state: State) => boolean,
-  act: (files: AnnotationFiles) => Promise<T>,
-): Promise<T | undefined> {
+/** Replaces claim.json with `claim` in one rename, so it never goes missing. Hold the annotation lock. */
+export async function writeClaim(store: string, id: string, claim: Claim): Promise<void> {
   const files = await requireAnnotation(store, id);
-  const key = createHash("sha256").update(`${orphan.by}\n${orphan.at}`).digest("hex").slice(0, 16);
-  const lock = `${files.claim}.${key}.takeover`;
-  try {
-    await writeExclusive(lock, "");
-  } catch (thrown) {
-    if (!isErrno(thrown, "EEXIST")) throw thrown;
-    return undefined;
-  }
-  try {
-    const state = await readJson(store, files.state, State);
-    const current = await readClaim(store, id);
-    if (!stillOrphaned(state) || current?.by !== orphan.by || current.at !== orphan.at) {
-      return undefined;
-    }
-    return await act(files);
-  } finally {
-    await unlink(lock);
-  }
-}
-
-/** Replaces `orphan` with `claim` through the takeover lock; see takeOver. */
-export async function replaceClaim(
-  store: string,
-  id: string,
-  orphan: Claim,
-  claim: Claim,
-  stillOrphaned: (state: State) => boolean,
-): Promise<{ won: boolean; claim: Claim }> {
-  const replaced = await takeOver(store, id, orphan, stillOrphaned, async (files) => {
-    await unlink(files.claim);
-    return createClaim(store, id, claim);
-  });
-  return replaced ?? { won: false, claim: (await readClaim(store, id)) ?? orphan };
-}
-
-/** Puts `claim` back over the caller's own claim with one rename, so claim.json never goes missing. */
-export async function restoreClaim(store: string, id: string, claim: Claim): Promise<void> {
-  const files = await requireAnnotation(store, id);
+  await refuseSymlinks(store, files.claim);
   const temporary = temporaryName(files.claim);
   try {
     await writeExclusive(temporary, `${JSON.stringify(claim)}\n`);
@@ -451,6 +404,122 @@ export async function restoreClaim(store: string, id: string, claim: Claim): Pro
     await rm(temporary, { force: true });
     throw thrown;
   }
+}
+
+/** How long a caller waits for a lock whose owner is still running before it reports it. */
+const LOCK_WAIT_MS = 10_000;
+
+const LockOwner = z.strictObject({
+  token: z.string().regex(/^[0-9a-f]{16}$/),
+  process: ClaimProcess,
+});
+type LockOwner = z.infer<typeof LockOwner>;
+
+async function readLockOwner(store: string, lock: string): Promise<LockOwner | undefined> {
+  try {
+    return await readJson(store, lock, LockOwner);
+  } catch (thrown) {
+    if (isErrno(thrown, "ENOENT")) return undefined;
+    throw thrown;
+  }
+}
+
+/**
+ * Takes the lock file `lock` and returns its token. The owner record is complete before the
+ * link makes it visible. A lock whose owner has exited is broken; a lock whose owner runs, or
+ * cannot be judged from this PID namespace, is waited for until `deadline` and then reported,
+ * never removed.
+ */
+async function acquireLock(store: string, lock: string, deadline: number): Promise<string> {
+  const token = randomBytes(8).toString("hex");
+  const temporary = temporaryName(lock);
+  await writeExclusive(temporary, `${JSON.stringify({ token, process: thisProcess() })}\n`);
+  try {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        await link(temporary, lock);
+        return token;
+      } catch (thrown) {
+        if (!isErrno(thrown, "EEXIST")) throw thrown;
+      }
+      const owner = await readLockOwner(store, lock);
+      if (owner === undefined) continue;
+      if (processExited(owner.process)) {
+        await breakLock(store, lock, owner, deadline);
+        continue;
+      }
+      if (Date.now() >= deadline) {
+        throw new PkaError(
+          `${lock} is held by process ${owner.process.pid} (${owner.process.namespace}); retry later. ` +
+            "A process in another PID namespace cannot be checked from here: remove the file only after that process has exited.",
+        );
+      }
+      await sleep(Math.min(100, 2 ** attempt) * (0.5 + Math.random()));
+    }
+  } finally {
+    await unlink(temporary);
+  }
+}
+
+/**
+ * Removes `lock` if it still names the exited owner `dead`. Breakers of one owner take turns
+ * through a lock of their own, so while one rereads and removes `lock`, no other caller can
+ * remove it: a breaker that read `dead` long ago finds the newer lock and leaves it.
+ */
+async function breakLock(
+  store: string,
+  lock: string,
+  dead: LockOwner,
+  deadline: number,
+): Promise<void> {
+  await withLock(store, `${lock}.${dead.token}.break`, deadline, async () => {
+    if ((await readLockOwner(store, lock))?.token === dead.token) await unlink(lock);
+  });
+}
+
+async function withLock<T>(
+  store: string,
+  lock: string,
+  deadline: number,
+  act: () => Promise<T>,
+): Promise<T> {
+  const token = await acquireLock(store, lock, deadline);
+  let result: T;
+  try {
+    result = await act();
+  } catch (thrown) {
+    await releaseLock(store, lock, token);
+    throw thrown;
+  }
+  await releaseLock(store, lock, token);
+  return result;
+}
+
+async function releaseLock(store: string, lock: string, token: string): Promise<void> {
+  const owner = await readLockOwner(store, lock);
+  // Absent when prune removed a closed annotation's directory meanwhile.
+  if (owner === undefined) return;
+  if (owner.token !== token) {
+    throw new Error(`${lock} was replaced by process ${owner.process.pid} while held`);
+  }
+  await rm(lock, { force: true });
+}
+
+/**
+ * Runs `act` while this caller alone holds the annotation's state.lock, so status, claim,
+ * reply, and attachment writes from separate processes never interleave. Read the state that
+ * `act` decides on inside it. A crashed holder's lock is removed only once its process is
+ * known to have exited.
+ */
+export async function withAnnotationLock<T>(
+  store: string,
+  id: string,
+  act: (files: AnnotationFiles) => Promise<T>,
+): Promise<T> {
+  const files = await requireAnnotation(store, id);
+  return withLock(store, resolveInside(files.dir, "state.lock"), Date.now() + LOCK_WAIT_MS, () =>
+    act(files),
+  );
 }
 
 /** Removes the claim so an agent can take the annotation again. */
