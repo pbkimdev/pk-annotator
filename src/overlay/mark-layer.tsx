@@ -7,7 +7,7 @@ import type { Box } from "../shared/schema.ts";
 import { NOTE, useOverlay, type UiState } from "./context.tsx";
 import { HOST_TAG } from "./launcher.ts";
 import { addAttachment, attachments, type ComposerAttachment } from "./registry.ts";
-import { captureCanvas } from "./send.ts";
+import { captureCanvas, pageScale } from "./send.ts";
 import { useStore } from "./store.ts";
 import { Button } from "./ui/button.tsx";
 
@@ -37,12 +37,14 @@ async function screenshot(region: Box | null, stroke?: Stroke): Promise<Composer
     reconcile: true,
   });
   const page = await captureCanvas(result);
-  const scale = page.width / viewport.w;
+  const scale = pageScale(page);
   const context = page.getContext("2d");
   if (context === null) throw new Error("No canvas context for screenshot");
   if (stroke !== undefined) {
     context.save();
-    context.scale(scale, scale);
+    // snapdom's toCanvas leaves scale(devicePixelRatio) on this context, so a relative
+    // scale() would place the stroke at devicePixelRatio² times its points.
+    context.setTransform(scale, 0, 0, scale, 0, 0);
     context.strokeStyle = stroke.color;
     context.lineWidth = 3;
     context.lineJoin = "round";

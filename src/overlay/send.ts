@@ -77,7 +77,7 @@ export async function locateElements(elements: readonly Element[]): Promise<Loca
   );
 }
 
-function toBlob(canvas: HTMLCanvasElement): Promise<Blob> {
+export function toBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob(
       (blob) => (blob === null ? reject(new Error("Canvas could not encode webp")) : resolve(blob)),
@@ -87,12 +87,20 @@ function toBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   });
 }
 
+/**
+ * Canvas pixels per CSS pixel of a snapdom viewport capture. snapdom clips the viewport to
+ * the root's client box, which excludes a classic scrollbar that innerWidth includes.
+ */
+export function pageScale(page: HTMLCanvasElement): number {
+  return page.width / document.documentElement.clientWidth;
+}
+
 async function crop(page: HTMLCanvasElement, box: Box): Promise<Blob | undefined> {
-  const scale = page.width / window.innerWidth;
+  const scale = pageScale(page);
   const left = Math.max(0, box.x - CROP_PADDING);
   const top = Math.max(0, box.y - CROP_PADDING);
-  const right = Math.min(window.innerWidth, box.x + box.w + CROP_PADDING);
-  const bottom = Math.min(window.innerHeight, box.y + box.h + CROP_PADDING);
+  const right = Math.min(document.documentElement.clientWidth, box.x + box.w + CROP_PADDING);
+  const bottom = Math.min(document.documentElement.clientHeight, box.y + box.h + CROP_PADDING);
   if (right - left < 1 || bottom - top < 1) return undefined;
   const canvas = document.createElement("canvas");
   canvas.width = Math.round((right - left) * scale);
