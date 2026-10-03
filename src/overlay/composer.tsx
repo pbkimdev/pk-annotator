@@ -11,6 +11,7 @@ import {
   type UiState,
 } from "./context.tsx";
 import { AgentIcon } from "./agent-icon.tsx";
+import { copyLater } from "./clipboard.ts";
 import { isAgentConnected } from "./agent-presence.ts";
 import { annotationBlock } from "./markdown.ts";
 import { useText } from "./language.ts";
@@ -126,21 +127,6 @@ function batchText(
   return tidy([text, ...sections.values()].join("\n\n"));
 }
 
-/**
- * Writes `text` to the clipboard once it resolves. The write starts while the Send click
- * or key press still counts as user activation, which Safari and Firefox require; the
- * ClipboardItem holds the pending text until the stored annotation's directory is known.
- */
-function copyWhenSent(text: Promise<string>): Promise<void> {
-  if (!("ClipboardItem" in globalThis))
-    return text.then((value) => navigator.clipboard.writeText(value));
-  return navigator.clipboard.write([
-    new ClipboardItem({
-      "text/plain": text.then((value) => new Blob([value], { type: "text/plain" })),
-    }),
-  ]);
-}
-
 function canSubmit(state: UiState, batch: boolean): boolean {
   if (state.busy || state.recording) return false;
   if (batch)
@@ -245,7 +231,7 @@ export function Composer({ batch = false }: { batch?: boolean }) {
       // Without an agent the annotation also goes to the clipboard, for pasting into one.
       const copied = isAgentConnected()
         ? null
-        : copyWhenSent(
+        : copyLater(
             Promise.all([locateElements(elements), sending]).then(
               ([located, sent]) =>
                 `${annotationBlock(

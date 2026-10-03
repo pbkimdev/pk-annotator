@@ -200,10 +200,20 @@ test(
     // pointer leaving the window closes it.
     await hub.click();
     await page.getByRole("menuitem", { name: "Connect agent", exact: true }).click();
-    assert.match(
-      await page.evaluate(() => navigator.clipboard.readText()),
-      /node_modules\/\.bin\/pka-mcp[\s\S]*wait_for_annotation/,
-    );
+    // The prompt names this page and its store, and launches this build for that store.
+    await page.locator(".pka-readout").filter({ hasText: "Copied to clipboard" }).waitFor();
+    const setupPrompt = await page.evaluate(() => navigator.clipboard.readText());
+    for (const expected of [
+      `from ${page.url()}.`,
+      `stores them in ${workspace}/_interim/annotations.`,
+      `claude mcp add pka --scope local -- node ${workspace}/dist/pka-mcp.mjs --root ${workspace}`,
+      "call wait_for_annotation",
+    ]) {
+      assert.ok(
+        setupPrompt.includes(expected),
+        `The setup prompt lacks: ${expected}\n${setupPrompt}`,
+      );
+    }
     assert.equal(await hub.getAttribute("aria-expanded"), "true");
     await page.evaluate(() =>
       document.body.dispatchEvent(

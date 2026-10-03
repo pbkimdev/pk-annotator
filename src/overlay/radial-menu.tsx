@@ -29,10 +29,14 @@ import {
   type KeyboardEvent,
 } from "react";
 import { flushSync } from "react-dom";
+import type { ViteHotContext } from "vite/types/hot.d.ts";
 
 import type { PickMode } from "../select/pick.ts";
 import { AgentIcon } from "./agent-icon.tsx";
 import { isAgentConnected, subscribeAgentConnected } from "./agent-presence.ts";
+import type { SetupInfoMessage } from "../shared/channel.ts";
+import { listen, send } from "./channel-client.ts";
+import { copyLater } from "./clipboard.ts";
 import { COMPOSE, THREAD, useOverlay, type UiState } from "./context.tsx";
 import { useText } from "./language.ts";
 import { HUB_INSET, HUB_SIZE, SHORTCUT_LABEL, type Corner } from "./launcher.ts";
@@ -56,11 +60,7 @@ const CONNECT_REST = { radius: HINT_RADIUS, angle: 45 };
 const CONNECT_ASIDE = { radius: 99, angle: 21 };
 // Crossing from one item to the next clears the readout briefly; the item waits it out.
 const CONNECT_RETURN_MS = 140;
-const CONNECT_PROMPT = `Connect this session to the pk-annotator MCP server so you receive the annotations I send from the page.
-Add a stdio server named "pka" with the command node_modules/.bin/pka-mcp, run from the workspace root where @srv/pk-annotator is installed:
-- Claude Code, .mcp.json: { "mcpServers": { "pka": { "command": "node_modules/.bin/pka-mcp" } } }
-- Codex, .codex/config.toml: [mcp_servers.pka] command = "node_modules/.bin/pka-mcp" and tool_timeout_sec = 1830
-Tell me if the session must restart to load it. Once its tools are available, call wait_for_annotation.`;
+const SETUP_TIMEOUT_MS = 5000;
 /** Each corner's menu sweeps counterclockwise through the quadrant that faces the page. */
 const START = {
   "bottom-left": 0,
@@ -136,6 +136,51 @@ function branchAngles(start: number, parent: number, count: number): number[] {
     else first = start + SPAN - span;
   }
   return Array.from({ length: count }, (_, index) => first + index * step);
+}
+
+/** Asks the dev server where its store is and how to launch pka-mcp for it. */
+async function requestSetup(hot: ViteHotContext): Promise<SetupInfoMessage> {
+  const { CHANNEL, SetupInfoMessage } = await import("../shared/channel.ts");
+  const requestId = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      stop();
+      reject(new Error("No reply from the dev server within 5 s for the MCP setup"));
+    }, SETUP_TIMEOUT_MS);
+    const stop = listen(hot, CHANNEL.setupInfo, SetupInfoMessage, (message) => {
+      if (message.requestId !== requestId) return;
+      window.clearTimeout(timer);
+      stop();
+      resolve(message);
+    });
+    send(hot, CHANNEL.setup, { requestId });
+  });
+}
+
+function shellWord(word: string): string {
+  return /^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replaceAll("'", `'\\''`)}'`;
+}
+
+/** The prompt an agent session follows to install pka-mcp for this page's store and wait. */
+function connectPrompt(page: string, setup: SetupInfoMessage): string {
+  const command = setup.command ?? [`${setup.root}/node_modules/.bin/pka-mcp`];
+  const launch = [...command, "--root", setup.root].map(shellWord).join(" ");
+  return [
+    `Connect this session to the pk-annotator MCP server so you receive the annotations I send from ${page}.`,
+    `That page's dev server stores them in ${setup.store}.`,
+    ...(setup.command === null
+      ? [
+          `pka-mcp is not installed in ${setup.root}: add @srv/pk-annotator as a dev dependency there first.`,
+        ]
+      : []),
+    "If this session lacks the pka tools (wait_for_annotation, list_annotations), install the server yourself, replacing any pka server registered with another --root:",
+    `- Claude Code: claude mcp add pka --scope local -- ${launch}`,
+    `- Codex: codex mcp add pka -- ${launch}, then set tool_timeout_sec = 1830 under [mcp_servers.pka] in ~/.codex/config.toml`,
+    "A running session loads a new server only after a reconnect, so then ask me to run /mcp and reconnect pka in Claude Code, or to restart Codex.",
+    "Once the tools are available, call wait_for_annotation.",
+  ].join("\n");
 }
 
 function readTools(): Tools {
@@ -432,7 +477,7 @@ function moveFocus(siblings: HTMLElement[], current: HTMLElement, key: string): 
  */
 export function RadialMenu() {
   const t = useText();
-  const { ui, hub } = useOverlay();
+  const { ui, hub, hot } = useOverlay();
   const menu = useStore(ui, (state) => state.menu);
   const corner = useStore(ui, (state) => state.corner);
   const busy = useStore(ui, (state) => state.busy);
@@ -527,7 +572,7 @@ export function RadialMenu() {
   };
   const copySetup = async () => {
     try {
-      await navigator.clipboard.writeText(CONNECT_PROMPT);
+      await copyLater(requestSetup(hot).then((setup) => connectPrompt(location.href, setup)));
       setCopied("ok");
       setHint({ id: "connect", label: t("Copied to clipboard") });
     } catch (cause) {

@@ -29,6 +29,11 @@ import { AnnotationDraft, ErrorGroup, Id, RelativePath, State, ThreadEntry } fro
 //   plugin   pka:agent     {agent, cause} the most recently connected live pka-mcp client, or
 //                          null: the reply to pka:presence while one is connected, and a
 //                          broadcast whenever it changes
+//
+// Agent setup:
+//   overlay  pka:setup       {requestId} when Connect agent is chosen
+//   plugin   pka:setup-info  {requestId, root, store, command} pka-mcp's --root, the store,
+//                            and the command that launches the installed pka-mcp, or null
 export const CHANNEL = {
   create: "pka:create",
   file: "pka:file",
@@ -44,6 +49,8 @@ export const CHANNEL = {
   symbolicated: "pka:symbolicated",
   presence: "pka:presence",
   agent: "pka:agent",
+  setup: "pka:setup",
+  setupInfo: "pka:setup-info",
 } as const;
 
 export const MAX_CHUNK_BYTES = 512 * 1024;
@@ -90,6 +97,8 @@ export const SymbolicateMessage = z.strictObject({
 });
 
 export const PresenceMessage = z.strictObject({});
+
+export const SetupMessage = z.strictObject({ requestId: Id });
 
 // plugin -> overlay
 
@@ -140,6 +149,13 @@ export const SyncedMessage = z.strictObject({
   ),
 });
 
+export const SetupInfoMessage = z.strictObject({
+  requestId: Id,
+  root: z.string().min(1),
+  store: z.string().min(1),
+  command: z.array(z.string().min(1)).min(1).nullable(),
+});
+
 export const AgentMessage = z.strictObject({
   agent: AgentPresence.pick({ name: true, version: true, connectedAt: true }).nullable(),
   // "presence" answers a page that just mounted; "change" is a session connecting or leaving.
@@ -160,6 +176,8 @@ export type SymbolicateMessage = z.infer<typeof SymbolicateMessage>;
 export type SymbolicatedMessage = z.infer<typeof SymbolicatedMessage>;
 export type PresenceMessage = z.infer<typeof PresenceMessage>;
 export type AgentMessage = z.infer<typeof AgentMessage>;
+export type SetupMessage = z.infer<typeof SetupMessage>;
+export type SetupInfoMessage = z.infer<typeof SetupInfoMessage>;
 
 export interface ChannelEvents {
   [CHANNEL.create]: CreateMessage;
@@ -176,4 +194,6 @@ export interface ChannelEvents {
   [CHANNEL.symbolicated]: SymbolicatedMessage;
   [CHANNEL.presence]: PresenceMessage;
   [CHANNEL.agent]: AgentMessage;
+  [CHANNEL.setup]: SetupMessage;
+  [CHANNEL.setupInfo]: SetupInfoMessage;
 }

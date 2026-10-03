@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { constants, watch, type FSWatcher } from "node:fs";
 import { lstat, mkdir, open, readFile, readdir, realpath, rm, stat } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import {
@@ -23,10 +24,12 @@ import {
   ErrorsMessage,
   FileChunkMessage,
   PresenceMessage,
+  SetupMessage,
   SymbolicateMessage,
   SyncMessage,
   type AgentMessage,
   type ErrorsAckMessage,
+  type SetupInfoMessage,
   type SymbolicatedMessage,
   type SyncedMessage,
 } from "../shared/channel.ts";
@@ -156,6 +159,29 @@ async function headSha(cwd: string): Promise<string | null> {
     }
     throw new Error(`git rev-parse HEAD failed in ${cwd}: ${describeError(cause)}`, { cause });
   }
+}
+
+/**
+ * The command that launches pka-mcp: the workspace's bin, which survives version bumps, else
+ * this package's own build, beside the built plugin or, for this repository's fixture, which
+ * loads the plugin from src/vite, in dist. Null when none exists.
+ */
+async function mcpCommand(workspaceRoot: string): Promise<string[] | null> {
+  const bin = path.join(workspaceRoot, "node_modules/.bin/pka-mcp");
+  const builds = ["./pka-mcp.mjs", "../../dist/pka-mcp.mjs"].map((relative) =>
+    fileURLToPath(new URL(relative, import.meta.url)),
+  );
+  for (const [file, command] of [
+    [bin, [normalizePath(bin)]],
+    ...builds.map((build) => [build, ["node", normalizePath(build)]] as const),
+  ] as const) {
+    const found = await stat(file).catch((cause: unknown) => {
+      if (isErrno(cause, "ENOENT")) return undefined;
+      throw cause;
+    });
+    if (found !== undefined) return [...command];
+  }
+  return null;
 }
 
 /** Opens the store, serves the overlay's channel events, and pushes store changes. Returns the closer. */
@@ -452,6 +478,16 @@ async function serve(
     );
     const reply: SymbolicatedMessage = { requestId: message.requestId, stacks };
     client.send(CHANNEL.symbolicated, reply);
+  });
+
+  listen(CHANNEL.setup, SetupMessage, async (message, client) => {
+    const reply: SetupInfoMessage = {
+      requestId: message.requestId,
+      root: projectRoot,
+      store: normalizePath(store),
+      command: await mcpCommand(workspaceRoot),
+    };
+    client.send(CHANNEL.setupInfo, reply);
   });
 
   listen(CHANNEL.sync, SyncMessage, async (message, client) => {
