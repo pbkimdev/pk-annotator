@@ -177,7 +177,7 @@ const COMPOSITE_TAGS = new Set([0, CLASS_TAG, 11, 14, 15]);
 const HOST_TAGS = new Set([5, 26, 27]);
 const PERFORMED_WORK = 1;
 
-function siteOf(fiber: Fiber): FiberSite | undefined {
+function parseSite(fiber: Fiber): FiberSite | undefined {
   const stack = fiber._debugStack?.stack;
   if (stack === undefined) return undefined;
   const frame = parseStack(formatOwnerStack(stack))[0];
@@ -195,36 +195,51 @@ function siteOf(fiber: Fiber): FiberSite | undefined {
   };
 }
 
+// Both fibers of an instance share one entry.
+function cached<T>(cache: WeakMap<Fiber, T>, fiber: Fiber): T | undefined {
+  return cache.get(fiber) ?? (fiber.alternate === null ? undefined : cache.get(fiber.alternate));
+}
+
+// Formatting a debug stack is the costly step, so each instance parses its site once; null
+// records an element created without a parsable site.
+const parsed = new WeakMap<Fiber, FiberSite | null>();
+
+function siteOf(fiber: Fiber): FiberSite | undefined {
+  const known = cached(parsed, fiber);
+  if (known !== undefined) return known ?? undefined;
+  const site = parseSite(fiber);
+  parsed.set(fiber, site ?? null);
+  return site;
+}
+
 function ownedBy(fiber: Fiber, owner: Fiber): boolean {
   return fiber._debugOwner === owner || fiber._debugOwner === owner.alternate;
 }
 
-// Reading a debug stack formats it, so each component instance resolves its site once, at
-// its first counted render. Both fibers of an instance share the entry; null records an
-// instance with no project site, such as a library's internal component.
-const sites = new WeakMap<Fiber, OwnSite | null>();
+const owned = new WeakMap<Fiber, OwnSite>();
 
 // A library-created component (a route component, for example) has its element created in
-// node_modules; its own JSX is the first descendant host element it owns.
+// node_modules; its own JSX is the first descendant host element it owns. The search covers
+// only subtrees React rendered in this commit, and only a found site is kept, so a render
+// that returned null leaves the next render to look again.
 function ownSite(fiber: Fiber, isProject: (fileName: string) => boolean): OwnSite | undefined {
-  const cached =
-    sites.get(fiber) ?? (fiber.alternate === null ? undefined : sites.get(fiber.alternate));
-  if (cached !== undefined) return cached ?? undefined;
-  let own: OwnSite | null = null;
+  const known = cached(owned, fiber);
+  if (known !== undefined) return known;
+  let own: OwnSite | undefined;
   const site = siteOf(fiber);
   if (site !== undefined && isProject(site.fileName)) own = { site, kind: "used-at" };
   const pending = fiber.child === null ? [] : [fiber.child];
-  for (let next = pending.pop(); own === null && next !== undefined; next = pending.pop()) {
+  for (let next = pending.pop(); own === undefined && next !== undefined; next = pending.pop()) {
     if (next.sibling !== null) pending.push(next.sibling);
-    if (next.child !== null) pending.push(next.child);
+    if (next.child !== null && next.child !== next.alternate?.child) pending.push(next.child);
     if (!HOST_TAGS.has(next.tag) || !ownedBy(next, fiber)) continue;
     const hostSite = siteOf(next);
     if (hostSite !== undefined && isProject(hostSite.fileName)) {
       own = { site: hostSite, kind: "renders" };
     }
   }
-  sites.set(fiber, own);
-  return own ?? undefined;
+  if (own !== undefined) owned.set(fiber, own);
+  return own;
 }
 
 export function hotSpotKey(spot: Pick<HotSpot, "name" | "site">): string {

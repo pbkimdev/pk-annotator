@@ -166,7 +166,31 @@ describe("addCommit", () => {
     ]);
   });
 
-  it("finds a re-rendered component past 5,000 fibers without walking unchanged subtrees", () => {
+  it("finds a library-created component's own element after a render that returned null", () => {
+    let setShown = (_shown: boolean): void => undefined;
+    function Page() {
+      const [shown, setState] = useState(true);
+      setShown = setState;
+      return shown ? h("section", null, "page") : null;
+    }
+    // A router creates the page element in node_modules.
+    // SAFETY: the function body calls its first argument with its second and returns the result.
+    const library = new Function(
+      "h",
+      "Page",
+      "return h(Page);\n//# sourceURL=http://127.0.0.1:3303/node_modules/router/index.js",
+    ) as (create: typeof h, type: typeof Page) => ReturnType<typeof h>;
+    render(library(h, Page));
+
+    const hotSpots = new Map<string, HotSpot>();
+    expect(commit(hotSpots, () => setShown(false))).toBe(false);
+    expect(commit(hotSpots, () => setShown(true))).toBe(true);
+    expect([...hotSpots.values()].map((spot) => [spot.name, spot.siteKind, spot.renders])).toEqual([
+      ["Page", "renders", 1],
+    ]);
+  });
+
+  it("finds a re-rendered component past 5,000 fibers", () => {
     let bump = (): void => undefined;
     const Leaf = ({ index }: { index: number }) => h("span", null, h("b", null, index));
     function Counter() {
