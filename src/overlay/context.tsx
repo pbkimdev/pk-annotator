@@ -13,6 +13,8 @@ export const COMPOSE = "compose";
 export const THREAD = "thread";
 export const NOTE = "note";
 export const COPIED_HINT_KEY = "pka:copied-hint";
+export const MAX_MARKS = 50;
+export const MAX_DRAFT_BYTES = 256 * 1024 * 1024;
 
 export type SavedMark = {
   id: string;

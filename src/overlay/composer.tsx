@@ -4,6 +4,8 @@ import { useMemo, useRef, useState } from "react";
 import {
   COMPOSE,
   COPIED_HINT_KEY,
+  MAX_DRAFT_BYTES,
+  MAX_MARKS,
   NOTE,
   elementKey,
   useOverlay,
@@ -27,8 +29,6 @@ import {
 import { useList, useStore } from "./store.ts";
 import { Button } from "./ui/button.tsx";
 
-const MAX_MARKS = 50;
-const MAX_DRAFT_BYTES = 256 * 1024 * 1024;
 const SEND_KEY = /Mac|iPhone|iPad/.test(navigator.userAgent) ? "⌘ ↵" : "Ctrl ↵";
 
 function markId(): string {
