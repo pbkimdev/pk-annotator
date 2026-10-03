@@ -97,7 +97,12 @@ export const AnnotationView = z.strictObject({
   ),
   threadCount: z.number(),
   omitted: z
-    .strictObject({ elements: z.number(), attachments: z.number(), note: z.string() })
+    .strictObject({
+      elements: z.number(),
+      attachments: z.number(),
+      promptCharacters: z.number(),
+      note: z.string(),
+    })
     .optional()
     .describe("Elements and attachments left out of a concise response"),
   history: z.array(StatusEvent).optional(),
@@ -192,19 +197,37 @@ export function annotationView(record: AnnotationRecord, detail: Detail): Annota
   return withinBudget(view);
 }
 
+/** Most of CONCISE_BYTES that the human's prompt may take, so its elements still fit. */
+const PROMPT_BYTES = 10_000;
+
+/** The longest leading part of `prompt` whose JSON string fits PROMPT_BYTES. */
+function promptPrefix(prompt: string): string {
+  let length = Math.min(prompt.length, PROMPT_BYTES);
+  for (;;) {
+    // Never end on the first half of a surrogate pair.
+    if (/[\uD800-\uDBFF]/.test(prompt.charAt(length - 1))) length -= 1;
+    const bytes = Buffer.byteLength(JSON.stringify(prompt.slice(0, length)));
+    if (bytes <= PROMPT_BYTES) return prompt.slice(0, length);
+    length = Math.floor((length * PROMPT_BYTES) / bytes);
+  }
+}
+
 /**
- * Keeps the leading elements, then the leading attachments, that fit CONCISE_BYTES, so
- * `[element n]` and `[attachment n]` keep their numbers, and says how many were left out.
+ * Caps the prompt, then keeps the leading elements and attachments that fit CONCISE_BYTES, so
+ * `[element n]` and `[attachment n]` keep their numbers, and says how much was left out.
  */
 function withinBudget(view: AnnotationView): AnnotationView {
   const { elements, attachments } = view;
-  // The counts can only shrink, so this overestimates the final omitted record.
-  let used = jsonBytes({
-    ...view,
-    elements: [],
-    attachments: [],
-    omitted: { elements: elements.length, attachments: attachments.length, note: OMITTED_NOTE },
+  const prompt = promptPrefix(view.prompt);
+  const promptCharacters = view.prompt.length - prompt.length;
+  const omitted = (keptElements: number, keptAttachments: number) => ({
+    elements: elements.length - keptElements,
+    attachments: attachments.length - keptAttachments,
+    promptCharacters,
+    note: OMITTED_NOTE,
   });
+  // Counts can only shrink, so this overestimates the final omitted record.
+  let used = jsonBytes({ ...view, prompt, elements: [], attachments: [], omitted: omitted(0, 0) });
   const fit = <T extends ElementView | AnnotationView["attachments"][number]>(items: T[]): T[] => {
     const kept: T[] = [];
     for (const item of items) {
@@ -217,18 +240,19 @@ function withinBudget(view: AnnotationView): AnnotationView {
   };
   const keptElements = fit(elements);
   const keptAttachments = fit(attachments);
-  if (keptElements.length === elements.length && keptAttachments.length === attachments.length) {
+  if (
+    promptCharacters === 0 &&
+    keptElements.length === elements.length &&
+    keptAttachments.length === attachments.length
+  ) {
     return view;
   }
   return {
     ...view,
+    prompt,
     elements: keptElements,
     attachments: keptAttachments,
-    omitted: {
-      elements: elements.length - keptElements.length,
-      attachments: attachments.length - keptAttachments.length,
-      note: OMITTED_NOTE,
-    },
+    omitted: omitted(keptElements.length, keptAttachments.length),
   };
 }
 

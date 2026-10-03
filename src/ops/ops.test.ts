@@ -218,11 +218,26 @@ describe("get", () => {
     expect(concise.annotation.omitted).toMatchObject({
       elements: 100 - kept.length,
       attachments: 0,
+      promptCharacters: 0,
       note: expect.stringContaining("detail full"),
     });
     const full = await get(store, { id, detail: "full" });
     expect(full.annotation.elements).toHaveLength(100);
     expect(full.annotation.omitted).toBeUndefined();
+
+    // Several saved marks can combine into one long prompt; quotes double in JSON.
+    const prompt = `"😀${"p".repeat(30_000)}`;
+    const { id: longPrompt } = await create(store, {
+      ...DRAFT,
+      prompt,
+      elements: elements.slice(0, 5),
+    });
+    const capped = (await get(store, { id: longPrompt, detail: "concise" })).annotation;
+    expect(Buffer.byteLength(JSON.stringify(capped))).toBeLessThanOrEqual(CONCISE_BYTES);
+    expect(prompt.startsWith(capped.prompt)).toBe(true);
+    expect(capped.omitted?.promptCharacters).toBe(prompt.length - capped.prompt.length);
+    expect(capped.elements.length).toBeGreaterThan(0);
+    expect((await get(store, { id: longPrompt, detail: "full" })).annotation.prompt).toBe(prompt);
   });
 });
 
