@@ -1,5 +1,6 @@
 import { Placeholder } from "@tiptap/extensions";
 import { Markdown } from "@tiptap/markdown";
+import type { Slice } from "@tiptap/pm/model";
 import { NodeSelection, Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import {
@@ -377,6 +378,7 @@ export function PromptEditor({
   const language = useStore(ui, (state) => state.language);
   const handlers = useRef<Badges | null>(badges);
   handlers.current = badges;
+  const copied = useRef<{ text: string; slice: Slice } | null>(null);
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ heading: { levels: [2, 3] }, link: { openOnClick: false } }),
@@ -408,17 +410,38 @@ export function PromptEditor({
         return true;
       },
       // ProseMirror parses pasted and dropped HTML with innerHTML, which a page enforcing
-      // Trusted Types refuses, so content from outside the editor arrives as plain text.
+      // Trusted Types refuses. A copy or cut from this editor is kept as a slice and pasted
+      // back from it; content from outside the editor arrives as plain text.
       handleDOMEvents: {
+        copy(view) {
+          copied.current = view.serializeForClipboard(view.state.selection.content());
+          return false;
+        },
+        cut(view) {
+          copied.current = view.serializeForClipboard(view.state.selection.content());
+          return false;
+        },
         paste(view, event) {
           const data = event.clipboardData;
           if (data === null || !view.editable) return false;
           event.preventDefault();
           const files = [...data.files].filter((file) => file.type.startsWith("image/"));
+          const text = data.getData("text/plain");
           if (files.length > 0 && onPasteImage !== undefined) {
             for (const file of files) onPasteImage(file);
+          } else if (
+            copied.current?.text === text &&
+            data.getData("text/html").includes("data-pm-slice")
+          ) {
+            view.dispatch(
+              view.state.tr
+                .replaceSelection(copied.current.slice)
+                .scrollIntoView()
+                .setMeta("paste", true)
+                .setMeta("uiEvent", "paste"),
+            );
           } else {
-            view.pasteText(data.getData("text/plain"), event);
+            view.pasteText(text, event);
           }
           return true;
         },
