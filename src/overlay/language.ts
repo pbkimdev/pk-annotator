@@ -14,7 +14,7 @@ const korean = new Map<string, string>(
     Annotate: "그리기",
     Rectangle: "사각형",
     Circle: "원",
-    Freehand: "자유롭게 그리기",
+    Freehand: "그리기",
     Debug: "디버그",
     Console: "콘솔",
     Network: "네트워크",
