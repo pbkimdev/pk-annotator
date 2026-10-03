@@ -168,9 +168,18 @@ function serializeObject<Value>(value: Value, depth: number, walk: Walk): Fit {
     }
     if (value instanceof Map || value instanceof Set) {
       const name = value instanceof Map ? "[Map]" : "[Set]";
-      const items = [...value.entries()].slice(0, MAX_ITEMS);
+      // Steps the iterator only as far as the cap; a spread would copy every entry first.
+      const items: unknown[] = [];
+      const entries = value.entries();
+      for (
+        let next = entries.next();
+        !next.done && items.length < MAX_ITEMS;
+        next = entries.next()
+      ) {
+        items.push(value instanceof Map ? next.value : next.value[0]);
+      }
       const list = serializeList(
-        value instanceof Map ? items : items.map(([item]) => item),
+        items,
         value.size,
         MAX_ITEMS,
         depth + 1,
