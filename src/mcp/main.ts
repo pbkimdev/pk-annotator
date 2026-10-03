@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import { constants } from "node:os";
 import { parseArgs } from "node:util";
 

@@ -87,12 +87,24 @@ export default defineConfig([
     entry: {
       vite: "src/vite/index.ts",
       pka: "src/cli/main.ts",
-      "pka-mcp": "src/mcp/main.ts",
     },
     platform: "node",
     format: "esm",
     dts: true,
     clean: true,
+  },
+  // Each agent session spawns pka-mcp, so its dependencies are bundled: one module to
+  // resolve and compile instead of about 115 from node_modules.
+  {
+    entry: { "pka-mcp": "src/mcp/bin.ts" },
+    platform: "node",
+    format: "esm",
+    clean: false,
+    outputOptions: { chunkFileNames: "pka-mcp-server-[hash].mjs" },
+    deps: {
+      alwaysBundle: [/.*/],
+      onlyBundle: false,
+    },
   },
   overlay,
 ]);

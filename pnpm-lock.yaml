@@ -11,9 +11,6 @@ importers:
       '@jridgewell/trace-mapping':
         specifier: 0.3.31
         version: 0.3.31
-      '@modelcontextprotocol/server':
-        specifier: 2.3.0
-        version: 2.3.0
       '@paulirish/trace_engine':
         specifier: 0.0.65
         version: 0.0.65
@@ -28,6 +25,9 @@ importers:
         version: 4.6.5
     devDependencies:
       '@modelcontextprotocol/client':
+        specifier: 2.3.0
+        version: 2.3.0
+      '@modelcontextprotocol/server':
         specifier: 2.3.0
         version: 2.3.0
       '@oxlint/plugins':
