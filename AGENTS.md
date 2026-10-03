@@ -26,6 +26,7 @@ Start with [docs/DEVELOPING.md](docs/DEVELOPING.md) for the task map, fixture wo
 
 - Each lane works in its assigned worktree under `~/.worktrees/pk-annotator/<branch>` and only in the directories its brief names. Say so in the report if a shared file (package.json, tsconfig, shared schema) had to change.
 - One concern per commit; short messages that say why. Do not push; the driving agent merges and pushes.
+- Run checks and builds only in worktrees; the main checkout serves the live test page.
 - Scratch goes to `/tmp/pk-annotator/`; temporary working notes go to `_interim/` (ignored). Delete scratch you created and stop processes you started before reporting.
 - Never read or print secrets. Never write Infisical, DNS, Tunnel, Traefik, or host-sync.
 
