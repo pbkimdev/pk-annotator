@@ -208,6 +208,7 @@ function printAnnotation(view: AnnotationView): void {
     );
   }
   for (const entry of view.thread ?? []) line(`  ${entry.at} ${entry.from}: ${entry.text}`);
+  if (view.omitted !== undefined) line(view.omitted.note);
 }
 
 function printList(result: ListResult): void {
