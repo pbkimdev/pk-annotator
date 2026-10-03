@@ -217,21 +217,28 @@ function ownedBy(fiber: Fiber, owner: Fiber): boolean {
 }
 
 const owned = new WeakMap<Fiber, OwnSite>();
+const searched = new WeakSet<Fiber>();
 
 // A library-created component (a route component, for example) has its element created in
-// node_modules; its own JSX is the first descendant host element it owns. The search covers
-// only subtrees React rendered in this commit, and only a found site is kept, so a render
-// that returned null leaves the next render to look again.
+// node_modules; its own JSX is the first descendant host element it owns. The first search
+// of an instance covers its whole subtree, since memoized JSX keeps its elements in subtrees
+// React skipped; later searches cover only subtrees React rendered. Only a found site is
+// kept, so a render that returned null leaves the next render to look again.
 function ownSite(fiber: Fiber, isProject: (fileName: string) => boolean): OwnSite | undefined {
   const known = cached(owned, fiber);
   if (known !== undefined) return known;
   let own: OwnSite | undefined;
   const site = siteOf(fiber);
   if (site !== undefined && isProject(site.fileName)) own = { site, kind: "used-at" };
+  const whole =
+    !searched.has(fiber) && (fiber.alternate === null || !searched.has(fiber.alternate));
+  searched.add(fiber);
   const pending = fiber.child === null ? [] : [fiber.child];
   for (let next = pending.pop(); own === undefined && next !== undefined; next = pending.pop()) {
     if (next.sibling !== null) pending.push(next.sibling);
-    if (next.child !== null && next.child !== next.alternate?.child) pending.push(next.child);
+    if (next.child !== null && (whole || next.child !== next.alternate?.child)) {
+      pending.push(next.child);
+    }
     if (!HOST_TAGS.has(next.tag) || !ownedBy(next, fiber)) continue;
     const hostSite = siteOf(next);
     if (hostSite !== undefined && isProject(hostSite.fileName)) {

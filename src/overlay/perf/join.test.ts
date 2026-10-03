@@ -8,7 +8,7 @@ import { addCommit, frameCause, slowRequests, type HotSpot } from "./join.ts";
 // React registers with the DevTools hook when it loads, so the hook comes first.
 const commits: FiberRoot[] = [];
 instrument({ onCommitFiberRoot: (_rendererId, root) => commits.push(root) });
-const { createElement: h, memo, useState } = await import("react");
+const { createElement: h, memo, useMemo, useState } = await import("react");
 const { flushSync } = await import("react-dom");
 const { createRoot } = await import("react-dom/client");
 
@@ -166,27 +166,37 @@ describe("addCommit", () => {
     ]);
   });
 
-  it("finds a library-created component's own element after a render that returned null", () => {
+  it("finds a library-created component's own element after a null render and in memoized JSX", () => {
     let setShown = (_shown: boolean): void => undefined;
     function Page() {
       const [shown, setState] = useState(true);
       setShown = setState;
       return shown ? h("section", null, "page") : null;
     }
-    // A router creates the page element in node_modules.
+    let tick = (): void => undefined;
+    const Card = ({ children }: { children: ReturnType<typeof h> }) => h("article", null, children);
+    function Shell() {
+      const [, setTicks] = useState(0);
+      tick = () => setTicks((count) => count + 1);
+      // React skips Card, so the paragraph Shell owns sits in a subtree that did not render.
+      return useMemo(() => h(Card, null, h("p", null, "memo")), []);
+    }
+    // A router creates the page elements in node_modules.
     // SAFETY: the function body calls its first argument with its second and returns the result.
     const library = new Function(
       "h",
       "Page",
       "return h(Page);\n//# sourceURL=http://127.0.0.1:3303/node_modules/router/index.js",
-    ) as (create: typeof h, type: typeof Page) => ReturnType<typeof h>;
-    render(library(h, Page));
+    ) as (create: typeof h, type: () => ReturnType<typeof h> | null) => ReturnType<typeof h>;
+    render(h("div", null, library(h, Page), library(h, Shell)));
 
     const hotSpots = new Map<string, HotSpot>();
     expect(commit(hotSpots, () => setShown(false))).toBe(false);
     expect(commit(hotSpots, () => setShown(true))).toBe(true);
+    expect(commit(hotSpots, () => tick())).toBe(true);
     expect([...hotSpots.values()].map((spot) => [spot.name, spot.siteKind, spot.renders])).toEqual([
       ["Page", "renders", 1],
+      ["Shell", "renders", 1],
     ]);
   });
 
