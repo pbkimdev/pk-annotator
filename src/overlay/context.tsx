@@ -32,7 +32,6 @@ export type UiState = {
   busy: boolean;
   recording: boolean;
   gesture: "screenshot" | "record-area" | "rectangle" | "ellipse" | "freehand" | null;
-  recordRegion: Box | null;
   language: "en" | "ko";
   picking: PickMode | null;
   /** The open panel: COMPOSE, THREAD, or a registered panel id. */

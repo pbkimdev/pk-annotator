@@ -189,7 +189,7 @@ function useEntries(): Entry[] {
           id: "screenshot",
           label: t("Screenshot"),
           icon: CameraIcon,
-          run: () => ui.set({ panel: "snapshot", picking: null }),
+          run: () => toggleGesture("screenshot"),
         },
         {
           id: "crop",

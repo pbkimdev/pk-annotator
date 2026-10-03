@@ -1,5 +1,5 @@
 import { useText } from "./language.ts";
-import { CameraIcon, HistoryIcon, LayersIcon, PenLineIcon, XIcon } from "lucide-react";
+import { HistoryIcon, LayersIcon, PenLineIcon, XIcon } from "lucide-react";
 import { lazy, Suspense, type ComponentType, type ReactNode } from "react";
 
 import { COMPOSE, NOTE, THREAD, useOverlay } from "./context.tsx";
@@ -7,7 +7,6 @@ const Composer = lazy(() =>
   import("./composer.tsx").then((module) => ({ default: module.Composer })),
 );
 import type { Corner } from "./launcher.ts";
-import { ScreenshotPanel } from "./mark-layer.tsx";
 import { cn } from "./lib/utils.ts";
 import { panels } from "./registry.ts";
 import { useList, useStore } from "./store.ts";
@@ -78,12 +77,6 @@ export function PanelHost() {
     if (!busy) ui.set({ panel: null });
   };
 
-  if (panel === "snapshot")
-    return (
-      <PanelFrame title="Screenshot" icon={CameraIcon} close={close}>
-        <ScreenshotPanel />
-      </PanelFrame>
-    );
   if (panel === COMPOSE || panel === NOTE) {
     return (
       <PanelFrame

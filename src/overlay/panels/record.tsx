@@ -1,15 +1,23 @@
 import { useText } from "../language.ts";
-import { CircleDotIcon, CircleIcon, SquareIcon, CropIcon } from "lucide-react";
+import { CircleDotIcon, CircleIcon, SquareDashedIcon, SquareIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-import { NOTE, useOverlay } from "../context.tsx";
+import type { Box } from "../../shared/schema.ts";
+import { NOTE, useOverlay, type UiState } from "../context.tsx";
 import { cn } from "../lib/utils.ts";
 import { attachments, registerPanel, type PanelProps } from "../registry.ts";
 import { createRecorder, RECORDING_ATTACHMENT, videoUnavailable } from "../recording/recorder.ts";
-import { useList, useStore } from "../store.ts";
+import { useList, useStore, type Store } from "../store.ts";
 import { Button } from "../ui/button.tsx";
 
 const recorder = createRecorder();
+
+/** Starts recording `region`, or the whole viewport when it is null, and shows the panel. */
+export function startRecording(ui: Store<UiState>, region: Box | null): void {
+  recorder.start(region);
+  // The user records by using the page, which pick and box modes would intercept.
+  ui.set({ picking: null, hover: null, marquee: null, gesture: null, panel: "record" });
+}
 
 function clock(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -84,89 +92,64 @@ function RecordingOptions() {
   const { ui } = useOverlay();
   const phase = useStore(recorder.state, (state) => state.phase);
   const withGif = useStore(recorder.state, (state) => state.withGif);
-  const region = useStore(ui, (state) => state.recordRegion);
   const withVideo = useStore(recorder.state, (state) => state.withVideo);
-  const attached = useList(attachments).some((item) => item.id === RECORDING_ATTACHMENT);
   const unavailable = useMemo(videoUnavailable, []);
 
   return (
-    <>
-      <div className="flex items-center gap-3">
-        <Button
-          variant="outline"
-          size="sm"
-          data-testid="pka-record-start"
-          disabled={phase === "stopping"}
-          onClick={() => {
-            // The user records by using the page, which pick and box modes would intercept.
-            ui.set({ picking: null, hover: null, marquee: null });
-            recorder.start(region);
-          }}
-        >
-          <CircleIcon className="fill-destructive text-destructive" />
-          {t(phase === "stopping" ? "Saving…" : attached ? "Record again" : "Start recording")}
-        </Button>
-        <label
-          className={cn(
-            "flex items-center gap-1.5 text-sm",
-            unavailable !== undefined && "text-muted-foreground",
-          )}
-        >
-          <input
-            type="checkbox"
-            data-testid="pka-record-gif"
-            className="size-3.5 accent-primary"
-            checked={withGif && unavailable === undefined}
-            disabled={unavailable !== undefined || phase !== "idle"}
-            onChange={(event) => recorder.setWithGif(event.target.checked)}
-          />
-          GIF
-        </label>
-        <label
-          className={cn(
-            "flex items-center gap-1.5 text-sm",
-            unavailable !== undefined && "text-muted-foreground",
-          )}
-        >
-          <input
-            type="checkbox"
-            data-testid="pka-record-video"
-            className="size-3.5 accent-primary"
-            checked={withVideo && unavailable === undefined}
-            disabled={unavailable !== undefined || phase !== "idle"}
-            onChange={(event) => recorder.setWithVideo(event.target.checked)}
-          />
-          {t("Video")}
-        </label>
-      </div>
-      {phase === "idle" && (
-        <div className="flex items-center gap-2 text-xs">
-          <Button
-            size="xs"
-            variant="outline"
-            onClick={() => ui.set({ gesture: "record-area", picking: null, panel: null })}
-          >
-            <CropIcon />
-            {t(region === null ? "Choose area" : "Change area")}
-          </Button>
-          <span className="text-muted-foreground">
-            {region === null
-              ? t("Whole viewport")
-              : `${Math.round(region.w)} × ${Math.round(region.h)}`}
-          </span>
-          {region !== null && (
-            <Button size="xs" variant="ghost" onClick={() => ui.set({ recordRegion: null })}>
-              {t("Reset")}
-            </Button>
-          )}
-        </div>
-      )}
-      {withGif && (
-        <p className="text-xs text-muted-foreground">
-          GIF: up to 120 frames, 480 px, 32 MB. Video and GIF show typed values.
-        </p>
-      )}
-    </>
+    <div className="flex items-center gap-2">
+      <Button
+        variant="outline"
+        size="sm"
+        data-testid="pka-record-start"
+        disabled={phase !== "idle"}
+        onClick={() => startRecording(ui, null)}
+      >
+        <CircleIcon className="fill-destructive text-destructive" />
+        {t(phase === "stopping" ? "Saving…" : "Full")}
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        data-testid="pka-record-start-area"
+        disabled={phase !== "idle"}
+        onClick={() => ui.set({ gesture: "record-area", picking: null, panel: null })}
+      >
+        <SquareDashedIcon />
+        {t("Area")}
+      </Button>
+      <label
+        className={cn(
+          "ml-auto flex items-center gap-1.5 text-sm",
+          unavailable !== undefined && "text-muted-foreground",
+        )}
+      >
+        <input
+          type="checkbox"
+          data-testid="pka-record-gif"
+          className="size-3.5 accent-primary"
+          checked={withGif && unavailable === undefined}
+          disabled={unavailable !== undefined || phase !== "idle"}
+          onChange={(event) => recorder.setWithGif(event.target.checked)}
+        />
+        GIF
+      </label>
+      <label
+        className={cn(
+          "flex items-center gap-1.5 text-sm",
+          unavailable !== undefined && "text-muted-foreground",
+        )}
+      >
+        <input
+          type="checkbox"
+          data-testid="pka-record-video"
+          className="size-3.5 accent-primary"
+          checked={withVideo && unavailable === undefined}
+          disabled={unavailable !== undefined || phase !== "idle"}
+          onChange={(event) => recorder.setWithVideo(event.target.checked)}
+        />
+        {t("Video")}
+      </label>
+    </div>
   );
 }
 
@@ -216,11 +199,6 @@ function RecordPanel(_props: PanelProps) {
             {t("Open editor")}
           </Button>
         </div>
-      )}
-      {phase === "idle" && !attached && (
-        <p className="text-xs text-muted-foreground">
-          Keyframe at each action, navigation, and error. Input values are never recorded.
-        </p>
       )}
       {error !== null && (
         <p role="alert" className="text-xs text-destructive">
