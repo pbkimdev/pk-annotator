@@ -1,6 +1,6 @@
 {
   "name": "@srv/pk-annotator",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Dev-only browser annotation overlay, Vite plugin, pka CLI, and pka-mcp stdio server",
   "license": "UNLICENSED",
   "bin": {
