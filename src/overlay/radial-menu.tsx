@@ -3,19 +3,19 @@ import {
   CameraIcon,
   CircleDotIcon,
   CircleIcon,
-  ClipboardCheckIcon,
-  ClipboardCopyIcon,
-  ClipboardXIcon,
+  CheckIcon,
   HistoryIcon,
   LanguagesIcon,
   LassoSelectIcon,
   MousePointerClickIcon,
   PencilIcon,
+  PlugIcon,
   PowerIcon,
   RectangleHorizontalIcon,
   SendIcon,
   Settings2Icon,
   SquareDashedMousePointerIcon,
+  XIcon,
 } from "lucide-react";
 import {
   useEffect,
@@ -50,9 +50,12 @@ const BRANCH = RING + BAND + 20;
 const MARGIN = BAND / 2 + 24;
 const CANVAS = BRANCH + MARGIN;
 const HINT_RADIUS = 78;
-// In the hollow beside the stem, clear of the readout and the band.
-const CONNECT_RADIUS = 100;
-const CONNECT_ANGLE = 25;
+// The connect item rests in the middle of the hollow. While another item's readout shows,
+// it moves up beside the stem, clear of the readout and the band.
+const CONNECT_REST = { radius: HINT_RADIUS, angle: 45 };
+const CONNECT_ASIDE = { radius: 99, angle: 21 };
+// Crossing from one item to the next clears the readout briefly; the item waits it out.
+const CONNECT_RETURN_MS = 140;
 const CONNECT_PROMPT = `Connect this session to the pk-annotator MCP server so you receive the annotations I send from the page.
 Add a stdio server named "pka" with the command node_modules/.bin/pka-mcp, run from the workspace root where @srv/pk-annotator is installed:
 - Claude Code, .mcp.json: { "mcpServers": { "pka": { "command": "node_modules/.bin/pka-mcp" } } }
@@ -442,6 +445,7 @@ export function RadialMenu() {
   const [hint, setHint] = useState<Hint | null>(null);
   const connected = useSyncExternalStore(subscribeAgentConnected, isAgentConnected);
   const [copied, setCopied] = useState<"ok" | "failed" | null>(null);
+  const [aside, setAside] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const intent = useRef<number | undefined>(undefined);
   const open = menu !== "closed";
@@ -465,6 +469,16 @@ export function RadialMenu() {
     target?.focus();
   }, [menu]);
   useEffect(() => () => window.clearTimeout(intent.current), []);
+  useEffect(() => {
+    // Its own readout keeps it in place, so it never slides out from under the pointer.
+    if (hint?.id === "connect") return;
+    if (hint !== null) {
+      setAside(true);
+      return;
+    }
+    const back = window.setTimeout(() => setAside(false), CONNECT_RETURN_MS);
+    return () => window.clearTimeout(back);
+  }, [hint]);
   useEffect(() => {
     if (!connected) return;
     const shadow = hub.getRootNode();
@@ -522,7 +536,13 @@ export function RadialMenu() {
       setHint({ id: "connect", label: t("Couldn't copy to clipboard") });
     }
   };
-  const connectLabel = t("Copy MCP setup");
+  const connectLabel = t("Connect agent");
+  const connectAt = aside ? CONNECT_ASIDE : CONNECT_REST;
+  // Leaving an item clears its readout, so the connect item can return to the middle.
+  const leaveItem = (id: string) => {
+    window.clearTimeout(intent.current);
+    setHint((current) => (current?.id === id ? null : current));
+  };
   const describe = (next: Hint) => ({
     onFocus: () => setHint(next),
     onBlur: () => setHint((current) => (current?.id === next.id ? null : current)),
@@ -573,6 +593,7 @@ export function RadialMenu() {
   const horizontal = corner.endsWith("left") ? "left" : "right";
   // Past the hollow's middle, away from the stem.
   const hintAt = polar(HINT_RADIUS, start + 55);
+  const connectCenter = polar(connectAt.radius, start + connectAt.angle);
   const groups = entries.flatMap((entry, index) =>
     "children" in entry
       ? [
@@ -650,7 +671,7 @@ export function RadialMenu() {
                       hover(null);
                       setHint({ id: entry.id, label: entry.label });
                     }}
-                    onPointerLeave={() => window.clearTimeout(intent.current)}
+                    onPointerLeave={() => leaveItem(entry.id)}
                     {...describe({ id: entry.id, label: entry.label })}
                   />
                 </div>
@@ -680,7 +701,7 @@ export function RadialMenu() {
                     hover(entry.id);
                     setHint(face);
                   }}
-                  onPointerLeave={() => window.clearTimeout(intent.current)}
+                  onPointerLeave={() => leaveItem(entry.id)}
                   {...describe(face)}
                 />
                 <div
@@ -726,19 +747,14 @@ export function RadialMenu() {
           <div role="none">
             <Node
               entry={{
-                id: copied === null ? "connect" : copied === "ok" ? "copied" : "connect-failed",
+                id: "connect",
                 label: connectLabel,
-                icon:
-                  copied === null
-                    ? ClipboardCopyIcon
-                    : copied === "ok"
-                      ? ClipboardCheckIcon
-                      : ClipboardXIcon,
+                icon: copied === null ? PlugIcon : copied === "ok" ? CheckIcon : XIcon,
                 stay: true,
                 run: () => void copySetup(),
               }}
-              angle={start + CONNECT_ANGLE}
-              radius={CONNECT_RADIUS}
+              angle={start + connectAt.angle}
+              radius={connectAt.radius}
               order={entries.length}
               count={entries.length + 1}
               shown={open && !connected}
@@ -752,7 +768,7 @@ export function RadialMenu() {
                 hover(null);
                 if (copied === null) setHint({ id: "connect", label: connectLabel });
               }}
-              onPointerLeave={() => window.clearTimeout(intent.current)}
+              onPointerLeave={() => leaveItem("connect")}
               {...describe({ id: "connect", label: connectLabel })}
             />
           </div>
@@ -761,7 +777,13 @@ export function RadialMenu() {
           <div
             aria-hidden="true"
             className="pka-readout"
-            style={{ transform: `translate(${hintAt.x}px, ${hintAt.y}px) translate(-50%, -50%)` }}
+            data-tone={hint.id === "connect" ? "connect" : undefined}
+            style={{
+              transform:
+                hint.id === "connect"
+                  ? `translate(${connectCenter.x}px, ${connectCenter.y}px) translate(-50%, -50%)`
+                  : `translate(${hintAt.x}px, ${hintAt.y}px) translate(-50%, -50%)`,
+            }}
           >
             <span className="pka-readout-label">{hint.label}</span>
             {hint.shortcut !== undefined && <kbd className="pka-readout-key">{hint.shortcut}</kbd>}

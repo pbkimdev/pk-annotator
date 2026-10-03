@@ -94,6 +94,8 @@ const LAUNCHER_CSS = `
   --pka-hub-ink: var(--popover-foreground, oklch(0.145 0 0));
   --pka-hub-accent: var(--pka-pick, oklch(0.6 0.19 255));
   --pka-hub-alert: var(--destructive, oklch(0.577 0.245 27.325));
+  --pka-connect: #2563eb;
+  --pka-connect-hover: #1d4ed8;
 }
 :host([data-theme="dark"]) {
   /* Lifted, so the hub and its menu stay distinct over a panel of the same surface. */

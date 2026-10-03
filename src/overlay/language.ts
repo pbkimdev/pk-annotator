@@ -72,7 +72,7 @@ const korean = new Map<string, string>(
     "Couldn't copy to clipboard": "클립보드에 복사하지 못함",
     "Connect an agent over MCP for live replies":
       "MCP로 에이전트를 연결하면 바로 응답받을 수 있어요",
-    "Copy MCP setup": "MCP 설정 복사",
+    "Connect agent": "에이전트에 연결하기",
     "Don't show again": "다시 보지 않기",
     OK: "확인",
   }),

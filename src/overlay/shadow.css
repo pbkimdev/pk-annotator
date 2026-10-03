@@ -243,21 +243,23 @@
 .pka-node:focus-visible {
   box-shadow: 0 0 0 1.5px color-mix(in oklch, var(--popover-foreground) 55%, var(--pka-surface));
 }
-/* The connect item floats in the hollow, off the band, so it carries its own surface. */
+/* The connect item floats in the hollow, off the band, so it carries its own fill. White on
+   blue-600 keeps 5.2:1. */
 .pka-node[data-floating] {
-  background-color: var(--pka-surface);
-  box-shadow:
-    0 0 0 1px color-mix(in oklch, var(--foreground) 10%, transparent),
-    0 6px 16px -6px rgb(0 0 0 / 0.3);
+  background-color: var(--pka-connect);
+  color: #fff;
+  box-shadow: 0 6px 16px -6px rgb(0 0 0 / 0.35);
 }
 .pka-node[data-floating]:hover,
 .pka-node[data-floating]:focus-visible {
-  background-color: color-mix(in oklch, var(--popover-foreground) 9%, var(--pka-surface));
+  background-color: var(--pka-connect-hover);
+  color: #fff;
 }
 .pka-node[data-floating]:focus-visible {
   box-shadow:
-    0 0 0 1.5px color-mix(in oklch, var(--popover-foreground) 55%, var(--pka-surface)),
-    0 6px 16px -6px rgb(0 0 0 / 0.3);
+    0 0 0 2px var(--pka-surface),
+    0 0 0 3.5px var(--pka-connect),
+    0 6px 16px -6px rgb(0 0 0 / 0.35);
 }
 .pka-node[data-active] {
   color: var(--pka-pick);
@@ -318,6 +320,26 @@
   text-align: center;
   contain: layout style;
   animation: pka-readout-in 100ms var(--pka-out);
+}
+/* Over the connect item, the readout widens out of it into a pill of the same height. */
+.pka-readout[data-tone="connect"] {
+  min-width: 40px;
+  height: 40px;
+  justify-content: center;
+  padding: 0 14px;
+  border-radius: 20px;
+  background: var(--pka-connect-hover);
+  color: #fff;
+  box-shadow: 0 6px 16px -6px rgb(0 0 0 / 0.35);
+  animation: pka-connect-label-in 140ms var(--pka-out);
+}
+@keyframes pka-connect-label-in {
+  from {
+    clip-path: inset(0 calc(50% - 20px) round 20px);
+  }
+  to {
+    clip-path: inset(0 0 round 20px);
+  }
 }
 .pka-readout-label {
   font-size: 12px;

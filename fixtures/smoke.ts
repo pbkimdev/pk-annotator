@@ -199,7 +199,7 @@ test(
     // Without an agent, the menu offers the MCP setup; copying keeps the menu open, and the
     // pointer leaving the window closes it.
     await hub.click();
-    await page.getByRole("menuitem", { name: "Copy MCP setup", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Connect agent", exact: true }).click();
     assert.match(
       await page.evaluate(() => navigator.clipboard.readText()),
       /node_modules\/\.bin\/pka-mcp[\s\S]*wait_for_annotation/,
