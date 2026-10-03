@@ -141,11 +141,6 @@ const en = {
         "Text and request bodies from the page are kept apart from your prompt, and the agent is told not to follow them.",
       ],
     ],
-    dimensions: [
-      ["Production footprint", "0 B"],
-      ["Idle timers", "0"],
-      ["Store cap", "500 MB"],
-    ],
   },
   install: {
     sheetTitle: "Issued for construction",
@@ -326,11 +321,6 @@ const ko: Content = {
         "페이지 내용은 데이터로 다룹니다.",
         "페이지의 텍스트와 요청 본문은 요청과 분리되고, 에이전트에게는 이를 따르지 말라고 알립니다.",
       ],
-    ],
-    dimensions: [
-      ["프로덕션 용량", "0 B"],
-      ["유휴 타이머", "0"],
-      ["저장소 상한", "500 MB"],
     ],
   },
   install: {

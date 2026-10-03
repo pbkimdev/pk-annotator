@@ -36,9 +36,9 @@ async function copy(button: HTMLButtonElement, text: string): Promise<void> {
 
 for (const button of document.querySelectorAll<HTMLButtonElement>(".copy-button")) {
   button.addEventListener("click", () => {
-    const code = button.parentElement?.querySelector("code");
-    if (!code) throw new Error("copy button without a code element");
-    void copy(button, code.textContent ?? "");
+    const value = button.closest<HTMLElement>(".copy")?.dataset.value;
+    if (value === undefined) throw new Error("copy button outside a .copy field");
+    void copy(button, value);
   });
 }
 

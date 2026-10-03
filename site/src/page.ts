@@ -2,7 +2,7 @@ import { cloud } from "./shapes.ts";
 import { CONTENT, INSTALL_COMMAND, SITE, VERSION, type Content, type Locale } from "./content.ts";
 
 const ZONES = ["A", "B", "C", "D", "E", "F", "G", "H"];
-const SHEETS = 5;
+const SHEETS = 6;
 
 function esc(text: string): string {
   return text
@@ -25,8 +25,9 @@ function glyph(className: string): string {
   </svg>`;
 }
 
-function zones(): string {
-  return `<div class="zones" aria-hidden="true">${ZONES.map((zone) => `<span>${zone}</span>`).join("")}</div>`;
+function zones(row: number): string {
+  return `<div class="zones" aria-hidden="true">${ZONES.map((zone) => `<span>${zone}</span>`).join("")}</div>
+    <span class="row row-left" aria-hidden="true">${row}</span><span class="row row-right" aria-hidden="true">${row}</span>`;
 }
 
 function sheetHead(t: Content, number: number, title: string): string {
@@ -37,8 +38,11 @@ function sheetHead(t: Content, number: number, title: string): string {
 }
 
 function copyField(t: Content, id: string, value: string, label: string): string {
-  return `<div class="copy" data-copy>
-    <code id="${id}">${esc(value).replace(/https:\/\/\S+/g, (url) => `<span class="nowrap">${url}</span>`)}</code>
+  const shown = esc(value).replace(/https:\/\/\S+/g, (url) =>
+    url.replaceAll("-", "\u2011").replaceAll("/", "/<wbr>"),
+  );
+  return `<div class="copy" data-value="${esc(value)}">
+    <code id="${id}">${shown}</code>
     <button type="button" class="copy-button" aria-describedby="${id}" title="${esc(label)}" data-label="${esc(t.hero.copy)}" data-done="${esc(t.hero.copied)}" data-failed="${esc(t.hero.copyFailed)}">
       <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="8.5" height="8.5" rx="1"/><path d="M3 10.5V3.5a1 1 0 0 1 1-1h7"/></svg>
       <span>${esc(label)}</span>
@@ -89,6 +93,13 @@ function heroDrawing(t: Content): string {
     <g class="note">
       ${d.note.map((line, index) => `<text class="t-hand" x="${save.x + save.width + 52}" y="${save.y - 56 + index * 24}">${esc(line)}</text>`).join("")}
     </g>
+    <a href="#detail" class="callout" aria-label="${esc(t.detail.sheetTitle)}">
+      <path class="callout-leader" d="M100 392 L168 362"/>
+      <circle cx="82" cy="392" r="20"/>
+      <line x1="62" y1="392" x2="102" y2="392"/>
+      <text x="82" y="387" text-anchor="middle">A</text>
+      <text x="82" y="407" text-anchor="middle">2</text>
+    </a>
     <path class="send" pathLength="1" d="M576 386 H600"/>
     <svg class="hub" x="530" y="364" width="44" height="44" viewBox="0 0 44 44">
       <circle class="hub-disc" cx="22" cy="22" r="21"/>
@@ -131,7 +142,7 @@ function terminal(t: Content): string {
 function hero(t: Content): string {
   const d = t.demo;
   return `<section class="sheet sheet-hero" id="top" aria-labelledby="hero-title">
-    ${zones()}
+    ${zones(1)}
     <div class="hero-grid">
       <div class="hero-copy">
         <h1 id="hero-title">${esc(t.hero.title)}</h1>
@@ -177,25 +188,35 @@ function hero(t: Content): string {
       <div><dt>${esc(t.block.rev)}</dt><dd>${VERSION}</dd></div>
       <div><dt>${esc(t.block.date)}</dt><dd>2026-10-03</dd></div>
       <div><dt>${esc(t.block.by)}</dt><dd>Paul B. Kim</dd></div>
+      <div class="tb-launcher">${launcher(t)}</div>
     </dl>
   </section>`;
 }
 
 function annotationXml(t: Content): string {
   const balloon = (n: number) => `<span class="balloon" data-item="${n}">${n}</span>`;
-  const prompt =
+  const [first, second] =
     t.lang === "ko"
-      ? "[element 1]을 주 버튼으로 바꿔 주세요. 취소 옆에서 링크처럼 보여요. [attachment 1: Screenshot] 참고."
-      : "Make [element 1] the primary action; it reads like a link next to Cancel. See [attachment 1: Screenshot].";
+      ? [
+          "[element 1]을 주 버튼으로 바꿔 주세요.",
+          "취소 옆에서 링크처럼 보여요. [attachment 1: Screenshot] 참고.",
+        ]
+      : [
+          "Make [element 1] the primary action;",
+          "it reads like a link next to Cancel. See [attachment 1: Screenshot].",
+        ];
   return [
     `&lt;annotation id="k3v9q2m7" route="/settings/billing" viewport="1440x900@2"&gt;`,
-    `  ${balloon(1)}&lt;prompt&gt;${esc(prompt)}&lt;/prompt&gt;`,
+    `  ${balloon(1)}&lt;prompt&gt;${esc(first ?? "")}`,
+    `          ${esc(second ?? "")}&lt;/prompt&gt;`,
     `  ${balloon(2)}&lt;element n="1" source="src/ui/button.tsx:12:3"`,
     `           usedAt="src/routes/billing.tsx:42:9"`,
     `           owners="BillingForm &gt; SettingsPage"`,
     `           role="button" name="${esc(t.demo.save)}"`,
     `           ${balloon(3)}crop="capture/frames/sel-1.webp"/&gt;`,
-    `  ${balloon(4)}${balloon(5)}${balloon(6)}${balloon(7)}&lt;capture&gt;_interim/annotations/k3v9q2m7/capture/summary.md&lt;/capture&gt;`,
+    `  ${balloon(4)}${balloon(5)}${balloon(6)}${balloon(7)}&lt;capture&gt;`,
+    `          _interim/annotations/k3v9q2m7/capture/summary.md`,
+    `  &lt;/capture&gt;`,
     `&lt;/annotation&gt;`,
   ].join("\n");
 }
@@ -203,6 +224,7 @@ function annotationXml(t: Content): string {
 function detail(t: Content): string {
   const x = t.detail;
   return `<section class="sheet" id="detail" aria-labelledby="detail-title">
+    ${zones(2)}
     <div class="split">
       <div class="prose">
         <h2 id="detail-title">${esc(x.title)}</h2>
@@ -279,6 +301,7 @@ function hubPlan(t: Content): string {
 function hub(t: Content): string {
   const x = t.hub;
   return `<section class="sheet" id="hub" aria-labelledby="hub-title">
+    ${zones(3)}
     <div class="split split-reverse">
       <div class="prose">
         <h2 id="hub-title">${esc(x.title)}</h2>
@@ -300,6 +323,7 @@ function hub(t: Content): string {
 function flow(t: Content): string {
   const x = t.flow;
   return `<section class="sheet" id="flow" aria-labelledby="flow-title">
+    ${zones(4)}
     <div class="prose wide">
       <h2 id="flow-title">${esc(x.title)}</h2>
       <p>${esc(x.intro)}</p>
@@ -311,8 +335,8 @@ function flow(t: Content): string {
       )
       .join("")}</ol>
     <div class="chain-legend" aria-hidden="true">
-      <span class="flow-request">${esc(x.request)} →</span>
-      <span class="flow-reply">← ${esc(x.reply)}</span>
+      <span class="flow-request"><span class="wire"></span>${esc(x.request)}</span>
+      <span class="flow-reply"><span class="wire"></span>${esc(x.reply)}</span>
     </div>
     <div class="lifecycle">
       <span class="lifecycle-label">${esc(x.lifecycle)}</span>
@@ -326,17 +350,12 @@ function flow(t: Content): string {
 function notes(t: Content): string {
   const x = t.notes;
   return `<section class="sheet" id="notes" aria-labelledby="notes-title">
+    ${zones(5)}
     <h2 id="notes-title">${esc(x.title)}</h2>
     <div class="notes-grid">
       <ol class="general-notes">${x.items
         .map(([head, body]) => `<li><strong>${esc(head ?? "")}</strong> ${esc(body ?? "")}</li>`)
         .join("")}</ol>
-      <ul class="dimensions">${x.dimensions
-        .map(
-          ([label, value]) =>
-            `<li><span class="dim-value">${esc(value ?? "")}</span><span class="dim-line" aria-hidden="true"></span><span class="dim-label">${esc(label ?? "")}</span></li>`,
-        )
-        .join("")}</ul>
     </div>
   ${sheetHead(t, 5, x.sheetTitle)}
   </section>`;
@@ -365,6 +384,7 @@ createRoot(root, rootOptions).render(&lt;App /&gt;);</code></pre>`,
     `<p class="keys"><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>A</kbd></p>`,
   ];
   return `<section class="sheet sheet-install" id="install" aria-labelledby="install-title">
+    ${zones(6)}
     <h2 id="install-title">${esc(x.title)}</h2>
     <ol class="steps">${x.steps
       .map(
@@ -383,7 +403,7 @@ createRoot(root, rootOptions).render(&lt;App /&gt;);</code></pre>`,
       <a href="https://www.npmjs.com/package/pk-annotator">${esc(x.npm)}</a>
       <a href="/install.sh">install.sh</a>
     </p>
-    <div class="sheet-head"><span class="sheet-no">IFC</span><span class="sheet-name">${esc(x.sheetTitle)}</span></div>
+    ${sheetHead(t, 6, x.sheetTitle)}
   </section>`;
 }
 
@@ -409,6 +429,14 @@ function footer(t: Content): string {
   </footer>`;
 }
 
+function launcher(t: Content): string {
+  const p = t.pick;
+  return `<button type="button" class="launcher" aria-pressed="false" data-launcher aria-label="${esc(p.launcher)}" data-on="${esc(p.exit)}" data-off="${esc(p.launcher)}">
+    ${glyph("launcher-glyph")}
+    <span class="launcher-label">${esc(p.launcher)}</span>
+  </button>`;
+}
+
 function picker(t: Content): string {
   const p = t.pick;
   return `<div class="picker" data-picker hidden
@@ -423,11 +451,7 @@ function picker(t: Content): string {
         <button type="button" data-pick-clear>${esc(p.clear)}</button>
       </div>
     </div>
-  </div>
-  <button type="button" class="launcher" aria-pressed="false" data-launcher aria-label="${esc(p.launcher)}" data-on="${esc(p.exit)}" data-off="${esc(p.launcher)}">
-    ${glyph("launcher-glyph")}
-    <span class="launcher-label">${esc(p.launcher)}</span>
-  </button>`;
+  </div>`;
 }
 
 /** The contract the finish review audits; it must survive the production build. */
@@ -479,7 +503,7 @@ export function renderNotFound(locale: Locale): string {
   const t = CONTENT[locale];
   return `<main class="not-found" id="main">
     <section class="sheet">
-      ${zones()}
+      ${zones(0)}
       <p class="sheet-no">404</p>
       <h1>${esc(t.notFound.title)}</h1>
       <p>${esc(t.notFound.body)}</p>

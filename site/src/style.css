@@ -88,11 +88,11 @@ a {
 }
 
 a:hover {
-  text-decoration-color: var(--yellow);
+  text-decoration-color: var(--line);
 }
 
 :focus-visible {
-  outline: 2px solid var(--yellow);
+  outline: 2px solid var(--line);
   outline-offset: 3px;
 }
 
@@ -137,7 +137,7 @@ p {
   left: 12px;
   top: -60px;
   padding: 8px 14px;
-  background: var(--yellow);
+  background: var(--line);
   color: var(--ground-ink);
   z-index: 50;
 }
@@ -223,7 +223,7 @@ p {
   border: 1.5px solid var(--line);
   outline: 1px solid var(--line-faint);
   outline-offset: 6px;
-  background: rgb(10 42 104 / 0.35);
+  background: var(--ground);
 }
 
 .zones {
@@ -236,6 +236,23 @@ p {
   color: var(--line-soft);
   letter-spacing: 0.1em;
   pointer-events: none;
+}
+
+.row {
+  position: absolute;
+  top: 50%;
+  translate: 0 -50%;
+  font: 500 0.72rem var(--label);
+  color: var(--line-soft);
+  pointer-events: none;
+}
+
+.row-left {
+  right: calc(100% + 12px);
+}
+
+.row-right {
+  left: calc(100% + 12px);
 }
 
 .zones span {
@@ -263,7 +280,7 @@ p {
 }
 
 .sheet-no {
-  color: var(--yellow);
+  color: var(--line);
   font: 500 0.82rem var(--label);
   letter-spacing: 0.08em;
 }
@@ -286,8 +303,6 @@ p {
 
 .aside {
   margin-top: 28px;
-  padding-left: 16px;
-  border-left: 1px solid var(--line-faint);
   color: var(--line-soft);
   max-width: 56ch;
 }
@@ -366,10 +381,6 @@ p {
   scrollbar-width: thin;
 }
 
-.nowrap {
-  white-space: nowrap;
-}
-
 .copy-button {
   display: inline-flex;
   align-items: center;
@@ -407,16 +418,10 @@ p {
   stroke-width: 1.4;
 }
 
-.copy-button:hover {
-  background: var(--yellow);
-}
-
-.copy-button[data-state="done"] {
-  background: var(--yellow);
-}
-
+.copy-button:hover,
+.copy-button[data-state="done"],
 .copy-button[data-state="failed"] {
-  background: var(--red);
+  background: var(--line-soft);
 }
 
 .requirements {
@@ -560,7 +565,7 @@ p {
 
 .send {
   fill: none;
-  stroke: var(--yellow);
+  stroke: var(--line);
   stroke-width: 2;
   stroke-dasharray: 4 5;
 }
@@ -628,7 +633,7 @@ p {
 
 .terminal-lines .cmd::before {
   content: "● ";
-  color: var(--yellow);
+  color: var(--line-soft);
 }
 
 .terminal-lines .out,
@@ -638,7 +643,7 @@ p {
 }
 
 .terminal-lines .diff {
-  color: var(--yellow);
+  color: var(--line);
 }
 
 .revisions {
@@ -673,8 +678,7 @@ p {
 }
 
 .replay:hover {
-  border-color: var(--yellow);
-  color: var(--yellow);
+  border-color: var(--line);
 }
 
 .replay svg {
@@ -739,16 +743,19 @@ thead th {
 }
 
 .status[data-state="acknowledged"] {
-  color: var(--yellow);
+  color: var(--line);
+  border-style: dashed;
 }
 
 .status[data-state="resolved"] {
-  color: var(--line);
+  border-color: var(--line);
+  background: var(--line);
+  color: var(--ground-ink);
 }
 
 .title-block {
   display: grid;
-  grid-template-columns: 1.4fr 2fr repeat(4, 1fr);
+  grid-template-columns: 1.3fr 1.8fr repeat(4, 0.8fr) auto;
   margin: clamp(32px, 4vw, 56px) calc(-1 * clamp(20px, 4vw, 64px)) 0;
   border-top: 1.5px solid var(--line);
 }
@@ -906,8 +913,7 @@ thead th {
 .xml pre {
   margin: 0;
   padding: 16px 18px 18px;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  overflow-x: auto;
   font-size: 0.8rem;
   line-height: 1.85;
   color: var(--line-soft);
@@ -932,8 +938,7 @@ thead th {
 }
 
 .balloon.lit {
-  background: var(--yellow);
-  border-color: var(--yellow);
+  background: var(--line);
   color: var(--ground-ink);
 }
 
@@ -967,7 +972,7 @@ thead th {
 }
 
 .schedule tbody tr:hover {
-  background: rgb(255 225 77 / 0.07);
+  background: rgb(238 243 255 / 0.06);
 }
 
 /* Plan */
@@ -1020,13 +1025,13 @@ thead th {
 
 .dimension line,
 .dimension path {
-  stroke: var(--red);
+  stroke: var(--line-soft);
   stroke-width: 1.2;
   fill: none;
 }
 
 .dimension text {
-  fill: var(--red);
+  fill: var(--line);
   font: 600 15px var(--label);
 }
 
@@ -1085,8 +1090,8 @@ thead th {
   width: clamp(28px, 4vw, 56px);
   height: 7px;
   background:
-    linear-gradient(var(--yellow), var(--yellow)) left 50% / calc(100% - 8px) 1.5px no-repeat,
-    conic-gradient(from -135deg at 100% 50%, var(--yellow) 90deg, transparent 0) right / 8px 100%
+    linear-gradient(var(--line), var(--line)) left 50% / calc(100% - 8px) 1.5px no-repeat,
+    conic-gradient(from -135deg at 100% 50%, var(--line) 90deg, transparent 0) right / 8px 100%
       no-repeat;
 }
 
@@ -1098,8 +1103,9 @@ thead th {
   top: calc(50% + 6px);
   transform: scaleX(-1);
   background:
-    linear-gradient(var(--red), var(--red)) left 50% / calc(100% - 8px) 1.5px no-repeat,
-    conic-gradient(from -135deg at 100% 50%, var(--red) 90deg, transparent 0) right / 8px 100%
+    repeating-linear-gradient(90deg, var(--line-soft) 0 5px, transparent 5px 9px) left 50% /
+      calc(100% - 8px) 1.5px no-repeat,
+    conic-gradient(from -135deg at 100% 50%, var(--line-soft) 90deg, transparent 0) right / 8px 100%
       no-repeat;
 }
 
@@ -1123,12 +1129,32 @@ thead th {
   text-transform: uppercase;
 }
 
-.flow-request {
-  color: var(--yellow);
+.chain-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.wire {
+  width: 36px;
+  height: 7px;
+  background:
+    linear-gradient(var(--line), var(--line)) left 50% / calc(100% - 8px) 1.5px no-repeat,
+    conic-gradient(from -135deg at 100% 50%, var(--line) 90deg, transparent 0) right / 8px 100%
+      no-repeat;
 }
 
 .flow-reply {
-  color: var(--red);
+  color: var(--line-soft);
+}
+
+.flow-reply .wire {
+  transform: scaleX(-1);
+  background:
+    repeating-linear-gradient(90deg, var(--line-soft) 0 5px, transparent 5px 9px) left 50% /
+      calc(100% - 8px) 1.5px no-repeat,
+    conic-gradient(from -135deg at 100% 50%, var(--line-soft) 90deg, transparent 0) right / 8px 100%
+      no-repeat;
 }
 
 .lifecycle {
@@ -1194,9 +1220,6 @@ thead th {
 
 /* Notes */
 .notes-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 7fr) minmax(0, 4fr);
-  gap: clamp(32px, 5vw, 80px);
   margin-top: clamp(28px, 4vw, 48px);
 }
 
@@ -1206,7 +1229,8 @@ thead th {
   list-style: none;
   counter-reset: note;
   display: grid;
-  gap: 18px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px clamp(32px, 5vw, 72px);
 }
 
 .general-notes li {
@@ -1237,45 +1261,7 @@ thead th {
   font-weight: 500;
 }
 
-.dimensions {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  gap: 32px;
-  align-content: start;
-}
-
-.dimensions li {
-  display: grid;
-  justify-items: center;
-  gap: 6px;
-}
-
-.dim-value {
-  font: 600 clamp(2.4rem, 4vw, 3.6rem) / 1 var(--display);
-  color: var(--line);
-}
-
-.dim-line {
-  width: 100%;
-  height: 12px;
-  border-inline: 1.5px solid var(--red);
-  background: linear-gradient(var(--red), var(--red)) center / 100% 1.5px no-repeat;
-}
-
-.dim-label {
-  font: 500 0.8rem var(--label);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--line-soft);
-}
-
 /* Install: issued for construction */
-.sheet-install {
-  border-color: var(--yellow);
-}
-
 .steps {
   margin: clamp(28px, 4vw, 48px) 0 0;
   padding: 0;
@@ -1293,7 +1279,7 @@ thead th {
 .step-no {
   font: 600 clamp(4rem, 8vw, 6rem) / 0.8 var(--display);
   color: transparent;
-  -webkit-text-stroke: 1.5px var(--yellow);
+  -webkit-text-stroke: 1.5px var(--line);
 }
 
 .step h3 {
@@ -1364,28 +1350,36 @@ kbd {
 }
 
 /* The demo picker */
+.tb-launcher {
+  display: flex;
+  align-items: center;
+}
+
 .launcher {
-  position: fixed;
-  right: 20px;
-  bottom: 20px;
-  z-index: 40;
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  height: 48px;
-  padding: 0 18px 0 12px;
-  border: 1.5px solid var(--ground-ink);
-  border-radius: 24px;
+  height: 44px;
+  padding: 0 16px 0 10px;
+  border: 1.5px solid var(--line);
+  border-radius: 2px;
   background: var(--line);
   color: var(--ground-ink);
   font: 600 0.92rem var(--label);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   cursor: pointer;
+  transition: background-color 200ms var(--ease);
+}
+
+/* While marking, the launcher stays reachable as the overlay's hub does. */
+html[data-picking] .launcher {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 40;
+  border-radius: 22px;
   box-shadow: 0 8px 24px rgb(4 16 44 / 0.45);
-  transition:
-    background-color 200ms var(--ease),
-    transform 200ms var(--ease);
 }
 
 :lang(ko) .launcher {
@@ -1394,7 +1388,7 @@ kbd {
 }
 
 .launcher:hover {
-  transform: translateY(-2px);
+  background: var(--line-soft);
 }
 
 .launcher[aria-pressed="true"] {
@@ -1678,12 +1672,41 @@ html[data-picking] .mark-editor button {
     order: 0;
   }
   .chain {
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    row-gap: 24px;
+    grid-template-columns: minmax(0, 1fr);
+    max-width: 440px;
+    row-gap: 28px;
+  }
+  .tb-launcher {
+    grid-column: 1 / -1;
+    border-top: 1px solid var(--line-faint);
   }
   .chain li::before,
   .chain li::after {
     display: none;
+  }
+  .chain li:not(:last-child)::before,
+  .chain li:not(:last-child)::after {
+    display: block;
+    left: 50%;
+    top: 100%;
+    width: 7px;
+    height: 24px;
+    transform: none;
+  }
+  .chain li:not(:last-child)::before {
+    translate: -14px 0;
+    background:
+      linear-gradient(var(--line), var(--line)) 50% top / 1.5px calc(100% - 8px) no-repeat,
+      conic-gradient(from 135deg at 50% 100%, var(--line) 90deg, transparent 0) bottom / 100% 8px
+        no-repeat;
+  }
+  .chain li:not(:last-child)::after {
+    translate: 7px 0;
+    background:
+      repeating-linear-gradient(var(--line-soft) 0 5px, transparent 5px 9px) 50% bottom / 1.5px
+        calc(100% - 8px) no-repeat,
+      conic-gradient(from -45deg at 50% 0, var(--line-soft) 90deg, transparent 0) top / 100% 8px
+        no-repeat;
   }
   .title-block {
     grid-template-columns: repeat(3, 1fr);
@@ -1739,13 +1762,41 @@ html[data-picking] .mark-editor button {
     grid-template-columns: 1fr;
     gap: 2px;
   }
-  .launcher-label {
+  .copy-button span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .copy-button {
+    padding: 0 14px;
+  }
+  .lifecycle li:not(:last-child)::after {
     display: none;
   }
-  .launcher {
-    width: 48px;
+  .lifecycle li:not(:last-child),
+  .lifecycle li:nth-child(3) {
+    margin-right: 8px;
+  }
+  .general-notes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .tb-launcher {
+    grid-column: 1 / -1;
+    border-left: 0 !important;
+  }
+  html[data-picking] .launcher-label {
+    display: none;
+  }
+  html[data-picking] .launcher {
+    width: 44px;
     padding: 0;
     justify-content: center;
+  }
+  .row {
+    display: none;
   }
   .title-block {
     grid-template-columns: repeat(2, 1fr);
@@ -1759,4 +1810,26 @@ html[data-picking] .mark-editor button {
   .title-block > div:nth-child(4) {
     border-left: 1px solid var(--line-faint);
   }
+}
+
+.callout circle {
+  fill: var(--ground);
+  stroke: var(--line);
+  stroke-width: 1.4;
+}
+
+.callout line,
+.callout-leader {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 1.2;
+}
+
+.callout text {
+  fill: var(--line);
+  font: 600 13px var(--label);
+}
+
+.callout:hover circle {
+  fill: var(--ground-ink);
 }
