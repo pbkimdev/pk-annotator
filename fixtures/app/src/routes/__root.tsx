@@ -1,5 +1,5 @@
 import { HeadContent, Link, Outlet, Scripts, createRootRoute } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -24,6 +24,12 @@ function RootDocument(properties: { children: ReactNode }) {
 }
 
 function RootLayout() {
+  useEffect(() => {
+    document.documentElement.dataset.fixtureReady = "true";
+    return () => {
+      delete document.documentElement.dataset.fixtureReady;
+    };
+  }, []);
   return (
     <div className="shell">
       <header>

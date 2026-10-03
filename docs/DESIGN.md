@@ -2,13 +2,15 @@
 
 A standalone, dev-only, floating package that replaces Agentation (toolbar, server, and MCP registrations) everywhere Paul uses it. It covers element picking (click, Shift multi-select, marquee), prompt composition, flow recording, network and console inspection with error hunting, and a performance panel.
 
+This document owns the current package contract. Start with [DEVELOPING.md](DEVELOPING.md) for task entry points, tests, and the fixture. Dated consumer migration plans and external runtime observations are in [INTEGRATION-HISTORY.md](INTEGRATION-HISTORY.md).
+
 ## Decisions (Paul, 2026-10-02)
 
 1. **Capture is built in.** `core/` wraps fetch, XHR, console, and error events itself.
 2. **Own MCP server.** `pka-mcp` is a stdio server over a per-project file store in `_interim/annotations/`.
-3. **AI Elements is installed** with shadcn into the overlay. The overlay keeps lucide icons; shadcn variables map to Lean tokens through a theme file.
+3. **AI Elements is installed** with shadcn into the overlay. The overlay keeps lucide icons; consumers map shadcn variables to their own tokens through a theme file.
 4. **Home: `~/srv/pk-annotator`**, Forgejo `srv/pk-annotator`, published to the Forgejo npm registry as **`@srv/pk-annotator`** (`https://git.paulbkim.dev/api/packages/srv/npm/`). The scope is required because pnpm routes only scoped packages to a second registry. Consumers set `@srv:registry` in `.npmrc` and list the package in `pnpm.minimumReleaseAgeExclude`. Worktrees go at `~/.worktrees/pk-annotator/<branch>`.
-5. **Agentation is removed completely**: Lean, Mantra, the Claude Code user registration, and the Platform service.
+5. **Replacement scope:** Lean, Mantra, the Claude Code user registration, and the Platform service. The historical migration plan is in [INTEGRATION-HISTORY.md](INTEGRATION-HISTORY.md#agentation-removal); current migration status belongs to each owning repository.
 6. **Tools only, no idle cost.** The MCP server uses no resources, prompts, sampling, roots, or logging primitives. Nothing polls, and nothing holds memory beyond fixed caps when unused.
 
 ## Package layout
@@ -16,9 +18,14 @@ A standalone, dev-only, floating package that replaces Agentation (toolbar, serv
 ```text
 pk-annotator/
 ├── src/
+│   ├── shared/        # strict schemas for channel messages, stored data, recordings, verdicts
+│   ├── lab/           # production flow replay, trace insights, budget verdicts
 │   ├── core/          # in-page capture: console, errors, network, user actions; ring buffers, redaction, clear watermark
 │   ├── select/        # hit testing, Shift toggle, marquee, selector and source resolution
 │   ├── overlay/
+│   │   ├── panels/        # Network, Console, Record, Perf; panel registration
+│   │   ├── recording/     # recording lifecycle, keyframes, capture files
+│   │   ├── perf/          # live observers, attribution, snapshots
 │   │   ├── launcher.ts    # plain DOM button in a shadow root; loads the React UI on first open
 │   │   ├── ui/            # shadcn primitives pulled by the registry
 │   │   ├── ai-elements/   # prompt-input, attachments (ai-elements CLI)
@@ -28,52 +35,16 @@ pk-annotator/
 │   ├── ops/           # operations shared by CLI and MCP: list, get, wait, set_status, reply, errors
 │   ├── cli/           # pka: the same operations with --json; pka watch --once; pka lab; pka prune
 │   └── mcp/           # pka-mcp: stdio, tools only, thin wrapper over ops
+├── fixtures/
+│   ├── app/           # TanStack SSR fixture: picker examples, /lab, API routes
+│   └── smoke.ts       # browser → annotation store → CLI integration check
+├── tools/oxlint/      # vendored anti-slop rules
+├── tsdown.config.ts   # entry points, shadow CSS compilation, fetch/observer injection
 ├── components.json    # shadcn config
 └── package.json       # exports ./vite and ./overlay; bins pka, pka-mcp
 ```
 
-The agent skill that teaches `pka` lives in pkai, per Paul's rule that skills go there.
-
-## Lean changes
-
-```diff
- package.json                 # + @srv/pk-annotator (root devDependency, so node_modules/.bin/pka-mcp resolves)
-                              # + pnpm.minimumReleaseAgeExclude: ["@srv/pk-annotator"]; .npmrc: @srv:registry
-+.mcp.json                    # Claude Code: pka → node_modules/.bin/pka-mcp
-+.codex/config.toml           # Codex: [mcp_servers.pka]
-+.pi/mcp.json                 # Pi 1.0: pka, exposure "direct"
- AGENTS.md                    # + dev-only tooling in its own shadow root may use its own component library
- apps/web/
- ├── package.json             # - agentation 3.1.2, + @srv/pk-annotator
- ├── vite.config.ts           # + annotator({ bodies: ["/api/", "/ui-api/"] })
- └── src/
-+    ├── client.tsx           # dev: mount({ hot: import.meta.hot }), then hydrateRoot(..., reactRootOptions)
-+    ├── annotator-theme.css  # maps shadcn variables to --lean-* tokens
-     ├── routes/__root.tsx    # - Agentation lazy import and <Agentation endpoint=…>
-     └── styles.css:3310      # agentation-toolbar selector → pk-annotator host element
- apps/server/                 # dev-only Server-Timing middleware (handler, db, auth)
- apps/desktop/                # dev-only setDisplayMediaRequestHandler and debug port
- scripts/verify               # fail if a sentinel string appears in the production bundle
-```
-
-`pka-mcp` is launched from `node_modules/.bin` directly, not through `pnpm exec`, so each agent session costs one process instead of two.
-
-The client entry, in the shape TanStack Start documents:
-
-```tsx
-import { StartClient } from "@tanstack/react-start/client";
-import { StrictMode } from "react";
-import { hydrateRoot } from "react-dom/client";
-
-let rootOptions = {};
-if (import.meta.env.DEV) {
-  const annotator = await import("@srv/pk-annotator/overlay");
-  rootOptions = annotator.mount({ hot: import.meta.hot! }).reactRootOptions;
-}
-hydrateRoot(document, <StrictMode><StartClient /></StrictMode>, rootOptions);
-```
-
-The consumer passes `import.meta.hot` because a pre-bundled dependency has no HMR context of its own; the app's client entry does.
+Tests sit beside the code they exercise as `*.test.ts`. [DEVELOPING.md](DEVELOPING.md#task-map) links each task to its implementation, schema, and check. The agent skill that teaches `pka` lives in pkai, per Paul's rule that skills go there.
 
 ## Public API
 
@@ -99,9 +70,9 @@ type Mounted = {
 function mount(options: MountOptions): Mounted;
 ```
 
-The theme sets `data-theme` on the host element and `.dark` on `.pka-root`. A consumer whose theme setting loads after mount, as Lean's does, calls `setTheme` when it loads and whenever it changes. The launcher keeps the setting, so a call made before the UI chunk loads still applies when the UI opens.
+The theme sets `data-theme` on the host element and `.dark` on `.pka-root`. A consumer whose theme setting loads after mount calls `setTheme` when it loads and whenever it changes. The launcher keeps the setting, so a call made before the UI chunk loads still applies when the UI opens.
 
-API calls go through the Vite proxy (`apps/web/vite.config.ts:144`), so they are same-origin in dev and `traceparent` or `Server-Timing` needs no CORS change.
+The consumer passes `import.meta.hot` because a pre-bundled dependency has no HMR context of its own; the app's client entry does. Consumer-specific proxy setup is recorded in [INTEGRATION-HISTORY.md](INTEGRATION-HISTORY.md#lean-changes).
 
 ## Overlay component tree
 
@@ -153,7 +124,7 @@ Nothing runs that you are not using, and production carries zero bytes.
 |---|---|---|
 | Launcher | One DOM button in a shadow root; React, AI Elements, and Tailwind not loaded | UI chunk loads on first open by dynamic import |
 | Console and errors | Wrappers append to fixed ring buffers (500 entries). Arguments are serialized at capture time with depth and length caps, so the buffer never holds app objects. An error group that is new, recurs, or changes status is sent to the plugin for the live error snapshot, at most once per second; the timer exists only while a group waits | Panels subscribe to the in-page buffers and read them directly. A recording copies each new entry through a tap, so the ring cap cannot drop it. Nothing else reaches the plugin until you send an annotation |
-| Network | Request metadata only, same ring-buffer cap. One PerformanceObserver for `resource` entries keeps the timings of up to 500 fetch and XHR requests, so Server-Timing and transfer sizes survive a full resource timing buffer (Chromium holds 250 entries, and a Vite dev page fills it with module scripts). Its callback runs only when a request completes, it never resizes or reads the page's buffer, and stopping the capture disconnects it. Bodies are captured only for allowlisted same-origin paths, 64 KB each, 8 MB total. A JSON response without Content-Length (Lean's API responses are chunked) is read from a clone until it ends or passes 64 KB, when the clone is cancelled. Event streams (Lean's live connection, `apps/web/src/sse-client.ts:19`), NDJSON, and other streaming types are never cloned; only open, close, and byte count are recorded. The overlay's own requests (source maps for symbolication, images and fonts snapdom inlines) use the unwrapped fetch and are never recorded | Same |
+| Network | Request metadata only, same ring-buffer cap. One PerformanceObserver for `resource` entries keeps the timings of up to 500 fetch and XHR requests, so Server-Timing and transfer sizes survive a full resource timing buffer (Chromium holds 250 entries, and a Vite dev page fills it with module scripts). Its callback runs only when a request completes, it never resizes or reads the page's buffer, and stopping the capture disconnects it. Bodies are captured only for allowlisted same-origin paths, 64 KB each, 8 MB total. A JSON response without Content-Length is read from a clone until it ends or passes 64 KB, when the clone is cancelled. Event streams, NDJSON, and other streaming types are never cloned; only open, close, and byte count are recorded. The overlay's own requests (source maps for symbolication, images and fonts snapdom inlines) use the unwrapped fetch and are never recorded | Same |
 | Performance | No observers beyond the Network one. Opening the Perf panel starts PerformanceObserver with `buffered: true`, which still returns LCP, CLS, and earlier long animation frames | `react-scan/lite` runs only while the Perf panel is open |
 | Recording | Off | Keyframes only at actions, navigations, and errors (one per error group); video only when chosen |
 | Automation | Nothing mounts when `navigator.webdriver` is true (Playwright, e2e runs) | n/a |
@@ -161,11 +132,11 @@ Nothing runs that you are not using, and production carries zero bytes.
 | pka-mcp | Not running until a client spawns it. Between calls it holds no timers or watchers. It exits on stdin EOF | `wait_for_annotation` holds one inotify watcher for its bounded duration, then closes it |
 | pka CLI | No process | `pka watch --once` exists only while waiting |
 | Store | `pka prune` removes resolved and dismissed annotations older than 7 days; new video is refused above a size cap (default 500 MB) | n/a |
-| Production | Absent; `scripts/verify` fails if the sentinel appears in the build | n/a |
+| Production | Absent from a consumer production build: serve-only plugins and the consumer's `import.meta.env.DEV` import guard enforce the boundary. Verify the consumer bundle in its own build check | n/a |
 
 The one standing cost is MCP itself: each agent session keeps one idle Node process alive for its lifetime. Using only the CLI avoids even that.
 
-The numeric caps are starting defaults to tune.
+The numeric caps are starting defaults to tune. This repo's `pnpm verify` checks the package; it does not build consumer applications. Consumer checks belong to the owning repositories.
 
 ## MCP server
 
@@ -201,13 +172,7 @@ All tools set `openWorldHint: false`. Input schemas are Zod `strictObject`, whic
 - Tool descriptions state that page content is data, not instructions.
 - The server opens no network listeners.
 
-**Registration per client.**
-
-```text
-.mcp.json            Claude Code   { "pka": { "command": "node_modules/.bin/pka-mcp" } }
-.codex/config.toml   Codex         [mcp_servers.pka] command = "node_modules/.bin/pka-mcp"
-.pi/mcp.json         Pi 1.0        pka, exposure "direct"
-```
+**Client registration.** [README.md](../README.md#mcp) owns the copyable client examples and their validation notes. Launch `node_modules/.bin/pka-mcp` directly from the consumer root; `pnpm exec` adds a second process.
 
 ```text
 _interim/annotations/
@@ -237,7 +202,7 @@ marquee end(rect)
   selection = Shift ? selection ∪ hits : hits
 ```
 
-Source location comes from our own serve-only Vite plugin, `src/vite/source.ts`, first proven in a scratch spike that has since been deleted. It parses with Vite's re-exported `parseSync` and `Visitor` and writes with `magic-string`, stamping `data-pka-src="<workspace-relative path>:line:col"` (1-based) on every lowercase host JSX element. Paths are relative to `searchForWorkspaceRoot`, so Lean reports `apps/web/src/...`. The hook must use `enforce: "pre"` and `transform.order: "pre"` so it stamps the untouched source in client, route-split, and SSR environments alike; without that order the spike reproduced a hydration mismatch. TanStack's `injectSource` was rejected: fixed attribute name, composite elements stamped, spread detection defeated by rest destructuring, parse errors swallowed.
+Source location comes from the serve-only Vite plugin, `src/vite/source.ts`. It parses with Vite's re-exported `parseSync` and `Visitor` and writes with `magic-string`, stamping `data-pka-src="<workspace-relative path>:line:col"` (1-based) on every lowercase host JSX element. Paths are relative to `searchForWorkspaceRoot`, so a monorepo can report `apps/web/src/...`. The hook must use `enforce: "pre"` and `transform.order: "pre"` so it stamps the untouched source in client, route-split, and SSR environments alike; this prevents hydration mismatches from attributes added after source splitting. TanStack's `injectSource` was rejected: fixed attribute name, composite elements stamped, spread detection defeated by rest destructuring, parse errors swallowed.
 
 Each element reports two locations when they differ: `source` (the host element's own JSX, for example `button.tsx:4:10` inside a `Button` wrapper) and `usedAt` (the nearest user-code owner's call site, for example `index.tsx:20:6`, from bippy `getSource(ownerFiber)`). Elements without the attribute (Radix content, portals, `node_modules`) fall back to bippy 0.7.3: walk `getRawOwnerStack(fiber)`, take the first frame under the project and outside `node_modules`, and symbolicate it. bippy columns are 0-based (add 1) and file names are basenames (resolve with `new URL(source, frameUrl)`). A cold lookup costs about 300 ms while source maps load, so pick mode pre-warms it. Owner chains drop every frame whose URL contains `/node_modules/`, which removes `SafeFragment`, `MatchInnerImpl`, `Lazy`, `Primitive.*`, and the like, while keeping user components such as `RootDocument`.
 
@@ -306,7 +271,7 @@ The overlay names suspects; pass/fail claims come only from lab verdicts on prod
 
 ## AI Elements inside the shadow root
 
-Proven in a scratch spike that has since been deleted (shadcn 4.21.1 `init -t vite -b radix`, ai-elements 1.9.0 `add prompt-input attachments`, Tailwind 4.3.3, React 19.3.0), verified with Playwright against a host page with hostile global CSS. Its results, which the overlay follows:
+The overlay follows these isolation and integration rules. The original investigation is recorded in [INTEGRATION-HISTORY.md](INTEGRATION-HISTORY.md#shadow-root-spike).
 
 1. **Stylesheet.** Import the compiled CSS with `?inline`, build one `CSSStyleSheet`, and adopt it into the shadow root. shadcn variables live on `:host`; base `html`/`body` rules move to `.pka-root`. `:host { all: initial !important; position: fixed !important; inset: 0 auto auto 0 !important; z-index: 2147483647 !important }` stops inherited host styles. Fonts declared with `@font-face` inside a shadow root do not load; use system fonts or declare faces on `document`.
 2. **rem.** A PostCSS step rewrites `Nrem` to `N*16px` in the overlay stylesheet, so a host `html { font-size }` cannot resize the overlay.
@@ -314,52 +279,8 @@ Proven in a scratch spike that has since been deleted (shadcn 4.21.1 `init -t vi
 4. **Focus.** Radix Select and Menu compare `document.activeElement`, which is retargeted to the host element. While mounted, an instance getter on `document` returns `shadow.activeElement` only when the native value is our host; unmount removes it.
 5. **Portals.** A context supplies a portal container inside the shadow root, a sibling of the app root, to every shadcn portal.
 6. **Stacking.** The host is the only stacking context; the dock carries no z-index, so portal content stacks above it.
-7. **No modal primitives.** Modal Select, Dialog, and DropdownMenu lock host scrolling, set `pointer-events: none` on `body`, and put `aria-hidden` on host elements; the spike measured an 8 px host shift. Use non-modal variants only: `modal={false}` menus, and a non-modal menu or popover in place of Select (including PromptInput's model select).
-8. **Theming.** Consumers theme through custom properties on the host element (`pk-annotator { --primary: var(--lean-accent); --radius: 4px; }`), which beat `:host` and inherit across the boundary. Dark mode needs `data-theme="dark"` on the host, which switches the `:host` variables, and a `.dark` class on `.pka-root` for Tailwind's dark variant; the `theme` option and `setTheme` set both (see Public API).
-
-Outside-click dismissal needed no `composedPath()` fix. Sizes from the spike's production build: launcher 1.65 kB gzip; UI chunk 135 kB gzip including 9 kB of CSS, loaded only on first open.
-
-## Agentation removal
-
-Order matters: each step leaves a working setup.
-
-1. **Carry over open work.** The shared store holds 6 pending annotations, which are 3 unique Lean notes from 2026-09-28 (project row icon padding and focus outline, the "New project" button style, the location-bar command icon). Move them into the new store or file them as Lean issues.
-2. **Lean** (with phase 1): `apps/web/package.json:50`, `apps/web/src/routes/__root.tsx:15-19, 72-76`, `apps/web/src/styles.css:3310`, lockfile regenerated.
-3. **Mantra** (`~/projects/mantra`): `apps/ui/package.json:43`, `apps/ui/pnpm-workspace.yaml:6`, `apps/ui/src/agentationDev.tsx`, `apps/ui/src/main.tsx:23-25`, `dev.compose.yaml` agentation service and volume (Postgres stays), `dev.Dockerfile`, `Makefile` `annotate` targets and the `dev: annotate` dependency, `AGENTS.md:21-23`, `.mcp.json`, `.pi/mcp.json`, local `.claude/settings.local.json` `enabledMcpjsonServers`. The `migrate/server-go` worktree carries the same lines.
-4. **Claude Code user config:** `claude mcp remove --scope user agentation`.
-5. **Platform** (`~/srv/platform`), one commit: `services/archbox-agentation/`, `services/README.md:44-45`, `tests/contracts/archbox-agentation-contract.sh` together with `scripts/verify.sh:70`.
-6. **Runtime:** stop the `archbox-agentation` container; remove the exited `mantra-dev-agentation-1` container and the `mantra-dev-agentation` image. Leave the `mantra-dev-agentation-run-*` bridge alone; it belongs to a live Mantra session and removes itself.
-7. **Data, after Paul confirms:** volumes `archbox-agentation_store` and `mantra-dev_agentation-data`, `~/.agentation/store.db*`, `~/.local/share/archbox-agentation/`.
-
-Left alone: logs, transcripts, backups, and browser history that mention Agentation; nothing reads them.
-
-## Order of work
-
-1. Store, ops, CLI, `pka-mcp`, source attributes, pick, Shift multi-select, marquee, composer. Lean switches and drops Agentation.
-2. Core capture with Network and Console panels, Hunt, Clear, `get_errors`.
-3. Recording: timeline, keyframes, opt-in video, Electron display-media handler.
-4. Performance: live panel, then `pka lab` and Server-Timing in the API.
-5. chrome-devtools-mcp page tools.
-6. Mantra switches; Claude Code user entry removed; Platform service retired; data deleted after confirmation.
-
-## Evidence and open questions
-
-Confirmed on 2026-10-02:
-
-- `npm view`: web-vitals 6.2.2, react-scan 0.5.7, bippy 0.7.3, chrome-devtools-mcp 1.10.1, @zumer/snapdom 3.2.0, @tanstack/devtools-bundler-core 0.1.3, @modelcontextprotocol/server 2.2.0 (zod ^4.2.0), @modelcontextprotocol/sdk 1.31.0, @earendil-works/pi-coding-agent 1.0.0.
-- The MCP versioning page names 2026-07-28 as the current version. The 2026-07-28 changelog includes the stateless protocol, `server/discover`, and the Roots deprecation.
-- The installed Agentation 3.1.2 bundle contains its source probe and marquee candidate list.
-- Agentation's pending items show its weaknesses. Two different elements on `/projects` both report `projects-page.tsx:105:22` (a component definition, not the call site). Owner chains are full of framework internals. Every item is stored twice. About 70 KB of sessions come from e2e runs on `127.0.0.1:43129`.
-- Docker shows `archbox-agentation` up and healthy and the Mantra bridge running. `~/.claude.json` holds the user-scope `agentation` entry.
-
-Unconfirmed:
-
-- Whether Codex reads project `.codex/config.toml` for MCP servers and shows the model both content channels.
-- Cancellation support in Claude Code and Codex.
-- Whether chrome-devtools-mcp 1.x attaches to Electron 44.
-- Whether Element Capture works through Electron's display-media handler.
-
-The scratch spike planned here for AI Elements in a shadow root and source attributes under SSR hydration has run; its results are in Selection and in AI Elements inside the shadow root.
+7. **No modal primitives.** Modal Select, Dialog, and DropdownMenu lock host scrolling, set `pointer-events: none` on `body`, and put `aria-hidden` on host elements. Use non-modal variants only: `modal={false}` menus, and a non-modal menu or popover in place of Select (including PromptInput's model select).
+8. **Theming.** Consumers theme through custom properties on the host element (`pk-annotator { --primary: var(--app-accent); --radius: 4px; }`), which beat `:host` and inherit across the boundary. Dark mode needs `data-theme="dark"` on the host, which switches the `:host` variables, and a `.dark` class on `.pka-root` for Tailwind's dark variant; the `theme` option and `setTheme` set both (see Public API).
 
 ## Sources
 

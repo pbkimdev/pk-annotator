@@ -1,6 +1,6 @@
 # @srv/pk-annotator
 
-A dev-only browser annotator for Vite apps. Pick elements, write a prompt, and send it, with source locations, screenshots, console, network, recordings, and performance, to a file store that coding agents read through MCP or the `pka` CLI. [docs/DESIGN.md](docs/DESIGN.md) is the full design.
+A dev-only browser annotator for Vite apps. Pick elements, write a prompt, and send it, with source locations, screenshots, console, network, recordings, and performance, to a file store that coding agents read through MCP or the `pka` CLI. [docs/DESIGN.md](docs/DESIGN.md) is the behavior contract. [Developing](docs/DEVELOPING.md) maps tasks to code and explains the fixture and checks.
 
 ## Install
 
@@ -84,6 +84,8 @@ command = "node_modules/.bin/pka-mcp"
 { "mcpServers": { "pka": { "command": "node_modules/.bin/pka-mcp", "exposure": "direct" } } }
 ```
 
+Pi 1.0.0's bundled MCP documentation and the [upstream tool-exposure reference](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/mcp.md#control-tool-exposure) support `"exposure": "direct"` (checked 2026-10-03). This validates the configuration fields; an interactive Pi session with this server has not been exercised here.
+
 The tools are `list_annotations`, `get_annotation`, `wait_for_annotation`, `set_status`, `reply`, and `get_errors`.
 
 ## CLI
@@ -103,4 +105,4 @@ Every command takes `--json` and `--root DIR`. `pka status <id> acknowledged` cl
 
 ## Resource budget
 
-Until you open it, the overlay is one button in a shadow root; capture keeps bounded ring buffers, and panels, observers, and recording start only when you use them. Production builds contain none of it, and `pka-mcp` holds no timers or watchers between calls.
+Mount starts bounded capture and one resource-timing observer. Opening the dock loads the UI; opening Perf starts its additional observers, and recording starts on request. `pka-mcp` holds no timers or watchers between calls. The dev-only integration above excludes the package from consumer production builds. [DESIGN.md](docs/DESIGN.md#resource-budget) owns the detailed limits and lifecycle.
