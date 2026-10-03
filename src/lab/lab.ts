@@ -765,8 +765,8 @@ async function measure(run: number, options: RunContext): Promise<RunResult> {
 }
 
 // The replay that supplies insights and the hot function. CPU sampling and the
-// timeline categories slow the page (a 4x CPU click measured median INP 56 ms
-// untraced and 64 ms traced), so its metrics never enter the verdict.
+// timeline categories slow the page, which near a budget can change the
+// verdict, so its metrics never enter the verdict.
 async function diagnose(options: RunContext, file: string): Promise<Diagnostic> {
   const session = await openSession(options);
   const { cdp } = session;
