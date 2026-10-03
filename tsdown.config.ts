@@ -103,8 +103,9 @@ const overlay: UserConfig = {
     },
   },
   alias: { "@": path.resolve(import.meta.dirname, "src") },
-  // The agent theme inlines its fonts, so a consumer's bundler needs no asset handling.
-  loader: { ".woff2": "dataurl" },
+  // The agent theme inlines its fonts as bytes, so a consumer's bundler needs no asset
+  // handling and a page's font-src, which governs font URLs, does not apply.
+  loader: { ".woff2": "binary" },
   define: { "process.env.NODE_ENV": JSON.stringify("production") },
   deps: {
     alwaysBundle: [/.*/],

@@ -23,6 +23,6 @@ declare module "gifenc" {
 }
 
 declare module "*.woff2" {
-  const url: string;
-  export default url;
+  const bytes: Uint8Array<ArrayBuffer>;
+  export default bytes;
 }

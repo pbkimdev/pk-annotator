@@ -1,7 +1,7 @@
-import loraUrl from "@fontsource-variable/lora/files/lora-latin-wght-normal.woff2";
-import poppins400Url from "@fontsource/poppins/files/poppins-latin-400-normal.woff2";
-import poppins500Url from "@fontsource/poppins/files/poppins-latin-500-normal.woff2";
-import poppins600Url from "@fontsource/poppins/files/poppins-latin-600-normal.woff2";
+import lora from "@fontsource-variable/lora/files/lora-latin-wght-normal.woff2";
+import poppins400 from "@fontsource/poppins/files/poppins-latin-400-normal.woff2";
+import poppins500 from "@fontsource/poppins/files/poppins-latin-500-normal.woff2";
+import poppins600 from "@fontsource/poppins/files/poppins-latin-600-normal.woff2";
 
 import { agentKind, type AgentKind } from "../shared/agent.ts";
 import type { AgentMessage } from "../shared/channel.ts";
@@ -435,26 +435,22 @@ const LATIN =
 let fontsAdded = false;
 
 /**
- * Claude's brand faces (OFL), inlined as data URLs so the bundle needs no asset handling.
- * The family names are the overlay's own, so they never match a consumer's font-family, and
- * a face downloads nothing: its bytes decode only when overlay text first uses it.
+ * Claude's brand faces (OFL), inlined as bytes so the bundle needs no asset handling and a
+ * page's font-src cannot refuse them. The family names are the overlay's own, so they never
+ * match a consumer's font-family. They are added with the Claude theme and decode then.
  */
 function addClaudeFonts(): void {
   if (fontsAdded) return;
   fontsAdded = true;
-  const faces: [string, string, string][] = [
-    ["pka Poppins", poppins400Url, "400"],
-    ["pka Poppins", poppins500Url, "500"],
-    ["pka Poppins", poppins600Url, "600"],
-    ["pka Lora", loraUrl, "400 700"],
+  const faces: [string, Uint8Array<ArrayBuffer>, string][] = [
+    ["pka Poppins", poppins400, "400"],
+    ["pka Poppins", poppins500, "500"],
+    ["pka Poppins", poppins600, "600"],
+    ["pka Lora", lora, "400 700"],
   ];
-  for (const [family, url, weight] of faces) {
+  for (const [family, bytes, weight] of faces) {
     document.fonts.add(
-      new FontFace(family, `url(${url}) format("woff2")`, {
-        weight,
-        display: "swap",
-        unicodeRange: LATIN,
-      }),
+      new FontFace(family, bytes, { weight, display: "swap", unicodeRange: LATIN }),
     );
   }
 }
