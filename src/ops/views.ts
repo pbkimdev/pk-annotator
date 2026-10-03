@@ -29,6 +29,23 @@ const CAP = {
   owners: 12,
 } as const;
 
+/**
+ * UTF-8 bytes of a concise annotation or list page, so it stays well under Claude Code's
+ * 10k-token warning. detail full has no budget.
+ */
+export const CONCISE_BYTES = 20_000;
+
+export function jsonBytes(
+  value:
+    | AnnotationView
+    | ElementView
+    | AnnotationView["attachments"][number]
+    | ListItem
+    | { items: ListItem[]; nextCursor: string | undefined },
+): number {
+  return Buffer.byteLength(JSON.stringify(value));
+}
+
 const CONTROL = /(?![\t\n])\p{Cc}/gu;
 const BIDI = /\p{Bidi_Control}/gu;
 
@@ -79,6 +96,10 @@ export const AnnotationView = z.strictObject({
     z.strictObject({ kind: AttachmentKind, path: z.string(), summary: z.string().optional() }),
   ),
   threadCount: z.number(),
+  omitted: z
+    .strictObject({ elements: z.number(), attachments: z.number(), note: z.string() })
+    .optional()
+    .describe("Elements and attachments left out of a concise response"),
   history: z.array(StatusEvent).optional(),
   thread: z.array(ThreadEntry).optional(),
 });
@@ -166,9 +187,53 @@ export function annotationView(record: AnnotationRecord, detail: Detail): Annota
     view.viewport = annotation.viewport;
     view.history = state.history;
     view.thread = record.thread;
+    return view;
   }
-  return view;
+  return withinBudget(view);
 }
+
+/**
+ * Keeps the leading elements, then the leading attachments, that fit CONCISE_BYTES, so
+ * `[element n]` and `[attachment n]` keep their numbers, and says how many were left out.
+ */
+function withinBudget(view: AnnotationView): AnnotationView {
+  const { elements, attachments } = view;
+  // The counts can only shrink, so this overestimates the final omitted record.
+  let used = jsonBytes({
+    ...view,
+    elements: [],
+    attachments: [],
+    omitted: { elements: elements.length, attachments: attachments.length, note: OMITTED_NOTE },
+  });
+  const fit = <T extends ElementView | AnnotationView["attachments"][number]>(items: T[]): T[] => {
+    const kept: T[] = [];
+    for (const item of items) {
+      const bytes = jsonBytes(item) + 1;
+      if (used + bytes > CONCISE_BYTES) break;
+      used += bytes;
+      kept.push(item);
+    }
+    return kept;
+  };
+  const keptElements = fit(elements);
+  const keptAttachments = fit(attachments);
+  if (keptElements.length === elements.length && keptAttachments.length === attachments.length) {
+    return view;
+  }
+  return {
+    ...view,
+    elements: keptElements,
+    attachments: keptAttachments,
+    omitted: {
+      elements: elements.length - keptElements.length,
+      attachments: attachments.length - keptAttachments.length,
+      note: OMITTED_NOTE,
+    },
+  };
+}
+
+const OMITTED_NOTE =
+  "Left out to keep this response small. get_annotation (pka get) with detail full returns all of them.";
 
 export function listItem(record: AnnotationRecord): ListItem {
   const { annotation } = record;

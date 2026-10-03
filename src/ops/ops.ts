@@ -46,11 +46,13 @@ import {
 import { claimantExited } from "./presence.ts";
 import {
   AnnotationView,
+  CONCISE_BYTES,
   Detail,
   ErrorGroupView,
   ListItem,
   annotationView,
   errorGroupView,
+  jsonBytes,
   listItem,
   type AnnotationRecord,
 } from "./views.ts";
@@ -218,6 +220,8 @@ export async function list(store: string, input: ListInput): Promise<ListResult>
         );
   const page = matched.slice(0, input.limit);
   const items: ListResult["items"] = [];
+  // A concise page ends early at CONCISE_BYTES, and its cursor continues after the last item.
+  let bytes = jsonBytes({ items: [], nextCursor: page.at(-1) });
   for (let start = 0; start < page.length; start += SCAN_BATCH) {
     const records = await Promise.all(
       page.slice(start, start + SCAN_BATCH).map((id) => loadListed(store, id)),
@@ -225,7 +229,15 @@ export async function list(store: string, input: ListInput): Promise<ListResult>
     for (const record of records) {
       // Removed or changed between the state read and this one.
       if (record === undefined || (status !== "all" && record.state.status !== status)) continue;
-      items.push(input.detail === "full" ? annotationView(record, "full") : listItem(record));
+      if (input.detail === "full") {
+        items.push(annotationView(record, "full"));
+        continue;
+      }
+      const item = listItem(record);
+      bytes += jsonBytes(item) + 1;
+      const last = items.at(-1);
+      if (last !== undefined && bytes > CONCISE_BYTES) return { items, nextCursor: last.id };
+      items.push(item);
     }
   }
   return { items, nextCursor: matched.length > input.limit ? page.at(-1) : undefined };

@@ -28,6 +28,7 @@ import {
   type WaitOptions,
 } from "./ops.ts";
 import { thisProcess } from "./presence.ts";
+import { CONCISE_BYTES } from "./views.ts";
 
 const DRAFT: AnnotationDraft = {
   url: "http://localhost:3000/projects",
@@ -177,6 +178,51 @@ describe("list", () => {
     const second = await list(store, { ...page, cursor: first.nextCursor });
     expect(second.items.map((item) => item.id)).toEqual(pending.slice(2));
     expect(second.nextCursor).toBeUndefined();
+  });
+
+  it("ends a concise page at the byte budget and continues from its cursor", async () => {
+    const draft = { ...DRAFT, route: `/${"r".repeat(600)}`, prompt: "p".repeat(600) };
+    for (let index = 0; index < 60; index += 1) await create(store, draft);
+    const seen: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await list(store, { status: "all", limit: 100, cursor, detail: "concise" });
+      expect(Buffer.byteLength(JSON.stringify(page))).toBeLessThanOrEqual(CONCISE_BYTES);
+      seen.push(...page.items.map((item) => item.id));
+      cursor = page.nextCursor;
+    } while (cursor !== undefined);
+    expect(seen).toEqual(await listIds(store));
+  });
+});
+
+describe("get", () => {
+  it("keeps a concise annotation within the byte budget and says full returns the rest", async () => {
+    const long = (length: number): string => "x".repeat(length);
+    const elements = Array.from({ length: 100 }, (_, index) => ({
+      n: index + 1,
+      source: `src/${long(500)}.tsx:1:1`,
+      owners: Array.from({ length: 12 }, () => long(300)),
+      selector: { name: long(300), css: long(500) },
+      html: long(5000),
+      box: { x: 0, y: 0, w: 1, h: 1 },
+      text: long(1000),
+    }));
+    const { id } = await create(store, { ...DRAFT, elements });
+    const concise = await get(store, { id, detail: "concise" });
+    expect(Buffer.byteLength(JSON.stringify(concise.annotation))).toBeLessThanOrEqual(
+      CONCISE_BYTES,
+    );
+    const kept = concise.annotation.elements.map((element) => element.n);
+    expect(kept.length).toBeGreaterThan(0);
+    expect(kept).toEqual(elements.slice(0, kept.length).map((element) => element.n));
+    expect(concise.annotation.omitted).toMatchObject({
+      elements: 100 - kept.length,
+      attachments: 0,
+      note: expect.stringContaining("detail full"),
+    });
+    const full = await get(store, { id, detail: "full" });
+    expect(full.annotation.elements).toHaveLength(100);
+    expect(full.annotation.omitted).toBeUndefined();
   });
 });
 
