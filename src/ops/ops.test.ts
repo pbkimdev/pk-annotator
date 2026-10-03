@@ -19,6 +19,7 @@ import {
   attach,
   create,
   get,
+  list,
   loadAnnotation,
   reply,
   setStatus,
@@ -85,6 +86,24 @@ describe("wait", () => {
     const result = await wait(store, { ...OPTIONS, timeoutMs: 100 });
     expect(result).toEqual({ timedOut: true });
     expect(await openWatchers()).toBe(0);
+  });
+});
+
+describe("list", () => {
+  it("pages through one status with a cursor", async () => {
+    for (let index = 0; index < 5; index += 1) await create(store, DRAFT);
+    const ids = await listIds(store);
+    for (const id of ids.filter((_, index) => index % 2 === 1)) {
+      await setStatus(store, { id, status: "acknowledged" }, "agent-a");
+    }
+    const pending = ids.filter((_, index) => index % 2 === 0);
+    const page = { status: "pending", limit: 2, cursor: undefined, detail: "concise" } as const;
+    const first = await list(store, page);
+    expect(first.items.map((item) => item.id)).toEqual(pending.slice(0, 2));
+    expect(first.nextCursor).toBe(pending[1]);
+    const second = await list(store, { ...page, cursor: first.nextCursor });
+    expect(second.items.map((item) => item.id)).toEqual(pending.slice(2));
+    expect(second.nextCursor).toBeUndefined();
   });
 });
 

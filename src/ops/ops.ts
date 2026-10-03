@@ -6,6 +6,7 @@ import { z } from "zod";
 import {
   Annotation,
   Attachment,
+  ID_PATTERN,
   Id,
   LiveErrorsSnapshot,
   State,
@@ -21,6 +22,7 @@ import {
 import {
   MissingAnnotationError,
   PkaError,
+  annotationFiles,
   appendJsonLine,
   createClaim,
   isErrno,
@@ -56,6 +58,8 @@ export const PROGRESS_INTERVAL_MS = 15_000;
 /** A claim this old on a still-pending annotation lost its claimant between the claim and the state write. */
 const ORPHANED_CLAIM_MS = 60_000;
 const MAX_ERROR_GROUPS = 200;
+/** Annotations read at once by a scan; libuv runs four file system calls in parallel by default. */
+const SCAN_BATCH = 16;
 
 const detailField = Detail.default("concise").describe(
   "concise (default) keeps the response small; full adds HTML, boxes, nearby text, summaries, history, and the thread",
@@ -151,21 +155,60 @@ async function loadListed(store: string, id: string): Promise<AnnotationRecord |
   }
 }
 
-export async function list(store: string, input: ListInput): Promise<ListResult> {
-  const items: ListResult["items"] = [];
-  let nextCursor: string | undefined;
-  for (const id of await listIds(store)) {
-    if (input.cursor !== undefined && id <= input.cursor) continue;
-    const record = await loadListed(store, id);
-    if (record === undefined) continue;
-    if (input.status !== "all" && record.state.status !== input.status) continue;
-    if (items.length === input.limit) {
-      nextCursor = items.at(-1)?.id;
-      break;
-    }
-    items.push(input.detail === "full" ? annotationView(record, "full") : listItem(record));
+/** An annotation removed after listing (prune, rm) has no state. */
+async function readListedState(store: string, id: string): Promise<State | undefined> {
+  try {
+    return await readJson(store, annotationFiles(store, id).state, State);
+  } catch (thrown) {
+    if (isErrno(thrown, "ENOENT")) return undefined;
+    throw thrown;
   }
-  return { items, nextCursor };
+}
+
+/**
+ * Returns up to `want` of `ids` that `matches` accepts, in order. Ids are checked in
+ * batches, so a store of resolved annotations costs one small state read per id.
+ */
+async function firstMatching(
+  ids: readonly string[],
+  want: number,
+  matches: (id: string) => Promise<boolean>,
+): Promise<string[]> {
+  const found: string[] = [];
+  for (let start = 0; start < ids.length && found.length < want; start += SCAN_BATCH) {
+    const batch = ids.slice(start, start + SCAN_BATCH);
+    const accepted = await Promise.all(batch.map(matches));
+    found.push(...batch.filter((_, index) => accepted[index]));
+  }
+  return found.slice(0, want);
+}
+
+export async function list(store: string, input: ListInput): Promise<ListResult> {
+  const ids = (await listIds(store)).filter(
+    (id) => input.cursor === undefined || id > input.cursor,
+  );
+  const { status } = input;
+  const matched =
+    status === "all"
+      ? ids.slice(0, input.limit + 1)
+      : await firstMatching(
+          ids,
+          input.limit + 1,
+          async (id) => (await readListedState(store, id))?.status === status,
+        );
+  const page = matched.slice(0, input.limit);
+  const items: ListResult["items"] = [];
+  for (let start = 0; start < page.length; start += SCAN_BATCH) {
+    const records = await Promise.all(
+      page.slice(start, start + SCAN_BATCH).map((id) => loadListed(store, id)),
+    );
+    for (const record of records) {
+      // Removed or changed between the state read and this one.
+      if (record === undefined || (status !== "all" && record.state.status !== status)) continue;
+      items.push(input.detail === "full" ? annotationView(record, "full") : listItem(record));
+    }
+  }
+  return { items, nextCursor: matched.length > input.limit ? page.at(-1) : undefined };
 }
 
 export async function get(store: string, input: GetInput): Promise<GetResult> {
@@ -176,18 +219,30 @@ function isOrphaned(state: State, claim: Claim, now: number): boolean {
   return state.status === "pending" && now - Date.parse(claim.at) > ORPHANED_CLAIM_MS;
 }
 
+function isOffered(state: State, claim: Claim | undefined): boolean {
+  return (
+    state.status === "pending" && (claim === undefined || isOrphaned(state, claim, Date.now()))
+  );
+}
+
 async function oldestPendingUnclaimed(
   store: string,
   skip: ReadonlySet<string>,
 ): Promise<AnnotationRecord | undefined> {
-  for (const id of await listIds(store)) {
-    if (skip.has(id)) continue;
-    const record = await loadListed(store, id);
-    if (
-      record?.state.status === "pending" &&
-      (record.claim === undefined || isOrphaned(record.state, record.claim, Date.now()))
-    ) {
-      return record;
+  const ids = (await listIds(store)).filter((id) => !skip.has(id));
+  const offered = async (id: string): Promise<boolean> => {
+    const state = await readListedState(store, id);
+    return state?.status === "pending" && isOffered(state, await readClaim(store, id));
+  };
+  for (let start = 0; start < ids.length; start += SCAN_BATCH) {
+    for (const id of await firstMatching(
+      ids.slice(start, start + SCAN_BATCH),
+      SCAN_BATCH,
+      offered,
+    )) {
+      // Claimed or changed between the scan and this read.
+      const record = await loadListed(store, id);
+      if (record !== undefined && isOffered(record.state, record.claim)) return record;
     }
   }
   return undefined;
@@ -218,7 +273,11 @@ export function wait(store: string, options: WaitOptions): Promise<WaitResult> {
     let scanning = false;
     let rescan = false;
 
-    const watcher = watch(store, { persistent: true }, () => void scan());
+    // Staging directories and live/ change without offering an annotation; only an id's
+    // directory appearing or being touched (a reopen) can.
+    const watcher = watch(store, { persistent: true }, (_event, name) => {
+      if (name === null || ID_PATTERN.test(name)) void scan();
+    });
     const timeout =
       options.timeoutMs === undefined
         ? undefined
