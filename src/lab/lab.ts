@@ -207,7 +207,15 @@ const PageReport = z
 // The Navigation API's navigationType, the same classification the recorder
 // writes into the timeline.
 const HistoryChange = z.enum(["push", "replace", "reload", "traverse"]);
-type HistoryChange = z.infer<typeof HistoryChange>;
+
+const NavigationReport = z.strictObject({ type: HistoryChange, url: z.url() });
+
+interface ReplayState {
+  /** Navigations the page started since the last step the replay performed. */
+  changes: Array<z.infer<typeof NavigationReport>>;
+  /** The document holds values the replay entered, which differ from the recorded ones. */
+  entered: boolean;
+}
 
 function webVitalsSource(): string {
   // The IIFE build is not in web-vitals' export map; it sits next to the UMD entry.
@@ -247,7 +255,7 @@ const send = (metric, extra) => {
 };
 navigation.addEventListener("navigate", (event) => {
   const report = window[${JSON.stringify(NAVIGATION_BINDING)}];
-  if (typeof report === "function") report(event.navigationType);
+  if (typeof report === "function") report(event.navigationType, event.destination.url);
 });
 const options = { reportAllChanges: true, reportSoftNavs: true, generateTarget: describe };
 webVitals.onLCP((metric) => {
@@ -426,15 +434,25 @@ function samePage(current: string, target: string): boolean {
   return a.origin === b.origin && a.pathname === b.pathname && a.search === b.search;
 }
 
-// The replay types placeholder text, so the URL a step writes need not equal
-// the recorded one (`/?q=pka+lab` for a recorded `/?q=he`). A recorded push or
-// replace is the consequence of the last performed step when that step also
-// pushed or replaced, and a traverse when it also traversed; the recorded URL
-// is then not loaded. A traverse the replay did not produce, such as the
-// browser's Back button, still goes to its recorded URL.
-function producedByReplay(step: NavigationEntry, changes: HistoryChange[]): boolean {
-  if (step.type === "traverse") return changes.includes("traverse");
-  return changes.includes("push") || changes.includes("replace");
+// A recorded push or replace is the consequence of the last performed step
+// when that step also pushed or replaced to the same path, and a traverse when
+// it traversed there; the recorded URL is then not loaded. The query may differ
+// only after the replay entered its own values (placeholder text, another
+// option), which reach the URL as `/?q=pka+lab` for a recorded `/?q=he`.
+// Anything else, such as a second push to another path or the browser's Back
+// button, still goes to its recorded URL.
+export function producedByReplay(
+  step: NavigationEntry,
+  target: string,
+  state: ReplayState,
+): boolean {
+  const want = new URL(target);
+  return state.changes.some(({ type, url }) => {
+    if (type === "reload" || (type === "traverse") !== (step.type === "traverse")) return false;
+    const got = new URL(url);
+    if (got.origin !== want.origin || got.pathname !== want.pathname) return false;
+    return state.entered || got.search === want.search;
+  });
 }
 
 interface Field {
@@ -473,7 +491,7 @@ async function replayAction(
   step: ActionEntry,
   previous: FlowStep | undefined,
   index: number,
-  changes: HistoryChange[],
+  state: ReplayState,
 ): Promise<void> {
   // A submit right after a click or Enter is that gesture's consequence.
   if (step.type === "submit" && previous?.kind === "action") {
@@ -483,17 +501,21 @@ async function replayAction(
   const locator = await locate(page, step.target, index);
   const field = await fieldOf(locator);
   if (alreadyCaused(step, previous, field)) return;
-  changes.length = 0;
+  state.changes.length = 0;
   switch (step.type) {
     case "click":
       await locator.click({ timeout: LOCATE_TIMEOUT_MS });
       return;
     case "input":
+      state.entered = true;
       await enterValue(locator, field);
       return;
     case "change":
       if (field.kind === "text") await locator.blur();
-      else await enterValue(locator, field);
+      else {
+        state.entered = true;
+        await enterValue(locator, field);
+      }
       return;
     case "submit":
       await locator.evaluate((element) => {
@@ -529,13 +551,13 @@ function rebase(recorded: string, appOrigin: string | undefined, base: URL): str
 }
 
 /**
- * Replays the steps in order. `changes` receives the page's navigation types as
- * they happen; the replay empties it before each step it performs.
+ * Replays the steps in order. `state.changes` receives the page's navigations
+ * as they start; the replay empties it before each step it performs.
  */
 async function replay(
   page: Page,
   tracker: Tracker,
-  changes: HistoryChange[],
+  state: ReplayState,
   steps: FlowStep[],
   base: URL,
 ): Promise<void> {
@@ -551,18 +573,20 @@ async function replay(
         const target = rebase(step.to, appOrigin, base);
         if (step.type === "reload") {
           await flushVitals(page);
-          changes.length = 0;
+          state.changes.length = 0;
+          state.entered = false;
           await page.reload({ timeout: NAVIGATION_TIMEOUT_MS });
         } else if (
           step.type === "load" ||
-          (!producedByReplay(step, changes) && !samePage(page.url(), target))
+          (!producedByReplay(step, target, state) && !samePage(page.url(), target))
         ) {
           await flushVitals(page);
-          changes.length = 0;
+          state.changes.length = 0;
+          state.entered = false;
           await page.goto(target, { timeout: NAVIGATION_TIMEOUT_MS });
         }
       } else {
-        await replayAction(page, step, steps[index - 1], index, changes);
+        await replayAction(page, step, steps[index - 1], index, state);
       }
       await settle(page, tracker);
     } catch (thrown) {
@@ -675,7 +699,7 @@ interface Session {
   page: Page;
   cdp: CDPSession;
   tracker: Tracker;
-  changes: HistoryChange[];
+  state: ReplayState;
   reports: Map<string, PageMetric>;
   invalid: string[];
 }
@@ -683,7 +707,7 @@ interface Session {
 async function openSession(options: RunContext): Promise<Session> {
   const { context } = options;
   const reports = new Map<string, PageMetric>();
-  const changes: HistoryChange[] = [];
+  const state: ReplayState = { changes: [], entered: false };
   const invalid: string[] = [];
   await context.exposeBinding(BINDING, (_source, report: string) => {
     const parsed = PageReport.safeParse(report);
@@ -694,9 +718,9 @@ async function openSession(options: RunContext): Promise<Session> {
     const metric = parsed.data;
     reports.set(`${metric.doc}:${metric.navigation}:${metric.name}`, metric);
   });
-  await context.exposeBinding(NAVIGATION_BINDING, (_source, type: string) => {
-    const parsed = HistoryChange.safeParse(type);
-    if (parsed.success) changes.push(parsed.data);
+  await context.exposeBinding(NAVIGATION_BINDING, (_source, type: string, url: string) => {
+    const parsed = NavigationReport.safeParse({ type, url });
+    if (parsed.success) state.changes.push(parsed.data);
     else invalid.push(z.prettifyError(parsed.error));
   });
   await context.addInitScript({ content: await pageScript() });
@@ -713,7 +737,7 @@ async function openSession(options: RunContext): Promise<Session> {
       uploadThroughput: network.uploadBytesPerSec,
     });
   }
-  return { page, cdp, tracker: trackRequests(page), changes, reports, invalid };
+  return { page, cdp, tracker: trackRequests(page), state, reports, invalid };
 }
 
 function checkReports(session: Session, label: string): void {
@@ -725,7 +749,7 @@ function checkReports(session: Session, label: string): void {
 /** One untraced replay; its metrics are a verdict sample. */
 async function measure(run: number, options: RunContext): Promise<RunResult> {
   const session = await openSession(options);
-  await replay(session.page, session.tracker, session.changes, options.steps, options.base);
+  await replay(session.page, session.tracker, session.state, options.steps, options.base);
   checkReports(session, `Run ${run}`);
   return { run, metrics: worstPerMetric(session.reports) };
 }
@@ -738,7 +762,7 @@ async function diagnose(options: RunContext, file: string): Promise<TraceAnalysi
   const { cdp } = session;
   await startTrace(cdp);
   try {
-    await replay(session.page, session.tracker, session.changes, options.steps, options.base);
+    await replay(session.page, session.tracker, session.state, options.steps, options.base);
   } catch (thrown) {
     // The run already failed; a trace that cannot be ended (target closed,
     // renderer crashed) is dropped so the step error stays the reported cause.
