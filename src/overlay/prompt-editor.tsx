@@ -417,11 +417,17 @@ export function PromptEditor({
       onChange(updated.getMarkdown());
     },
   });
+  // A badge's node view renders through Tiptap's flushSync, which React refuses inside an
+  // effect. So toggling editable emits no update, whose handler would sync badges, and the
+  // badge sync waits for the commit to end.
   useEffect(() => {
-    editor?.setEditable(!disabled);
+    editor?.setEditable(!disabled, false);
   }, [editor, disabled]);
   useEffect(() => {
-    if (editor !== null) syncBadges(editor, badges.items);
+    if (editor === null) return;
+    queueMicrotask(() => {
+      if (!editor.isDestroyed) syncBadges(editor, badges.items);
+    });
   }, [editor, badges]);
   const context = useMemo(
     () => ({ items: new Map(badges.items.map((item) => [item.id, item])), handlers: badges }),
