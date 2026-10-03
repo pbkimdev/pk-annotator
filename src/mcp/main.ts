@@ -1,8 +1,9 @@
 #!/usr/bin/env node
+import { constants } from "node:os";
 import { parseArgs } from "node:util";
 
-import { McpServer, type CallToolResult } from "@modelcontextprotocol/server";
-import { serveStdio } from "@modelcontextprotocol/server/stdio";
+import { McpServer, type CallToolResult, type JSONRPCMessage } from "@modelcontextprotocol/server";
+import { StdioServerTransport, serveStdio } from "@modelcontextprotocol/server/stdio";
 import { z } from "zod";
 
 import { version } from "../../package.json" with { type: "json" };
@@ -25,6 +26,7 @@ import {
   setStatus,
   wait,
 } from "../ops/ops.ts";
+import { agentFile, announceAgent, withdrawAgent } from "../ops/presence.ts";
 import { PkaError, findStore } from "../store/store.ts";
 
 const UNTRUSTED =
@@ -88,10 +90,31 @@ async function respond(
   }
 }
 
+// Implementation is an open MCP type (title, description, icons, ...); only these two
+// fields are kept, so unknown fields are not an error here.
+const ClientInfo = z.object({ name: z.string().min(1).max(200), version: z.string().max(200) });
+type ClientInfo = z.infer<typeof ClientInfo>;
+const CLIENT_INFO_META = "io.modelcontextprotocol/clientInfo";
+
+/** The connected client, from the first message that names it. */
+let client: ClientInfo | undefined;
+
+/**
+ * A 2025-era client names itself in `initialize`; a 2026-07-28 client (Claude Code 2.1.288
+ * opens with server/discover) names itself in every request's `_meta` and never initializes.
+ */
+function clientInfoOf(message: JSONRPCMessage): ClientInfo | undefined {
+  if (!("method" in message) || message.params === undefined) return undefined;
+  const { params } = message;
+  const raw =
+    message.method === "initialize" ? params.clientInfo : params._meta?.[CLIENT_INFO_META];
+  const parsed = ClientInfo.safeParse(raw);
+  return parsed.success ? parsed.data : undefined;
+}
+
 function createServer(store: string): McpServer {
   const server = new McpServer({ name: "pka", version }, { capabilities: { tools: {} } });
-  const claimant = (): string =>
-    `${server.server.getClientVersion()?.name ?? "mcp-client"}:${process.pid}`;
+  const claimant = (): string => `${client?.name ?? "mcp-client"}:${process.pid}`;
 
   server.registerTool(
     "list_annotations",
@@ -241,6 +264,38 @@ try {
   process.exit(1);
 }
 
+let presenceFile: string | undefined;
+// Runs on stdin EOF and on the signal exits below; SIGKILL leaves the file, and the
+// Vite plugin drops it because the pid is gone.
+process.on("exit", () => {
+  if (presenceFile !== undefined) withdrawAgent(presenceFile);
+});
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
+  process.once(signal, () => process.exit(128 + constants.signals[signal]));
+}
+
+const transport = new StdioServerTransport();
 serveStdio(() => createServer(store), {
+  transport,
   onerror: (error) => console.error("pka-mcp:", error),
 });
+const deliver = transport.onmessage;
+if (deliver === undefined) throw new Error("serveStdio did not attach to the stdio transport");
+transport.onmessage = (message) => {
+  if (client === undefined) {
+    client = clientInfoOf(message);
+    if (client !== undefined) {
+      const file = agentFile(store, client.name, process.pid);
+      presenceFile = file;
+      announceAgent(store, file, {
+        name: client.name,
+        version: client.version,
+        pid: process.pid,
+        connectedAt: new Date().toISOString(),
+      }).catch((cause: unknown) =>
+        console.error("pka-mcp: recording agent presence failed:", cause),
+      );
+    }
+  }
+  deliver(message);
+};
