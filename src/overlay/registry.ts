@@ -132,7 +132,7 @@ const iconListeners = new Set<Listener>();
 
 /**
  * The connected agent's icons, keyed by menu item, panel, or control id; each value is the
- * inside of a 256-unit SVG. The agent theme chunk sets it; null draws the lucide icons.
+ * path data of a 256-unit SVG. The agent theme chunk sets it; null draws the lucide icons.
  */
 export const agentIcons = {
   get: (): IconSet | null => iconSet,

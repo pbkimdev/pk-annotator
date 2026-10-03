@@ -4,6 +4,7 @@ import type { CHANNEL } from "../shared/channel.ts";
 import { send } from "./channel-client.ts";
 import { isAgentWorking, subscribeHubState } from "./hub-state.ts";
 import { agentIcons, getBadge, subscribeBadge } from "./registry.ts";
+import { svg } from "./svg.ts";
 import type { ThreadStore } from "./thread-store.ts";
 
 export const HOST_TAG = "pk-annotator";
@@ -73,17 +74,27 @@ const ARROW_CORNER = new Map<string, (corner: Corner) => Corner>([
 
 // A core with three moons on a quarter orbit: a miniature of the menu, which sweeps
 // counterclockwise into the same quadrant. The brightest moon leads the sweep.
-const GLYPH =
-  '<svg class="pka-glyph" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">' +
-  '<g data-part="orbit">' +
-  '<path d="M16.2 6.7A9.5 9.5 0 0 0 6.7 16.2" fill="none" stroke="currentColor" stroke-width="1.25" opacity="0.3"/>' +
-  '<circle cx="16.2" cy="6.7" r="2.1" opacity="0.45"/>' +
-  '<circle cx="9.48" cy="9.48" r="2.1" opacity="0.75"/>' +
-  '<circle cx="6.7" cy="16.2" r="2.1"/>' +
-  "</g>" +
-  '<circle data-part="core" cx="16.2" cy="16.2" r="3.25"/>' +
-  '<path data-part="close" d="M7.5 7.5l9 9M16.5 7.5l-9 9"/>' +
-  "</svg>";
+const glyph = () =>
+  svg(
+    "svg",
+    { class: "pka-glyph", viewBox: "0 0 24 24", "aria-hidden": "true" },
+    svg(
+      "g",
+      { "data-part": "orbit" },
+      svg("path", {
+        d: "M16.2 6.7A9.5 9.5 0 0 0 6.7 16.2",
+        fill: "none",
+        stroke: "currentColor",
+        "stroke-width": 1.25,
+        opacity: 0.3,
+      }),
+      svg("circle", { cx: 16.2, cy: 6.7, r: 2.1, opacity: 0.45 }),
+      svg("circle", { cx: 9.48, cy: 9.48, r: 2.1, opacity: 0.75 }),
+      svg("circle", { cx: 6.7, cy: 16.2, r: 2.1 }),
+    ),
+    svg("circle", { "data-part": "core", cx: 16.2, cy: 16.2, r: 3.25 }),
+    svg("path", { "data-part": "close", d: "M7.5 7.5l9 9M16.5 7.5l-9 9" }),
+  );
 
 const EASE_OUT = "cubic-bezier(0.22, 1, 0.36, 1)";
 
@@ -325,14 +336,13 @@ export function createLauncher(
   button.title = `Annotator (${SHORTCUT_LABEL} picks) · drag to move`;
   button.setAttribute("aria-haspopup", "menu");
   button.setAttribute("aria-expanded", "false");
-  button.innerHTML = GLYPH;
   const count = document.createElement("span");
   count.className = "pka-count";
   count.setAttribute("aria-hidden", "true");
   const badge = document.createElement("span");
   badge.className = "pka-badge";
   badge.setAttribute("aria-hidden", "true");
-  button.append(count, badge);
+  button.append(glyph(), count, badge);
   shadow.append(button);
   // Outside body, so a recording video restricted to body by Element Capture leaves the
   // overlay out. React 19 hydrates a document from body's first child and resolves html,

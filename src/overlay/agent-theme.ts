@@ -465,11 +465,11 @@ function install({ shadow, hub }: AgentView): void {
   shadow.adoptedStyleSheets = [...shadow.adoptedStyleSheets, sheet];
   const glyph = hub.querySelector(".pka-glyph");
   if (glyph === null) throw new Error("The hub has no glyph to place the agent logo beside");
-  glyph.insertAdjacentHTML("afterend", AGENT_LOGO.claude + AGENT_LOGO.codex);
+  glyph.after(AGENT_LOGO.claude(), AGENT_LOGO.codex());
   const mascot = document.createElement("span");
   mascot.className = "pka-mascot";
   mascot.setAttribute("aria-hidden", "true");
-  mascot.innerHTML = AGENT_MASCOT.claude + AGENT_MASCOT.codex;
+  mascot.append(AGENT_MASCOT.claude(), AGENT_MASCOT.codex());
   hub.append(mascot);
   // New parts need a computed style without the agent before the theme applies, or they
   // would start in their final state instead of transitioning into it.

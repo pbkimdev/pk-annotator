@@ -1,6 +1,6 @@
 import { useText } from "./language.ts";
 
-import { agentKind, claimantName } from "../shared/agent.ts";
+import { agentKind, claimantName, type AgentKind } from "../shared/agent.ts";
 import type { State, Status } from "../shared/schema.ts";
 import { AGENT_LABEL, AGENT_MASCOT } from "./agent-art.ts";
 import { useOverlay } from "./context.tsx";
@@ -17,6 +17,12 @@ const STATUS_STYLE = {
 
 const timeFormat = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
 
+// Stable per kind, so a re-render keeps the mascot instead of replaying its entrance.
+const MASCOT_REF = {
+  claude: (span: HTMLSpanElement | null) => void span?.replaceChildren(AGENT_MASCOT.claude()),
+  codex: (span: HTMLSpanElement | null) => void span?.replaceChildren(AGENT_MASCOT.codex()),
+} satisfies Record<AgentKind, (span: HTMLSpanElement | null) => void>;
+
 /** Agent replies come from the claimant, which names its client: `<client name>:<pid>`. */
 function ReplyAuthor({ state }: { state: State | undefined }) {
   const t = useText();
@@ -31,7 +37,7 @@ function ReplyAuthor({ state }: { state: State | undefined }) {
         className="pka-reply-mascot"
         data-kind={kind}
         aria-hidden="true"
-        dangerouslySetInnerHTML={{ __html: AGENT_MASCOT[kind] }}
+        ref={MASCOT_REF[kind]}
       />
       {AGENT_LABEL[kind]}
     </span>

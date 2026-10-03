@@ -15,8 +15,8 @@ export function AgentIcon({
   className?: string | undefined;
   strokeWidth?: number;
 }) {
-  const markup = useSyncExternalStore(agentIcons.subscribe, () => agentIcons.get()?.[name]);
-  if (markup === undefined) {
+  const path = useSyncExternalStore(agentIcons.subscribe, () => agentIcons.get()?.[name]);
+  if (path === undefined) {
     return (
       <Fallback {...(className === undefined ? {} : { className })} strokeWidth={strokeWidth} />
     );
@@ -27,7 +27,8 @@ export function AgentIcon({
       fill="currentColor"
       className={cn("pka-agent-icon", className)}
       aria-hidden="true"
-      dangerouslySetInnerHTML={{ __html: markup }}
-    />
+    >
+      <path d={path} />
+    </svg>
   );
 }
