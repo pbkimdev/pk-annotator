@@ -1,11 +1,39 @@
-import { readFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import tailwindcss from "@tailwindcss/postcss";
 import postcss, { type Declaration } from "postcss";
 import { esmExternalRequirePlugin } from "rolldown/plugins";
-import { defineConfig, type UserConfig } from "tsdown";
+import { defineConfig, type TsdownHooks, type UserConfig } from "tsdown";
 
 const INLINE_CSS = "?inline";
+const DIST = path.resolve(import.meta.dirname, "dist");
+const STAGING = path.resolve(import.meta.dirname, "node_modules/.cache/pk-annotator-dist");
+
+// A dev server that serves dist/ (the fixture does) reloads pages on every file change, so
+// the build never empties dist/: all configs write to STAGING, then each file is renamed
+// into dist/, entries last so they never name a missing chunk, and stale files go after.
+let pending: number;
+const entries = new Set<string>();
+const publish: TsdownHooks["build:done"] = async ({ options, chunks }) => {
+  if (options.watch !== false) throw new Error("The staged dist/ swap does not support watch");
+  for (const chunk of chunks)
+    if (chunk.type === "chunk" && chunk.isEntry) entries.add(chunk.fileName);
+  pending -= 1;
+  if (pending > 0) return;
+  const staged = await readdir(STAGING, { withFileTypes: true });
+  const odd = staged.find((entry) => !entry.isFile());
+  if (odd !== undefined) throw new Error(`Unexpected directory in the build output: ${odd.name}`);
+  const files = staged
+    .map((entry) => entry.name)
+    .toSorted((left, right) => Number(entries.has(left)) - Number(entries.has(right)));
+  await mkdir(DIST, { recursive: true });
+  for (const file of files) await rename(path.join(STAGING, file), path.join(DIST, file));
+  const fresh = new Set(files);
+  for (const file of await readdir(DIST)) {
+    if (!fresh.has(file)) await rm(path.join(DIST, file), { recursive: true });
+  }
+  await rm(STAGING, { recursive: true });
+};
 
 // rem resolves against the host page's <html> font-size, the one host value that
 // crosses the shadow boundary, so the overlay stylesheet is compiled to px.
@@ -45,7 +73,9 @@ const overlay: UserConfig = {
   format: "esm",
   target: "es2024",
   dts: true,
+  outDir: STAGING,
   clean: false,
+  hooks: { "build:done": publish },
   minify: true,
   outExtensions: () => ({ js: ".mjs", dts: ".d.mts" }),
   // The UI chunk imports the launcher's modules from the entry instead of a third chunk,
@@ -84,7 +114,7 @@ const overlay: UserConfig = {
   ],
 };
 
-export default defineConfig([
+const configs: UserConfig[] = [
   {
     entry: {
       vite: "src/vite/index.ts",
@@ -93,7 +123,9 @@ export default defineConfig([
     platform: "node",
     format: "esm",
     dts: true,
+    outDir: STAGING,
     clean: true,
+    hooks: { "build:done": publish },
   },
   // Each agent session spawns pka-mcp, so its dependencies are bundled: one module to
   // resolve and compile instead of about 115 from node_modules.
@@ -101,7 +133,9 @@ export default defineConfig([
     entry: { "pka-mcp": "src/mcp/bin.ts" },
     platform: "node",
     format: "esm",
+    outDir: STAGING,
     clean: false,
+    hooks: { "build:done": publish },
     outputOptions: { chunkFileNames: "pka-mcp-server-[hash].mjs" },
     deps: {
       alwaysBundle: [/.*/],
@@ -109,4 +143,7 @@ export default defineConfig([
     },
   },
   overlay,
-]);
+];
+pending = configs.length;
+
+export default defineConfig(configs);
