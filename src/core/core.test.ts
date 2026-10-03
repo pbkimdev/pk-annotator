@@ -390,6 +390,31 @@ describe("request metadata", () => {
   });
 });
 
+describe("actions", () => {
+  it("stamps event time and merges a run of typing into one entry that spans it", () => {
+    let clock = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => clock);
+    const current = start();
+    const field = document.createElement("input");
+    field.setAttribute("aria-label", "Search");
+    document.body.append(field);
+    for (const at of [1000, 1100, 1450]) {
+      clock = at;
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    clock = 1500;
+    field.dispatchEvent(new Event("click", { bubbles: true }));
+    field.remove();
+
+    const actions = current.snapshot().actions.filter((entry) => entry.kind === "action");
+    expect(actions).toMatchObject([
+      { type: "input", performanceMs: 1000, durationMs: 450 },
+      { type: "click", performanceMs: 1500 },
+    ]);
+    for (const entry of actions) expect(TimelineEntry.parse(entry)).toEqual(entry);
+  });
+});
+
 describe("tap", () => {
   it("passes every entry to a recording after the ring buffer has dropped the oldest", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});

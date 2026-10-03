@@ -542,18 +542,26 @@ export function createCapture(options: CaptureOptions): Capture {
     const type = ACTION_EVENTS.find((name) => name === event.type);
     if (type === undefined) return;
     const descriptor = describeTarget(element);
+    // When the browser created the event, on the performance.now() clock.
+    const performanceMs = event.timeStamp;
     const last = actionEntries.at(-1);
-    // One entry per run of keystrokes in the same field.
+    // One entry per run of keystrokes in the same field; its duration runs to the latest.
     if (type === "input" && last?.kind === "action" && last.type === "input") {
-      if (sameTarget(last.target, descriptor)) return;
+      if (sameTarget(last.target, descriptor)) {
+        const first = last.performanceMs ?? performanceMs;
+        last.durationMs = Math.max(last.durationMs ?? 0, performanceMs - first);
+        return;
+      }
     }
     const entry: ActionEntry = {
       kind: "action",
       seq: nextSeq(),
       at: now(),
+      performanceMs,
       type,
       target: descriptor,
     };
+    if (type === "input") entry.durationMs = 0;
     if (key !== undefined) entry.key = key;
     append(actionEntries, entry);
     changed();

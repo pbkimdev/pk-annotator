@@ -184,12 +184,14 @@ export function installNetwork(hooks: NetworkHooks): Network {
     rawUrl: string,
     headers: Headers,
   ): Tracked {
+    const start = performance.now();
     const url = new URL(rawUrl, location.href);
     const sameOrigin = url.origin === location.origin;
     const entry: RequestEntry = {
       kind: "request",
       seq: hooks.nextSeq(),
       at: new Date().toISOString(),
+      performanceMs: start,
       initiator,
       method: method.toUpperCase(),
       url: redactUrl(url.href),
@@ -206,7 +208,7 @@ export function installNetwork(hooks: NetworkHooks): Network {
     entry.requestHeaders = filterHeaders(headers);
     const item: Tracked = {
       entry,
-      start: performance.now(),
+      start,
       bodyAllowed: sameOrigin && hooks.bodies.some((prefix) => url.pathname.startsWith(prefix)),
       bodyBytes: 0,
       timingUntil: undefined,
