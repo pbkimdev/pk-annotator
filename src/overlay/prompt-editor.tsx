@@ -34,6 +34,7 @@ import {
 
 import { locate, ownerName, type Location } from "../select/source.ts";
 import type { AttachmentKind } from "../shared/schema.ts";
+import { AgentIcon } from "./agent-icon.tsx";
 import { useOverlay } from "./context.tsx";
 import { useText } from "./language.ts";
 import type { ComposerAttachment } from "./registry.ts";
@@ -178,10 +179,13 @@ function BadgeView({ node }: ReactNodeViewProps) {
   else if (item.kind === "element")
     body = <ElementBadge id={id} n={item.n} element={item.element} />;
   else {
-    const Icon = KIND_ICON[item.attachment.kind];
     body = (
       <span className="pka-ref pka-ref-attachment" data-testid="pka-attachment-ref">
-        <Icon className="size-3 shrink-0" strokeWidth={1.75} aria-hidden="true" />
+        <AgentIcon
+          name={`kind:${item.attachment.kind}`}
+          icon={KIND_ICON[item.attachment.kind]}
+          className="size-3 shrink-0"
+        />
         <span className="pka-ref-label">{item.attachment.label}</span>
         <RemoveButton
           label={`${t("Remove")} ${item.attachment.label}`}
@@ -492,8 +496,9 @@ export function PromptEditor({
             disabled={disabled || editor === null}
             onClick={dictate}
           >
-            <MicIcon
-              strokeWidth={1.75}
+            <AgentIcon
+              name="dictate"
+              icon={MicIcon}
               className={listening ? "animate-pulse motion-reduce:animate-none" : undefined}
             />
           </Button>

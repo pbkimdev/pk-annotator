@@ -3,7 +3,7 @@ import type { ViteHotContext } from "vite/types/hot.d.ts";
 import type { CHANNEL } from "../shared/channel.ts";
 import { send } from "./channel-client.ts";
 import { isAgentWorking, subscribeHubState } from "./hub-state.ts";
-import { getBadge, subscribeBadge } from "./registry.ts";
+import { agentIcons, getBadge, subscribeBadge } from "./registry.ts";
 
 export const HOST_TAG = "pk-annotator";
 export const SHORTCUT_LABEL = "Alt+Shift+A";
@@ -503,6 +503,7 @@ export function createLauncher(
       stopBadge();
       stopHubState();
       themeSignal.stop();
+      agentIcons.set(null);
       void ui?.then((controller) => controller.unmount());
       host.remove();
     },

@@ -2,6 +2,7 @@ import { useText } from "./language.ts";
 import { HistoryIcon, LayersIcon, PenLineIcon, XIcon } from "lucide-react";
 import { lazy, Suspense, type ComponentType, type ReactNode } from "react";
 
+import { AgentIcon } from "./agent-icon.tsx";
 import { COMPOSE, NOTE, THREAD, useOverlay } from "./context.tsx";
 const Composer = lazy(() =>
   import("./composer.tsx").then((module) => ({ default: module.Composer })),
@@ -22,11 +23,14 @@ const PANEL_CORNER = {
 } satisfies Record<Corner, string>;
 
 function PanelFrame({
+  id,
   title,
   icon: Icon,
   close,
   children,
 }: {
+  /** Names the panel's icon in an agent theme. */
+  id: string;
   title: string;
   icon: ComponentType<{ className?: string; strokeWidth?: number }>;
   close(): void;
@@ -50,7 +54,7 @@ function PanelFrame({
       )}
     >
       <header className="flex h-12 shrink-0 items-center gap-2.5 border-b border-border/70 pr-2 pl-4">
-        <Icon className="size-4 text-muted-foreground" strokeWidth={1.75} />
+        <AgentIcon name={id} icon={Icon} className="size-4 text-muted-foreground" />
         <h2 className="min-w-0 flex-1 truncate text-[13px] font-semibold tracking-[-0.005em]">
           {t(title)}
         </h2>
@@ -61,7 +65,7 @@ function PanelFrame({
           aria-label={`${t("Close")} ${t(title)}`}
           onClick={close}
         >
-          <XIcon strokeWidth={1.75} />
+          <AgentIcon name="close" icon={XIcon} />
         </Button>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
@@ -83,6 +87,7 @@ export function PanelHost() {
   if (panel === COMPOSE || panel === NOTE) {
     return (
       <PanelFrame
+        id={panel === COMPOSE ? "compose" : "note"}
         title={panel === COMPOSE ? "Send" : "Annotation"}
         icon={panel === COMPOSE ? LayersIcon : PenLineIcon}
         close={close}
@@ -97,7 +102,7 @@ export function PanelHost() {
   }
   if (panel === THREAD) {
     return (
-      <PanelFrame title="History" icon={HistoryIcon} close={close}>
+      <PanelFrame id="history" title="History" icon={HistoryIcon} close={close}>
         <Thread />
       </PanelFrame>
     );
@@ -105,7 +110,7 @@ export function PanelHost() {
   const definition = registered.find((candidate) => candidate.id === panel);
   if (definition === undefined) return null;
   return (
-    <PanelFrame title={definition.label} icon={definition.icon} close={close}>
+    <PanelFrame id={definition.id} title={definition.label} icon={definition.icon} close={close}>
       <definition.component close={close} />
     </PanelFrame>
   );

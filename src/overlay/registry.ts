@@ -109,3 +109,24 @@ export function subscribeBadge(listener: Listener): () => void {
   badgeListeners.add(listener);
   return () => badgeListeners.delete(listener);
 }
+
+type IconSet = Readonly<Record<string, string>>;
+let iconSet: IconSet | null = null;
+const iconListeners = new Set<Listener>();
+
+/**
+ * The connected agent's icons, keyed by menu item, panel, or control id; each value is the
+ * inside of a 256-unit SVG. The agent theme chunk sets it; null draws the lucide icons.
+ */
+export const agentIcons = {
+  get: (): IconSet | null => iconSet,
+  set(next: IconSet | null): void {
+    if (next === iconSet) return;
+    iconSet = next;
+    for (const listener of iconListeners) listener();
+  },
+  subscribe(listener: Listener): () => void {
+    iconListeners.add(listener);
+    return () => iconListeners.delete(listener);
+  },
+};

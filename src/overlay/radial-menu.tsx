@@ -26,6 +26,7 @@ import {
 import { flushSync } from "react-dom";
 
 import type { PickMode } from "../select/pick.ts";
+import { AgentIcon } from "./agent-icon.tsx";
 import { COMPOSE, THREAD, useOverlay, type UiState } from "./context.tsx";
 import { useText } from "./language.ts";
 import { HUB_INSET, HUB_SIZE, SHORTCUT_LABEL, type Corner } from "./launcher.ts";
@@ -326,7 +327,7 @@ function Node({
       }}
       {...props}
     >
-      <face.icon className="size-[18px]" strokeWidth={1.75} />
+      <AgentIcon name={face.id} icon={face.icon} className="size-[18px]" />
       {"children" in entry && (
         <span
           aria-hidden="true"

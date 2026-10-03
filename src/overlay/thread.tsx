@@ -5,6 +5,7 @@ import { useState, type FormEvent } from "react";
 import { agentKind, claimantName } from "../shared/agent.ts";
 import type { State, Status } from "../shared/schema.ts";
 import { AGENT_LABEL, AGENT_MASCOT } from "./agent-art.ts";
+import { AgentIcon } from "./agent-icon.tsx";
 import { useOverlay } from "./context.tsx";
 import { cn } from "./lib/utils.ts";
 import { useStore } from "./store.ts";
@@ -116,7 +117,7 @@ function ThreadItem({ record }: { record: SentRecord }) {
           aria-label={t("Send reply")}
           disabled={draft.trim() === ""}
         >
-          <CornerDownLeftIcon />
+          <AgentIcon name="reply" icon={CornerDownLeftIcon} strokeWidth={2} />
         </Button>
       </form>
     </li>

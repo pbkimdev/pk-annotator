@@ -10,6 +10,7 @@ import {
   type SavedMark,
   type UiState,
 } from "./context.tsx";
+import { AgentIcon } from "./agent-icon.tsx";
 import { annotationBlock } from "./markdown.ts";
 import { useText } from "./language.ts";
 import { BADGE_TOKENS, PromptEditor, type Badge, type Badges } from "./prompt-editor.tsx";
@@ -379,7 +380,11 @@ export function Composer({ batch = false }: { batch?: boolean }) {
                   disabled={busy}
                   onClick={() => void copy()}
                 >
-                  {copied ? <CheckIcon strokeWidth={1.75} /> : <CopyIcon strokeWidth={1.75} />}
+                  {copied ? (
+                    <AgentIcon name="copied" icon={CheckIcon} />
+                  ) : (
+                    <AgentIcon name="copy" icon={CopyIcon} />
+                  )}
                 </Button>
                 <Button
                   variant="outline"
@@ -401,7 +406,7 @@ export function Composer({ batch = false }: { batch?: boolean }) {
               disabled={!ready}
               onClick={() => void submit()}
             >
-              <SendIcon strokeWidth={1.75} />
+              <AgentIcon name="send" icon={SendIcon} />
               {t("Send")}
               <kbd className="rounded-full bg-current/15 px-1.5 font-sans text-[10px] leading-4 font-medium">
                 {SEND_KEY}

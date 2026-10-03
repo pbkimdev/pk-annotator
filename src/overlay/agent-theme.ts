@@ -6,6 +6,8 @@ import poppins600Url from "@fontsource/poppins/files/poppins-latin-600-normal.wo
 import { agentKind, type AgentKind } from "../shared/agent.ts";
 import type { AgentMessage } from "../shared/channel.ts";
 import { AGENT_LABEL, AGENT_LOGO, AGENT_MASCOT } from "./agent-art.ts";
+import { CLAUDE_ICONS } from "./claude-icons.ts";
+import { agentIcons } from "./registry.ts";
 
 // The agent theme loads with the first agent message. Its tokens use !important inside the
 // shadow root, which beats a consumer's tokens on the host element (an important declaration
@@ -510,6 +512,7 @@ export function showAgent(view: AgentView, message: AgentMessage): string | null
   if (kind !== previous) {
     if (!animate) host.dataset.agentInstant = "";
     if (kind === "claude") addClaudeFonts();
+    agentIcons.set(kind === "claude" ? CLAUDE_ICONS : null);
     if (kind === null) delete host.dataset.agent;
     else host.dataset.agent = kind;
     if (animate) {
