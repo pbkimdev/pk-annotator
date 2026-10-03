@@ -40,7 +40,9 @@ const WaitInput = z.strictObject({
     .min(1)
     .max(1800)
     .default(50)
-    .describe("Seconds to wait before returning {timedOut: true}; default 50, max 1800"),
+    .describe(
+      "Seconds to wait before returning {timedOut: true}; default 50, max 1800. Keep it below the client's tool timeout",
+    ),
 });
 
 type ToolOutput =
@@ -165,7 +167,8 @@ function createServer(): McpServer {
         "that nobody has acknowledged, at once if one exists; otherwise blocks until one arrives or " +
         "timeoutSec passes and then returns {timedOut: true}, after which you may call it again. " +
         "Acknowledge the result with set_status before waiting again, or the same annotation comes back. " +
-        UNTRUSTED,
+        "The client stops a call after its own tool timeout (Codex: tool_timeout_sec, 300 s by default), so " +
+        `a long wait needs a client timeout above timeoutSec. ${UNTRUSTED}`,
       inputSchema: WaitInput,
       outputSchema: WaitResult,
       annotations: { readOnlyHint: true, openWorldHint: false },

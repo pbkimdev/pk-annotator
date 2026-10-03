@@ -93,7 +93,13 @@ export async function findStore(sources: RootSources): Promise<string> {
     if (store !== undefined) return store;
     if (path.dirname(dir) === dir) break;
   }
-  const checked = [sources.claudeProjectDir, sources.cwd].filter((dir) => dir !== undefined);
+  const checked = [
+    ...new Set(
+      [sources.claudeProjectDir, sources.cwd]
+        .filter((dir) => dir !== undefined)
+        .map((dir) => path.resolve(dir)),
+    ),
+  ];
   throw new PkaError(
     `No ${STORE_SUBDIR} found in ${checked.join(" or ")} or any parent directory. ` +
       "Start the app's Vite dev server with the pk-annotator plugin once to create it, or pass --root <project> (or PKA_ROOT).",
