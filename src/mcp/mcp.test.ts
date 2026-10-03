@@ -106,6 +106,8 @@ it("serves six tools, wakes a wait on a new annotation, and exits on stdin EOF",
   const presence = agentFile(store, "pka-test", pid ?? 0);
   await waitForFile(presence);
 
+  expect(client.getServerCapabilities()?.tools).toEqual({ listChanged: false });
+  expect(client.getServerVersion()?.title).toBe("pk-annotator");
   const { tools } = await client.listTools();
   expect(tools.map((tool) => tool.name).sort()).toEqual(TOOLS);
   for (const tool of tools) {

@@ -112,7 +112,16 @@ function clientInfoOf(message: JSONRPCMessage): ClientInfo | undefined {
 }
 
 function createServer(store: string): McpServer {
-  const server = new McpServer({ name: "pka", version }, { capabilities: { tools: {} } });
+  const server = new McpServer(
+    {
+      name: "pka",
+      title: "pk-annotator",
+      version,
+      description: "Browser annotations from the pk-annotator overlay in a Vite dev app",
+    },
+    // The tool set is fixed for the life of the process, which serves one client session.
+    { capabilities: { tools: { listChanged: false } } },
+  );
   const claimant = (): string => `${client?.name ?? "mcp-client"}:${process.pid}`;
 
   server.registerTool(
