@@ -1,123 +1,92 @@
-# @srv/pk-annotator
+# pk-annotator
 
-A dev-only browser annotator for Vite apps. Pick elements, write a prompt, and send it, with source locations, screenshots, console, network, recordings, and performance, to a file store that coding agents read through MCP or the `pka` CLI. [docs/DESIGN.md](docs/DESIGN.md) is the behavior contract. [Developing](docs/DEVELOPING.md) maps tasks to code and explains the fixture and checks.
+Point at your running app, say what should change, and your coding agent gets the request with the evidence: source file and line, selector, screenshot, console, network, recording, and performance.
+
+[Website](https://pk-annotator.paulbkim.dev) · [한국어](README.ko.md) · MIT
+
+pk-annotator is a dev-only overlay for Vite and React apps. Anyone reviewing the dev build can pick elements, draw, screenshot, or record, then write a prompt and press Send. The annotation lands in a local file store that Claude Code, Codex, or Pi read through the bundled `pka-mcp` server, and the agent's replies appear on the page. Nothing ships in a production build, and nothing runs while the overlay is idle.
 
 ## Install
 
-The package is published to the Forgejo npm registry.
+Requires Node 24+, Vite 8, and React 19.
 
-```ini
-# .npmrc
-@srv:registry=https://git.paulbkim.dev/api/packages/srv/npm/
+**Ask your agent.** Paste this into Claude Code, Codex, or Pi from the project root:
+
+```text
+Set up pk-annotator in this project by following https://pk-annotator.paulbkim.dev/agents.md
 ```
+
+**Or run the installer** from the project root. It adds the dev dependency with your package manager and registers `pka-mcp` with Claude Code when `claude` is installed:
 
 ```sh
-pnpm add -D @srv/pk-annotator
+curl -fsSL https://pk-annotator.paulbkim.dev/install.sh | sh
 ```
 
-If you use pnpm's `minimumReleaseAge`, add `@srv/pk-annotator` to `minimumReleaseAgeExclude`. Install it in the workspace root so `node_modules/.bin/pka-mcp` resolves there. React 19 and Vite 8 are peer dependencies.
+Then add the plugin and mount the overlay as below. To install by hand instead, run `pnpm add -D pk-annotator` (or the npm, Yarn, or Bun equivalent) in the workspace root.
 
-## Vite plugin
+## Set up
 
 ```ts
 // vite.config.ts
-import { annotator } from "@srv/pk-annotator/vite";
+import { annotator } from "pk-annotator/vite";
 
 export default defineConfig({
-  plugins: [...annotator({ bodies: ["/api/"] })],
+  plugins: [...annotator()],
 });
 ```
 
-The plugin runs only under `vite dev` and adds nothing under Vitest, which also serves through Vite, so tests need no exclusion. `bodies` lists same-origin path prefixes whose JSON or text bodies are captured; `maxStoreBytes` caps the store (default 500 MB). Annotations go to `_interim/annotations/` in the workspace root that Vite's `searchForWorkspaceRoot` finds from the Vite root. `storeRoot` moves the store to `<storeRoot>/_interim/annotations/`; a relative path resolves against the Vite root and must name an existing directory. An app in `apps/ui` with its own `pnpm-workspace.yaml` uses `annotator({ storeRoot: "../.." })` to keep the store at the repository root, where `pka-mcp` finds it without `--root`.
-
-## Client mount
-
-Mount from the client entry in development only, before React hydrates, and pass the returned root options to React. Catch a failed import so the page still hydrates: a dev server can reload the page while the package is being reinstalled or rebuilt.
-
 ```tsx
+// client entry, before React renders
 let rootOptions = {};
 if (import.meta.env.DEV) {
   try {
-    const { mount } = await import("@srv/pk-annotator/overlay");
-    const annotator = mount({ hot: import.meta.hot!, theme: "system" });
-    rootOptions = annotator.reactRootOptions;
-    // When the app's own theme setting loads or changes:
-    // annotator.setTheme("dark");
+    const { mount } = await import("pk-annotator/overlay");
+    rootOptions = mount({ hot: import.meta.hot!, theme: "system" }).reactRootOptions;
   } catch (cause) {
     console.error("pk-annotator did not load; the page runs without it", cause);
   }
 }
-hydrateRoot(document, <App />, rootOptions);
+createRoot(document.getElementById("root")!, rootOptions).render(<App />);
+// or: hydrateRoot(document, <App />, rootOptions);
 ```
 
-`reactRootOptions` reports React's caught, uncaught, and recoverable errors to the Console panel. `setTheme("light" | "dark" | "system")` applies at once, including before the UI has loaded. Nothing mounts when `navigator.webdriver` is true, so Playwright and e2e runs see a clean page. Open the overlay with the launcher button or Alt+Shift+A.
+Start the dev server and open the overlay with the launcher button or Alt+Shift+A. If the page sets a Content-Security-Policy, allow `img-src data: blob:` for screenshots.
 
-The page's Content-Security-Policy must allow `img-src data: blob:`: screenshots render through a `data:` SVG image, which Chromium cannot export from a `blob:` URL.
+## Connect an agent
 
-## Theming
+Choose **Connect agent** in the overlay's menu. It copies a prompt with the exact `pka-mcp` command for this page; paste it into your agent session. To register by hand from the project root:
 
-The overlay uses shadcn variables, which you can override on the host element:
-
-```css
-pk-annotator {
-  --primary: var(--app-accent);
-  --pka-pick: var(--app-accent);
-  --radius: 4px;
-}
+```sh
+claude mcp add pka --scope project -- node_modules/.bin/pka-mcp      # Claude Code, .mcp.json
+codex mcp add pka -- "$PWD/node_modules/.bin/pka-mcp" --root "$PWD"  # Codex, global
 ```
 
-Declarations on `pk-annotator` win over the overlay's defaults in both themes.
+Codex keeps servers in its global config, so that entry points at one project. Also set `tool_timeout_sec = 1830` under `[mcp_servers.pka]` in `~/.codex/config.toml`, so a long `wait_for_annotation` is not cut off at the 300-second default. For Pi, add `{ "mcpServers": { "pka": { "command": "node_modules/.bin/pka-mcp", "exposure": "direct" } } }` to `.pi/mcp.json`.
 
-## Mark and send
+The agent calls `wait_for_annotation`, claims what you send with `set_status`, answers with `reply`, and reads page errors with `get_errors`. While it is connected, the overlay takes on Claude's or Codex's look.
 
-Open the launcher, then use Pick (select, box, lasso), Capture (screenshot or area GIF/video), or Annotate (freehand, rectangle, circle). Each group shows its last-used tool and runs it on click; hover it to choose another. Pick and Capture tools open a Tiptap prompt editor; a finished drawing becomes a screenshot mark stacked for Send, without an editor. Send immediately or Save a mark; the Send entry lets you edit saved marks, add a global comment, and send one combined annotation. Unsent marks stay in this tab until reload or Exit.
+## Use
 
-Debug groups Console, Network, and Performance. Settings holds History, English/Korean language, and Exit.
+| Group    | Tools                                               |
+| -------- | --------------------------------------------------- |
+| Pick     | Select (Shift for several), Box, Lasso              |
+| Capture  | Screenshot with crop, area recording as GIF or WebM |
+| Annotate | Freehand, Rectangle, Circle                         |
+| Debug    | Console, Network, Performance                       |
+| Settings | History, English/한국어, Exit                       |
 
-## MCP
-
-`pka-mcp` is a stdio server with tools only. Launch it from `node_modules/.bin` directly; `pnpm exec` adds a second process. It finds the store from `--root` or `PKA_ROOT`, then `CLAUDE_PROJECT_DIR`, then the nearest `_interim/annotations` above the working directory, and prints the store it uses to stderr. It starts in a checkout that has no store yet: tool calls report the missing store until the app's Vite dev server creates it, and then work without a restart.
-
-```jsonc
-// .mcp.json (Claude Code)
-{ "mcpServers": { "pka": { "command": "node_modules/.bin/pka-mcp" } } }
-```
-
-```toml
-# .codex/config.toml (Codex)
-[mcp_servers.pka]
-command = "node_modules/.bin/pka-mcp"
-tool_timeout_sec = 1830 # above wait_for_annotation's longest timeoutSec, 1800
-```
-
-```jsonc
-// .pi/mcp.json (Pi)
-{ "mcpServers": { "pka": { "command": "node_modules/.bin/pka-mcp", "exposure": "direct" } } }
-```
-
-Pi 1.0.0's bundled MCP documentation and the [upstream tool-exposure reference](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/mcp.md#control-tool-exposure) support `"exposure": "direct"` (checked 2026-10-03). This validates the configuration fields; an interactive Pi session with this server has not been exercised here.
-
-The tools are `list_annotations`, `get_annotation`, `wait_for_annotation`, `set_status`, `reply`, and `get_errors`.
-
-Codex stops a tool call after `tool_timeout_sec`, 300 seconds by default, and progress does not extend it, so the example raises it above the longest wait.
-
-`set_status acknowledged` claims an annotation for one `pka-mcp` process, which `claim.json` records. When that process has exited, for example after a client reconnect or restart, `wait_for_annotation` offers the annotation again, and another session may take it over with `set_status acknowledged`. A claim made from another PID namespace, such as a container, is judged only by the 60-second rule below, which applies while the annotation is still pending.
+Pick and Capture tools open the prompt editor; a finished drawing becomes a screenshot mark stacked for Send. Send at once, or Save marks and send them together. Element and capture badges in the text become `[element n]` and `[attachment n: label]` references for the agent. Without a connected agent, Send also copies the annotation as Markdown.
 
 ## CLI
 
 ```text
-pka list [--status pending|acknowledged|resolved|dismissed|all]   annotations, pending by default
-pka get <id>                                                      prompt, elements, attachments
-pka watch --once [--timeout SECONDS]                              wait for the next pending annotation
-pka status <id> <acknowledged|resolved|dismissed> [--note TEXT]
-pka reply <id> <text>                                             shown in the overlay
-pka errors                                                        open error groups from the page
-pka prune                                                         remove closed annotations older than 7 days
-pka lab --url URL --flow ID                                       replay a recording against a production build
+pka list | get <id> | watch --once | status <id> <state> | reply <id> <text> | errors | prune | lab
 ```
 
-Every command takes `--json` and `--root DIR`. `pka status <id> acknowledged` claims an annotation as `$PKA_CLAIMANT` (default `pka-cli`); later status changes, replies, and `lab --attach` must use the same claimant. If a claimant stops before the acknowledge is written, another claimant may take over the claim once it is 60 seconds old and the annotation is still `pending`. A CLI claim names no process, so it is never released because its claimant exited; continue it from another shell with the same `$PKA_CLAIMANT`. `pka lab` needs Playwright; it writes `verdict.json` and exits 3 when the verdict fails a budget or is incomplete. Run `pka --help` for every option.
+Every command takes `--json` and `--root DIR`; run `pka --help` for options. `pka lab` replays a recording against a production build and writes a performance verdict (needs Playwright).
 
-## Resource budget
+## More
 
-Mount starts bounded capture and one resource-timing observer. Opening the hub's menu loads the UI; opening Perf starts its additional observers, and recording starts on request. `pka-mcp` holds no timers or watchers between calls. The dev-only integration above excludes the package from consumer production builds. [DESIGN.md](docs/DESIGN.md#resource-budget) owns the detailed limits and lifecycle.
+- [Reference](docs/REFERENCE.md): plugin options, theming, store location, claims, and the CLI in detail.
+- [Design](docs/DESIGN.md): the behavior, resource budget, and security contract.
+- [Developing](docs/DEVELOPING.md): working on pk-annotator itself.

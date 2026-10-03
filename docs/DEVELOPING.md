@@ -1,6 +1,6 @@
 # Developing pk-annotator
 
-[README](../README.md) owns consumer setup. [DESIGN](DESIGN.md) owns package behavior, budgets, and security. [Integration history](INTEGRATION-HISTORY.md) preserves dated consumer plans and observations. A consumer path in that history is not a path in this checkout.
+[README](../README.md) and its Korean copy [README.ko.md](../README.ko.md) own consumer setup; [REFERENCE](REFERENCE.md) owns consumer options. [DESIGN](DESIGN.md) owns package behavior, budgets, and security. [Integration history](INTEGRATION-HISTORY.md) preserves dated consumer plans and observations. A consumer path in that history is not a path in this checkout.
 
 ## Task map
 
@@ -63,4 +63,4 @@ Use the returned `annotation.dir` and attachment paths. A recording attachment p
 
 Run `pnpm verify` for lint, format checking, typechecking, unit tests, and package build. Run `pnpm fixture:smoke` for the browser integration paths above. Neither command builds Lean or another consumer: check production exclusion in the consumer's build workflow.
 
-When behavior changes, update its DESIGN section and any affected README example in the same change. Keep examples in one place and link to them. Record the source, version/date, and validation level for external integrations; a checked schema does not prove an interactive session worked. Move dated migration instructions and runtime observations to integration history.
+When behavior changes, update its DESIGN section and any affected README, README.ko.md, or REFERENCE example in the same change. Keep examples in one place and link to them. Record the source, version/date, and validation level for external integrations; a checked schema does not prove an interactive session worked. Move dated migration instructions and runtime observations to integration history.
