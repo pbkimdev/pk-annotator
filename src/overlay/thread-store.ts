@@ -5,9 +5,8 @@ import { CHANNEL, StateMessage, SyncedMessage, ThreadMessage } from "../shared/c
 import { Id, Timestamp, type State, type ThreadEntry } from "../shared/schema.ts";
 import { listen, send } from "./channel-client.ts";
 import { agentReacted, setAgentWorking } from "./hub-state.ts";
+import { SENT_KEY } from "./launcher.ts";
 import { createStore, type Store } from "./store.ts";
-
-const SENT_KEY = "pka:sent";
 
 const SentRecord = z.strictObject({
   id: Id,

@@ -4,11 +4,13 @@ import type { CHANNEL } from "../shared/channel.ts";
 import { send } from "./channel-client.ts";
 import { isAgentWorking, subscribeHubState } from "./hub-state.ts";
 import { agentIcons, getBadge, subscribeBadge } from "./registry.ts";
+import type { ThreadStore } from "./thread-store.ts";
 
 export const HOST_TAG = "pk-annotator";
 export const SHORTCUT_LABEL = "Alt+Shift+A";
 export const CORNER_KEY = "pka:corner";
-const OPEN_KEY = "pka:open";
+/** Annotations sent from this tab, which History lists and the hub follows. */
+export const SENT_KEY = "pka:sent";
 const AGENT: typeof CHANNEL.agent = "pka:agent";
 const PRESENCE: typeof CHANNEL.presence = "pka:presence";
 type Receive = Parameters<ViteHotContext["on"]>[1];
@@ -31,13 +33,14 @@ export type UiContext = {
   theme: ThemeSignal;
   /** The launcher button. The menu opens around it, and the UI reflects its state on it. */
   hub: HTMLButtonElement;
+  /** Owned by the launcher, so a reload follows this tab's annotations without the UI. */
+  thread: ThreadStore;
   exit(): void;
   /** The number of saved, unsent marks; the hub shows it in place of its glyph. */
   setMarkCount(count: number): void;
 };
 
 export type UiController = {
-  show(): void;
   toggleMenu(fromKeyboard: boolean): void;
   closeMenu(): void;
   setCorner(corner: Corner): void;
@@ -405,25 +408,26 @@ export function createLauncher(
   hot.on(AGENT, receiveAgent);
   send(hot, PRESENCE, {});
 
+  // The thread store loads with the UI, or at mount when this tab has sent annotations, so
+  // the hub shows agent work and reactions after a reload without loading the React UI.
+  let thread: Promise<ThreadStore> | undefined;
+  const withThread = () =>
+    (thread ??= import("./thread-store.ts").then(({ connectThread }) => connectThread(hot)));
   let ui: Promise<UiController> | undefined;
   const withUi = async (action: (controller: UiController) => void) => {
-    ui ??= import("./app.tsx").then(({ open }) =>
+    ui ??= Promise.all([import("./app.tsx"), withThread()]).then(([{ open }, store]) =>
       open({
         host,
         shadow,
         hot,
         theme: themeSignal,
         hub: button,
-        exit() {
-          sessionStorage.removeItem(OPEN_KEY);
-          exit();
-        },
+        thread: store,
+        exit,
         setMarkCount,
       }),
     );
-    const controller = await ui;
-    sessionStorage.setItem(OPEN_KEY, "1");
-    action(controller);
+    action(await ui);
   };
 
   const moveTo = (corner: Corner) => {
@@ -495,7 +499,8 @@ export function createLauncher(
     void withUi((controller) => controller.togglePick());
   };
   window.addEventListener("keydown", onKeyDown, { capture: true });
-  if (sessionStorage.getItem(OPEN_KEY) === "1") void withUi((controller) => controller.show());
+  const sent = sessionStorage.getItem(SENT_KEY);
+  if (sent !== null && sent !== "[]") void withThread();
 
   return {
     setTheme: themeSignal.set,
@@ -507,6 +512,7 @@ export function createLauncher(
       themeSignal.stop();
       agentIcons.set(null);
       void ui?.then((controller) => controller.unmount());
+      void thread?.then((store) => store.disconnect());
       host.remove();
     },
   };

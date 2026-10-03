@@ -26,7 +26,6 @@ import { RadialMenu } from "./radial-menu.tsx";
 import { attachments, registerPanel } from "./registry.ts";
 import css from "./shadow.css?inline";
 import { createStore, useStore } from "./store.ts";
-import { connectThread } from "./thread-store.ts";
 import { Button } from "./ui/button.tsx";
 import { TooltipProvider } from "./ui/tooltip.tsx";
 
@@ -180,7 +179,7 @@ function App() {
 
 /** Mounts the React UI into the launcher's shadow root. Called once, on first open. */
 export function open(context: UiContext): UiController {
-  const { host, shadow, hot, theme, hub } = context;
+  const { host, shadow, hot, theme, hub, thread } = context;
   document.adoptedStyleSheets = [...document.adoptedStyleSheets, propertySheet];
   shadow.adoptedStyleSheets = [...shadow.adoptedStyleSheets, overlaySheet];
   const restoreActiveElement = patchActiveElement(shadow);
@@ -221,7 +220,6 @@ export function open(context: UiContext): UiController {
     corner: readCorner(),
     copied: null,
   });
-  const thread = connectThread(hot);
   let markCount = 0;
   const stopMarkCount = ui.subscribe(() => {
     const { length } = ui.get().marks;
@@ -281,9 +279,6 @@ export function open(context: UiContext): UiController {
   );
 
   return {
-    show() {
-      ui.set({ visible: true });
-    },
     toggleMenu(fromKeyboard) {
       const { visible, menu } = ui.get();
       if (visible && menu !== "closed") ui.set({ menu: "closed" });
@@ -306,7 +301,6 @@ export function open(context: UiContext): UiController {
       for (const stop of stopPanels) stop();
       stopHuntTracking();
       stopTheme();
-      thread.disconnect();
       attachments.clear();
       restoreActiveElement();
       appRoot.remove();
