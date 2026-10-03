@@ -35,6 +35,8 @@ export type UiState = {
   recordRegion: Box | null;
   language: "en" | "ko";
   picking: PickMode | null;
+  /** The Shift multi-select tip shows beside the cursor for the first few Select activations. */
+  selectTip: boolean;
   /** The open panel: COMPOSE, THREAD, or a registered panel id. */
   panel: string | null;
   selection: readonly Element[];

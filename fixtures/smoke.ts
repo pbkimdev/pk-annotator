@@ -191,6 +191,8 @@ test(
     await page.keyboard.press("Enter");
     assert.equal(await hub.getAttribute("aria-expanded"), "false");
     assert.equal(await hub.getAttribute("data-mode"), "pick");
+    await page.mouse.move(fetchBox.x + fetchBox.width / 2, fetchBox.y + fetchBox.height / 2);
+    await page.getByTestId("pka-select-tip").filter({ hasText: "⇧ Multi-select" }).waitFor();
     await page.mouse.click(fetchBox.x + fetchBox.width / 2, fetchBox.y + fetchBox.height / 2);
     await page.getByTestId("pka-prompt").fill("Change this button");
     await page.getByRole("button", { name: "Bold", exact: true }).click();
@@ -390,7 +392,7 @@ test(
     await page.locator("pk-annotator").waitFor({ state: "detached" });
     assert.deepEqual(errors, []);
     t.diagnostic(
-      "Direct send, keyboard menu, remembered tools, saved marks, editing, screenshot and drawn captures, two region GIF/WebM recordings, batch send, the practice page, language, Exit and CLI artifacts passed.",
+      "Direct send, keyboard menu, remembered tools, the Select tip, saved marks, editing, screenshot and drawn captures, two region GIF/WebM recordings, batch send, the practice page, language, Exit and CLI artifacts passed.",
     );
   },
 );

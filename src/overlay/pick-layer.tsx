@@ -9,6 +9,7 @@ import {
 } from "../select/source.ts";
 import { startPicking } from "../select/pick.ts";
 import { NOTE, elementKey, nextSelection, useOverlay } from "./context.tsx";
+import { useText } from "./language.ts";
 import { cn } from "./lib/utils.ts";
 import { remember } from "./send.ts";
 import { useStore } from "./store.ts";
@@ -118,6 +119,7 @@ function SelectionBox({ element, n }: { element: Element; n: number }) {
 
 /** Hover box, numbered selection boxes, the marquee, and the pointer-catching layer. */
 export function PickLayer() {
+  const t = useText();
   const { host, ui } = useOverlay();
   const picking = useStore(ui, (state) => state.picking);
   const busy = useStore(ui, (state) => state.busy);
@@ -128,7 +130,9 @@ export function PickLayer() {
   const marks = useStore(ui, (state) => state.marks);
   const editing = useStore(ui, (state) => state.editing);
   const marquee = useStore(ui, (state) => state.marquee);
+  const selectTip = useStore(ui, (state) => state.selectTip);
   const layer = useRef<HTMLDivElement>(null);
+  const tip = useRef<HTMLDivElement>(null);
   const active = visible && !busy && picking !== null;
 
   useLayoutTicks(visible && (selection.length > 0 || marks.length > 0 || hover !== null));
@@ -140,7 +144,14 @@ export function PickLayer() {
     prewarm(
       [center, document.querySelector("[data-pka-src]")].filter((element) => element !== null),
     );
-    return startPicking(host, layer.current, picking, {
+    // Picking swallows pointermove at window capture, so the tip's listener goes first.
+    const follow = (event: PointerEvent) => {
+      if (tip.current === null) return;
+      tip.current.style.transform = `translate(${event.clientX + 14}px, ${event.clientY + 18}px)`;
+      tip.current.hidden = false;
+    };
+    window.addEventListener("pointermove", follow, { capture: true, passive: true });
+    const stop = startPicking(host, layer.current, picking, {
       hover: (element) => ui.set({ hover: element }),
       select: (elements, how) => {
         remember(elements);
@@ -155,6 +166,10 @@ export function PickLayer() {
       },
       enter: () => ui.set({ picking: null, panel: NOTE }),
     });
+    return () => {
+      window.removeEventListener("pointermove", follow, { capture: true });
+      stop();
+    };
   }, [active, picking, host, ui]);
 
   if (!visible) return null;
@@ -180,6 +195,18 @@ export function PickLayer() {
         <SelectionBox key={elementKey(element)} element={element} n={index + 1} />
       ))}
       {active && hover !== null && marquee === null && <HoverBox element={hover} />}
+      {active && picking === "pick" && selectTip && (
+        // Hidden until the first pointer move places it; it then fades once and unmounts.
+        <div
+          ref={tip}
+          hidden
+          data-testid="pka-select-tip"
+          className="pointer-events-none fixed top-0 left-0 animate-out rounded-md bg-foreground px-1.5 py-0.5 text-[11px] font-medium whitespace-nowrap text-background shadow-md delay-[2500ms] duration-500 fade-out fill-mode-forwards"
+          onAnimationEnd={() => ui.set({ selectTip: false })}
+        >
+          {t("⇧ Multi-select")}
+        </div>
+      )}
       {lasso !== null && (
         <svg className="pointer-events-none fixed inset-0 size-full overflow-visible text-pick">
           <polygon

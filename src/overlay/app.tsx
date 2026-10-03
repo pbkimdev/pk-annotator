@@ -20,6 +20,9 @@ import { createStore, useStore } from "./store.ts";
 import { connectThread } from "./thread-store.ts";
 import { TooltipProvider } from "./ui/tooltip.tsx";
 
+const SELECT_TIP_KEY = "pka:select-tip";
+const SELECT_TIP_LIMIT = 3;
+
 const overlaySheet = new CSSStyleSheet();
 overlaySheet.replaceSync(css);
 
@@ -110,6 +113,7 @@ export function open(context: UiContext): UiController {
     recordRegion: null,
     language: localStorage.getItem("pka:language") === "ko" ? "ko" : "en",
     picking: null,
+    selectTip: false,
     panel: null,
     selection: [],
     hover: null,
@@ -127,6 +131,22 @@ export function open(context: UiContext): UiController {
     thread,
     exit: context.exit,
   };
+  // Counted here, outside React, so every way into Select counts once, including the
+  // shortcut that opens the overlay before its first render.
+  let picking = ui.get().picking;
+  const stopSelectTip = ui.subscribe(() => {
+    const next = ui.get().picking;
+    if (next === picking) return;
+    picking = next;
+    if (next !== "pick") {
+      if (ui.get().selectTip) ui.set({ selectTip: false });
+      return;
+    }
+    const shown = Number(sessionStorage.getItem(SELECT_TIP_KEY));
+    if (!(shown < SELECT_TIP_LIMIT)) return;
+    sessionStorage.setItem(SELECT_TIP_KEY, String(shown + 1));
+    ui.set({ selectTip: true });
+  });
 
   const stopPanels = [
     registerRecordPanel((recording) => ui.set({ recording })),
@@ -174,6 +194,7 @@ export function open(context: UiContext): UiController {
     },
     unmount() {
       root.unmount();
+      stopSelectTip();
       for (const stop of stopPanels) stop();
       stopHuntTracking();
       stopTheme();

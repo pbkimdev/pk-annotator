@@ -5,6 +5,7 @@ const korean = new Map<string, string>(
   Object.entries({
     "Pick elements": "요소 선택",
     Select: "선택",
+    "⇧ Multi-select": "⇧ 복수 선택",
     Box: "영역 선택",
     Lasso: "올가미",
     Capture: "캡처",
