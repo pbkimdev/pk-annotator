@@ -1,5 +1,5 @@
 {
-  "name": "@srv/pk-annotator-fixture",
+  "name": "pk-annotator-fixture",
   "private": true,
   "type": "module",
   "scripts": {

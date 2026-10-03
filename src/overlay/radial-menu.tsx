@@ -172,7 +172,7 @@ function connectPrompt(page: string, setup: SetupInfoMessage): string {
     `That page's dev server stores them in ${setup.store}.`,
     ...(setup.command === null
       ? [
-          `pka-mcp is not installed in ${setup.root}: add @srv/pk-annotator as a dev dependency there first.`,
+          `pka-mcp is not installed in ${setup.root}: add pk-annotator as a dev dependency there first.`,
         ]
       : []),
     "If this session lacks the pka tools (wait_for_annotation, list_annotations), install the server yourself, replacing any pka server registered with another --root:",

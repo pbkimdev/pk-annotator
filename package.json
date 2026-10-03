@@ -1,14 +1,26 @@
 {
-  "name": "@srv/pk-annotator",
-  "version": "0.5.0",
-  "description": "Dev-only browser annotation overlay, Vite plugin, pka CLI, and pka-mcp stdio server",
-  "license": "UNLICENSED",
+  "name": "pk-annotator",
+  "version": "0.6.0",
+  "description": "Dev-only browser annotation overlay for Vite apps that sends picked elements, captures, and prompts to Claude Code and Codex through an MCP server.",
+  "keywords": [
+    "annotation",
+    "claude-code",
+    "codex",
+    "devtools",
+    "mcp",
+    "react",
+    "vite",
+    "vite-plugin"
+  ],
+  "homepage": "https://pk-annotator.paulbkim.dev",
+  "license": "MIT",
   "bin": {
     "pka": "./dist/pka.mjs",
     "pka-mcp": "./dist/pka-mcp.mjs"
   },
   "files": [
-    "dist"
+    "dist",
+    "README.ko.md"
   ],
   "type": "module",
   "exports": {
@@ -22,9 +34,6 @@
     },
     "./package.json": "./package.json"
   },
-  "publishConfig": {
-    "registry": "https://git.paulbkim.dev/api/packages/srv/npm/"
-  },
   "scripts": {
     "build": "tsdown",
     "test": "vitest run",
@@ -32,7 +41,7 @@
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "typecheck": "tsc --noEmit && tsc --noEmit -p fixtures/app",
-    "fixture": "pnpm build && pnpm --filter @srv/pk-annotator-fixture dev",
+    "fixture": "pnpm build && pnpm --filter pk-annotator-fixture dev",
     "fixture:smoke": "pnpm build && node --test fixtures/smoke.ts",
     "verify": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm build",
     "prepublishOnly": "pnpm verify"

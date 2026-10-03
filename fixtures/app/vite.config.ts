@@ -165,9 +165,7 @@ export default defineConfig({
   // UI chunk on first open. `pnpm fixture` builds dist first.
   resolve: {
     alias: {
-      "@srv/pk-annotator/overlay": fileURLToPath(
-        new URL("../../dist/overlay.mjs", import.meta.url),
-      ),
+      "pk-annotator/overlay": fileURLToPath(new URL("../../dist/overlay.mjs", import.meta.url)),
     },
   },
   server: { host: "127.0.0.1", port: Number(process.env.PORT ?? 3200), strictPort: true },
