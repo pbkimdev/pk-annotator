@@ -1,7 +1,8 @@
 import type { Capture } from "../core/index.ts";
 import type { Mounted } from "./index.ts";
 
-export type Active = { mounted: Mounted; capture: Capture };
+/** `capture` is undefined while the overlay is exited for the tab session. */
+export type Active = { mounted: Mounted; capture: Capture | undefined };
 
 declare global {
   // Kept on globalThis so a re-executed overlay module (HMR) finds the instance that
@@ -20,6 +21,8 @@ export function setActive(active: Active | undefined): void {
 /** The page's capture instance, started by mount(). */
 export function getCapture(): Capture {
   const active = getActive();
-  if (active === undefined) throw new Error("pk-annotator: getCapture() called before mount()");
+  if (active?.capture === undefined) {
+    throw new Error("pk-annotator: getCapture() called before mount() or after Exit");
+  }
   return active.capture;
 }

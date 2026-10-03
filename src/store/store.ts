@@ -17,6 +17,7 @@ import path from "node:path";
 
 import { z } from "zod";
 
+import type { AgentPresence } from "../shared/agent.ts";
 import {
   Claim,
   ID_PATTERN,
@@ -256,7 +257,7 @@ function temporaryName(file: string): string {
 export async function writeJsonAtomic(
   store: string,
   file: string,
-  value: State | LiveErrorsSnapshot | Annotation,
+  value: State | LiveErrorsSnapshot | Annotation | AgentPresence,
 ): Promise<void> {
   await refuseSymlinks(store, path.dirname(file));
   const temporary = temporaryName(file);

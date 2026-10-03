@@ -1,11 +1,17 @@
 import type { ViteHotContext } from "vite/types/hot.d.ts";
 
+import type { CHANNEL } from "../shared/channel.ts";
+import { send } from "./channel-client.ts";
+import { isAgentWorking, subscribeHubState } from "./hub-state.ts";
 import { getBadge, subscribeBadge } from "./registry.ts";
 
 export const HOST_TAG = "pk-annotator";
 export const SHORTCUT_LABEL = "Alt+Shift+A";
 export const CORNER_KEY = "pka:corner";
 const OPEN_KEY = "pka:open";
+const AGENT: typeof CHANNEL.agent = "pka:agent";
+const PRESENCE: typeof CHANNEL.presence = "pka:presence";
+type Receive = Parameters<ViteHotContext["on"]>[1];
 
 export type Theme = "light" | "dark";
 export type ThemeSetting = Theme | "system";
@@ -25,9 +31,9 @@ export type UiContext = {
   theme: ThemeSignal;
   /** The launcher button. The menu opens around it, and the UI reflects its state on it. */
   hub: HTMLButtonElement;
-  /** Called by the UI when it minimizes; the launcher returns focus to the hub. */
-  hidden(): void;
   exit(): void;
+  /** The number of saved, unsent marks; the hub shows it in place of its glyph. */
+  setMarkCount(count: number): void;
 };
 
 export type UiController = {
@@ -114,7 +120,11 @@ const LAUNCHER_CSS = `
     0 0 0 1px color-mix(in oklch, var(--pka-hub-ink) 12%, transparent),
     0 1px 2px rgb(0 0 0 / 0.1),
     0 12px 28px -10px rgb(0 0 0 / 0.4);
-  transition: transform 180ms ${EASE_OUT}, box-shadow 180ms ${EASE_OUT};
+  transition:
+    transform 180ms ${EASE_OUT},
+    box-shadow 180ms ${EASE_OUT},
+    background-color 480ms ease,
+    color 480ms ease;
 }
 .pka-launcher:hover { transform: scale(1.05); }
 .pka-launcher:active { transform: scale(0.96); }
@@ -138,7 +148,13 @@ const LAUNCHER_CSS = `
 }
 /* Open, the hub is the root of the menu's shape, which draws the edge and shadow. */
 .pka-launcher[aria-expanded="true"] { box-shadow: none; }
-.pka-glyph { width: 26px; height: 26px; overflow: visible; fill: currentColor; }
+.pka-glyph {
+  width: 26px;
+  height: 26px;
+  overflow: visible;
+  fill: currentColor;
+  transition: opacity 160ms ${EASE_OUT}, scale 260ms ${EASE_OUT};
+}
 .pka-launcher[data-corner="bottom-left"] .pka-glyph { rotate: 90deg; }
 .pka-launcher[data-corner="top-left"] .pka-glyph { rotate: 180deg; }
 .pka-launcher[data-corner="top-right"] .pka-glyph { rotate: 270deg; }
@@ -175,6 +191,41 @@ const LAUNCHER_CSS = `
   animation: pka-hub-pulse 1.6s ease-in-out infinite;
 }
 @keyframes pka-hub-pulse { 50% { opacity: 0.35; } }
+/* While an agent works on an annotation from this tab, the moons circle the core. */
+.pka-launcher[data-working] .pka-glyph [data-part="orbit"] {
+  animation: pka-hub-orbit 2.4s linear infinite;
+}
+@keyframes pka-hub-orbit { to { transform: rotate(-360deg); } }
+/* An agent reply or resolve: the hub swells once and a ring leaves it. */
+.pka-launcher[data-react] { animation: pka-hub-react 560ms cubic-bezier(0.3, 0.7, 0.4, 1); }
+.pka-launcher[data-react]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  animation: pka-hub-ripple 720ms ${EASE_OUT} forwards;
+}
+@keyframes pka-hub-react { 30% { scale: 1.12; } 62% { scale: 0.97; } }
+@keyframes pka-hub-ripple {
+  from { box-shadow: 0 0 0 0 color-mix(in oklch, var(--pka-hub-mark, var(--pka-hub-accent)) 55%, transparent); }
+  to { box-shadow: 0 0 0 16px transparent; }
+}
+.pka-count {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--pka-hub-ink);
+  font: 600 15px/1 system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  opacity: 0;
+  scale: 0.5;
+  pointer-events: none;
+  transition: opacity 160ms ${EASE_OUT}, scale 260ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.pka-launcher[data-count]:not([aria-expanded="true"]) .pka-count { opacity: 1; scale: 1; }
+.pka-launcher[data-count]:not([aria-expanded="true"]) .pka-glyph { opacity: 0; scale: 0.5; }
 .pka-badge {
   position: absolute;
   top: -3px;
@@ -193,7 +244,15 @@ const LAUNCHER_CSS = `
 }
 .pka-badge[hidden] { display: none; }
 @media (prefers-reduced-motion: reduce) {
-  .pka-launcher, .pka-glyph * { transition: none !important; animation: none !important; }
+  .pka-launcher, .pka-launcher *, .pka-launcher::before {
+    transition: none !important;
+    animation: none !important;
+  }
+  .pka-launcher[data-working] {
+    box-shadow:
+      0 0 0 2px var(--pka-hub-mark, var(--pka-hub-accent)),
+      0 12px 28px -10px rgb(0 0 0 / 0.4);
+  }
 }
 `;
 
@@ -262,27 +321,87 @@ export function createLauncher(
   button.setAttribute("aria-haspopup", "menu");
   button.setAttribute("aria-expanded", "false");
   button.innerHTML = GLYPH;
+  const count = document.createElement("span");
+  count.className = "pka-count";
+  count.setAttribute("aria-hidden", "true");
   const badge = document.createElement("span");
   badge.className = "pka-badge";
   badge.setAttribute("aria-hidden", "true");
-  button.append(badge);
+  button.append(count, badge);
   shadow.append(button);
   // Outside body, so a recording video restricted to body by Element Capture leaves the
   // overlay out. React 19 hydrates a document from body's first child and resolves html,
   // head, and body by reference, so hydration never visits this element.
   document.documentElement.append(host);
 
+  let marks = 0;
+  let agentLabel: string | null = null;
+  const renderLabel = () => {
+    const errors = getBadge();
+    const parts = ["Annotator"];
+    if (agentLabel !== null) parts.push(`${agentLabel} connected`);
+    if (marks > 0) parts.push(`${marks} unsent ${marks === 1 ? "mark" : "marks"}`);
+    if (errors > 0) parts.push(`${errors} open errors`);
+    button.setAttribute("aria-label", parts.join(", "));
+  };
   const renderBadge = () => {
-    const count = getBadge();
-    badge.hidden = count === 0;
-    badge.textContent = count > 99 ? "99+" : String(count);
-    button.setAttribute(
-      "aria-label",
-      count === 0 ? "Annotator" : `Annotator, ${count} open errors`,
-    );
+    const errors = getBadge();
+    badge.hidden = errors === 0;
+    badge.textContent = errors > 99 ? "99+" : String(errors);
+    renderLabel();
   };
   renderBadge();
   const stopBadge = subscribeBadge(renderBadge);
+  const setMarkCount = (next: number) => {
+    if (!Number.isInteger(next) || next < 0) {
+      throw new Error(`setMarkCount expects a non-negative integer, got ${next}`);
+    }
+    marks = next;
+    if (next === 0) delete button.dataset.count;
+    else button.dataset.count = "";
+    // Keeps the last number while the count fades out.
+    if (next > 0) count.textContent = next > 99 ? "99+" : String(next);
+    renderLabel();
+  };
+
+  const renderWorking = () => {
+    if (isAgentWorking()) button.dataset.working = "";
+    else delete button.dataset.working;
+  };
+  renderWorking();
+  const stopHubState = subscribeHubState((event) => {
+    if (event === "working") {
+      renderWorking();
+      return;
+    }
+    // Restarts the reaction when another arrives before the last one ends.
+    delete button.dataset.react;
+    void button.offsetWidth;
+    button.dataset.react = "";
+  });
+  button.addEventListener("animationend", (event) => {
+    if (event.target === button && event.animationName === "pka-hub-react") {
+      delete button.dataset.react;
+    }
+  });
+
+  // The theme module and its schema load with the first agent message. The plugin answers
+  // pka:presence only while an agent is connected, so a page without one loads neither.
+  let agentTheme: Promise<typeof import("./agent-theme.ts")> | undefined;
+  const receiveAgent: Receive = (payload) => {
+    agentTheme ??= import("./agent-theme.ts");
+    void agentTheme.then(({ AgentMessage, showAgent }) => {
+      const parsed = AgentMessage.safeParse(payload);
+      if (!parsed.success) {
+        console.error(`[pk-annotator] dropped an invalid ${AGENT} message`, parsed.error);
+        return;
+      }
+      agentLabel = showAgent({ host, shadow, hub: button }, parsed.data);
+      renderLabel();
+    });
+  };
+  hot.on(AGENT, receiveAgent);
+  send(hot, PRESENCE, {});
 
   let ui: Promise<UiController> | undefined;
   const withUi = async (action: (controller: UiController) => void) => {
@@ -297,10 +416,7 @@ export function createLauncher(
           sessionStorage.removeItem(OPEN_KEY);
           exit();
         },
-        hidden() {
-          sessionStorage.removeItem(OPEN_KEY);
-          button.focus();
-        },
+        setMarkCount,
       }),
     );
     const controller = await ui;
@@ -383,7 +499,9 @@ export function createLauncher(
     setTheme: themeSignal.set,
     unmount() {
       window.removeEventListener("keydown", onKeyDown, { capture: true });
+      hot.off(AGENT, receiveAgent);
       stopBadge();
+      stopHubState();
       themeSignal.stop();
       void ui?.then((controller) => controller.unmount());
       host.remove();
