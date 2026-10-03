@@ -12,7 +12,13 @@ import {
 import type { Point } from "../select/marquee.ts";
 import type { Box } from "../shared/schema.ts";
 import { getCapture } from "./capture.ts";
-import { NOTE, useOverlay, type UiState } from "./context.tsx";
+import {
+  MAX_DRAFT_BYTES,
+  MAX_MARKS,
+  useOverlay,
+  type SavedMark,
+  type UiState,
+} from "./context.tsx";
 import { useText } from "./language.ts";
 import { HOST_TAG } from "./launcher.ts";
 import { startRecording } from "./panels/record.tsx";
@@ -57,8 +63,6 @@ function viewportBox(): Box {
 }
 
 async function capturePage(): Promise<HTMLCanvasElement> {
-  if (attachments.get().length >= MAX_CAPTURES)
-    throw new Error("Save or send this mark before adding more captures.");
   const result = await snapdom(document.documentElement, {
     clip: "viewport",
     exclude: [HOST_TAG],
@@ -457,6 +461,8 @@ export function MarkLayer() {
     }
     ui.set({ busy: true });
     try {
+      if (mode === "screenshot" && attachments.get().length >= MAX_CAPTURES)
+        throw new Error("Save or send this mark before adding more captures.");
       const page = await capturePage();
       if (mode === "screenshot") {
         setShot({ page, viewport: viewportBox(), start: area ?? viewportBox() });
@@ -471,6 +477,13 @@ export function MarkLayer() {
       flatten(page, stroke);
       const id = randomId();
       const attachment = await frame(id, page, null, `${mode} annotation`, stroke);
+      const collected = await attachment.collect();
+      const bytes = collected.files.reduce((total, file) => total + file.data.size, 0);
+      const { marks } = ui.get();
+      if (marks.length >= MAX_MARKS)
+        throw new Error(`Send or remove marks before saving more than ${MAX_MARKS}.`);
+      if (bytes + marks.reduce((total, mark) => total + mark.bytes, 0) > MAX_DRAFT_BYTES)
+        throw new Error("Saved captures would exceed 256 MB. Send or remove saved marks first.");
       const placedPoints = path.map((point) => ({ x: point.x + scrollX, y: point.y + scrollY }));
       drawings.set({
         items: [
@@ -478,8 +491,16 @@ export function MarkLayer() {
           { ...stroke, points: placedPoints, id, route: location.pathname },
         ],
       });
-      addAttachment(attachment);
-      ui.set({ gesture: null, panel: NOTE });
+      // A drawing is a screenshot mark: it joins the Send stack without opening an editor.
+      // Its prompt is the capture's badge token, as the editor would write it.
+      const mark: SavedMark = {
+        id: randomId(),
+        prompt: `[[attachment:${id}]]`,
+        elements: [],
+        attachments: [{ ...attachment, collect: async () => collected }],
+        bytes,
+      };
+      ui.set({ gesture: null, marks: [...marks, mark] });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {

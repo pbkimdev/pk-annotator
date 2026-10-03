@@ -366,9 +366,13 @@ test(
     await page.mouse.down();
     await page.mouse.move(220, 130, { steps: 5 });
     await page.mouse.up();
-    await page.getByTestId("pka-prompt").fill("Circle mark");
-    await page.getByTestId("pka-save").click();
-    // A saved drawing stays on its route and returns with it.
+    // A finished drawing stacks a screenshot mark for Send without opening an editor.
+    await page
+      .locator("pk-annotator .pka-launcher[data-count] .pka-count")
+      .filter({ hasText: /^4$/ })
+      .waitFor({ state: "attached" });
+    assert.equal(await page.getByTestId("pka-panel").count(), 0);
+    // A drawing stays on its route and returns with it.
     const drawing = page.getByTestId("pka-drawing");
     assert.equal(await drawing.count(), 1);
     await page.getByTestId("nav-home").click();
@@ -644,6 +648,12 @@ test(
     await scaled.mouse.down();
     await scaled.mouse.move(800, 450, { steps: 5 });
     await scaled.mouse.up();
+    await scaled
+      .locator("pk-annotator .pka-launcher[data-count] .pka-count")
+      .filter({ hasText: /^1$/ })
+      .waitFor({ state: "attached" });
+    await scaled.locator("pk-annotator .pka-launcher").click();
+    await scaled.getByRole("menuitemcheckbox", { name: "Send", exact: true }).click();
     // Without the Web Speech API the composer has no dictation button.
     await scaled.getByTestId("pka-prompt").waitFor();
     assert.equal(await scaled.getByTestId("pka-dictate").count(), 0);
