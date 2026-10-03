@@ -805,9 +805,13 @@ async function diagnose(options: RunContext, file: string): Promise<Diagnostic> 
   const trace = await traceStep(`saving the trace to ${file} failed`, () =>
     saveTrace(cdp, handle, file),
   );
-  const events = await traceStep(`the trace in ${file} is not Chrome trace JSON`, async () =>
-    TraceFile.parse(JSON.parse(trace)),
-  );
+  const events = await traceStep(`the trace in ${file} is not Chrome trace JSON`, async () => {
+    const parsed = TraceFile.safeParse(JSON.parse(trace));
+    if (!parsed.success) {
+      throw new Error("it is neither an event array nor an object with a traceEvents array");
+    }
+    return parsed.data;
+  });
   const analysis = await analyzeTrace(events);
   const diagnostic: Diagnostic = {
     insights: analysis.insights,
