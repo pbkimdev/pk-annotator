@@ -70,7 +70,7 @@ function heroDrawing(t: Content): string {
     <text class="t-label" x="46" y="142">${esc(d.card)}</text>
     <text class="t-field" x="60" y="174">•••• •••• •••• 4242</text>
     <text class="t-label" x="46" y="218">${esc(d.email)}</text>
-    <text class="t-field" x="60" y="250">finance@example.com</text>
+    <!--email_off--><text class="t-field" x="60" y="250">finance@example.com</text><!--/email_off-->
     <g class="line">
       <rect x="46" y="${save.y}" width="118" height="${save.height}" rx="4"/>
     </g>
