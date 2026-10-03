@@ -18,9 +18,11 @@ import {
   get,
   list,
   loadAnnotation,
+  loadAnnotationUpdates,
   SetStatusResult,
   reply,
   type SetStatusInput,
+  validateAttachTarget,
   setStatus,
   wait,
   type WaitOptions,
@@ -239,6 +241,10 @@ describe("closed annotations", () => {
         "agent-a",
       ),
     ).rejects.toThrow(/is resolved/);
+    await expect(validateAttachTarget(store, id, "agent-a")).rejects.toThrow(/is resolved/);
+    await expect(validateAttachTarget(store, "0000missing", "agent-a")).rejects.toThrow(
+      "No annotation 0000missing",
+    );
     expect((await loadAnnotation(store, id)).annotation.attachments).toEqual([]);
     expect((await loadAnnotation(store, id)).state.history).toHaveLength(3);
   });
@@ -258,6 +264,8 @@ describe("closed annotations", () => {
     await expect(setStatus(store, { id, status: "resolved" }, "agent-b")).rejects.toThrow(claimed);
     await expect(reply(store, { id, text: "mine" }, "agent-b")).rejects.toThrow(claimed);
     await expect(attach(store, id, [lab], "agent-b")).rejects.toThrow(claimed);
+    await expect(validateAttachTarget(store, id, "agent-b")).rejects.toThrow(claimed);
+    await validateAttachTarget(store, id, "agent-a");
 
     await reply(store, { id, text: "Fixed the padding" }, "agent-a");
     await attach(store, id, [lab], "agent-a");
@@ -265,6 +273,8 @@ describe("closed annotations", () => {
     const record = await loadAnnotation(store, id);
     expect(record.state.history.at(-1)).toMatchObject({ status: "resolved", by: "agent-a" });
     expect(record.thread.map((entry) => entry.text)).toEqual(["Fixed the padding"]);
+    const { dir, state, thread } = record;
+    expect(await loadAnnotationUpdates(store, id)).toEqual({ dir, state, thread });
   });
 });
 

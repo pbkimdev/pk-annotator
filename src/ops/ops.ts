@@ -40,6 +40,7 @@ import {
   writeAnnotationDir,
   writeClaim,
   writeJsonAtomic,
+  type AnnotationFiles,
   type StagedFiles,
 } from "../store/store.ts";
 import { claimantExited } from "./presence.ts";
@@ -143,6 +144,25 @@ export async function loadAnnotation(store: string, id: string): Promise<Annotat
     throw new PkaError(`${files.annotation} has id ${annotation.id}, expected ${id}`);
   }
   return { dir: files.dir, annotation, state, claim, thread };
+}
+
+export interface AnnotationUpdates {
+  dir: string;
+  state: State;
+  thread: ThreadEntry[];
+}
+
+/**
+ * Reads the parts of an annotation that change after it is written: its state and reply
+ * thread. The Vite plugin uses it to push changes without rereading annotation.json.
+ */
+export async function loadAnnotationUpdates(store: string, id: string): Promise<AnnotationUpdates> {
+  const files = await requireAnnotation(store, id);
+  const [state, thread] = await Promise.all([
+    readJson(store, files.state, State),
+    readJsonLines(store, files.thread, ThreadEntry),
+  ]);
+  return { dir: files.dir, state, thread };
 }
 
 /** Like loadAnnotation, but an annotation removed between listing and reading (prune, rm) is absent. */
@@ -527,6 +547,26 @@ export async function create(
   return { id };
 }
 
+async function checkAttachTarget(
+  store: string,
+  files: AnnotationFiles,
+  id: string,
+  by: string,
+): Promise<void> {
+  const state = await readJson(store, files.state, State);
+  if (isClosed(state.status)) throw closedError(id, state.status);
+  requireClaimant(id, await readClaim(store, id), by);
+}
+
+/**
+ * Fails as attach would when the annotation is missing, closed, or claimed by another
+ * claimant, without writing. Check before expensive work; attach checks again because the
+ * annotation can change in between.
+ */
+export async function validateAttachTarget(store: string, id: string, by: string): Promise<void> {
+  await checkAttachTarget(store, await requireAnnotation(store, id), id, by);
+}
+
 export interface AttachFile {
   kind: AttachmentKind;
   /** Relative to the annotation directory; must be under capture/ and new. */
@@ -559,9 +599,7 @@ export async function attach(
     return parsed.data;
   });
   return withAnnotationLock(store, id, async (paths) => {
-    const state = await readJson(store, paths.state, State);
-    if (isClosed(state.status)) throw closedError(id, state.status);
-    requireClaimant(id, await readClaim(store, id), by);
+    await checkAttachTarget(store, paths, id, by);
     const annotation = await readJson(store, paths.annotation, Annotation);
     checkCaptureFiles(
       { ...annotation, elements: [], attachments: added },
