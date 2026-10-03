@@ -4,6 +4,8 @@ import { useEffect, type ReactNode } from "react";
 export const Route = createRootRoute({
   head: () => ({
     meta: [{ charSet: "utf-8" }, { title: "pk-annotator fixture" }],
+    // An empty icon, so the browser does not request /favicon.ico.
+    links: [{ rel: "icon", href: "data:," }],
   }),
   shellComponent: RootDocument,
   component: RootLayout,
