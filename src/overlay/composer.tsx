@@ -3,6 +3,7 @@ import { useMemo, useRef, useState } from "react";
 
 import {
   COMPOSE,
+  COPIED_HINT_KEY,
   NOTE,
   elementKey,
   THREAD,
@@ -10,6 +11,7 @@ import {
   type SavedMark,
   type UiState,
 } from "./context.tsx";
+import { isAgentConnected } from "./agent-presence.ts";
 import { annotationBlock } from "./markdown.ts";
 import { useText } from "./language.ts";
 import { BADGE_TOKENS, PromptEditor, type Badge, type Badges } from "./prompt-editor.tsx";
@@ -124,6 +126,21 @@ function batchText(
   return tidy([text, ...sections.values()].join("\n\n"));
 }
 
+/**
+ * Writes `text` to the clipboard once it resolves. The write starts while the Send click
+ * or key press still counts as user activation, which Safari and Firefox require; the
+ * ClipboardItem holds the pending text until the stored annotation's directory is known.
+ */
+function copyWhenSent(text: Promise<string>): Promise<void> {
+  if (!("ClipboardItem" in globalThis))
+    return text.then((value) => navigator.clipboard.writeText(value));
+  return navigator.clipboard.write([
+    new ClipboardItem({
+      "text/plain": text.then((value) => new Blob([value], { type: "text/plain" })),
+    }),
+  ]);
+}
+
 function canSubmit(state: UiState, batch: boolean): boolean {
   if (state.busy || state.recording) return false;
   if (batch)
@@ -225,7 +242,23 @@ export function Composer({ batch = false }: { batch?: boolean }) {
           batch ? { ...attachment, label: `Mark ${index + 1}: ${attachment.label}` } : attachment,
         ),
       );
-      const { id, createdAt } = await sendAnnotation(hot, text, elements, allAttachments, setPhase);
+      const sending = sendAnnotation(hot, text, elements, allAttachments, setPhase);
+      // Without an agent the annotation also goes to the clipboard, for pasting into one.
+      const copied = isAgentConnected()
+        ? null
+        : copyWhenSent(
+            Promise.all([locateElements(elements), sending]).then(
+              ([located, sent]) =>
+                `${annotationBlock(
+                  { route: location.pathname, viewport: currentViewport(), prompt: text },
+                  located,
+                )}\nAnnotation files: ${sent.dir}\n`,
+            ),
+          ).then(
+            () => "ok" as const,
+            (cause: unknown) => ({ cause }),
+          );
+      const { id, createdAt } = await sending;
       thread.added({ id, prompt: text, createdAt, elements: elements.length });
       for (const attachment of allAttachments) attachment.sent?.(id);
       if (batch) ui.set({ marks: [], globalPrompt: "", panel: THREAD });
@@ -238,6 +271,13 @@ export function Composer({ batch = false }: { batch?: boolean }) {
           editing: null,
           panel: THREAD,
         });
+      }
+      if (copied !== null) {
+        const outcome = await copied;
+        if (outcome !== "ok") {
+          console.error("[pk-annotator] copying the sent annotation failed", outcome.cause);
+          ui.set({ copied: "failed" });
+        } else if (sessionStorage.getItem(COPIED_HINT_KEY) === null) ui.set({ copied: "ok" });
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));

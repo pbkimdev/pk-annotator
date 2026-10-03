@@ -37,7 +37,13 @@ const ImageMetadata = z.object({
 const repo = path.resolve(import.meta.dirname, "..");
 
 /** A pka-mcp session that names itself claude-code themes the overlay until it exits. */
-async function checkAgentTheme(t: TestContext, page: Page, workspace: string): Promise<void> {
+/** Connects a claude-code pka-mcp session, runs `whileConnected`, and disconnects it. */
+async function checkAgentTheme(
+  t: TestContext,
+  page: Page,
+  workspace: string,
+  whileConnected: () => Promise<void>,
+): Promise<void> {
   const hub = page.locator("pk-annotator .pka-launcher");
   assert.equal(await page.locator("pk-annotator").getAttribute("data-agent"), null);
   const agent = spawn(
@@ -64,6 +70,7 @@ async function checkAgentTheme(t: TestContext, page: Page, workspace: string): P
   await page.locator('pk-annotator[data-agent="claude"]').waitFor({ state: "attached" });
   assert.match((await hub.getAttribute("aria-label")) ?? "", /Claude Code connected/);
   await hub.locator('.pka-agent-logo[data-kind="claude"]').waitFor({ state: "attached" });
+  await whileConnected();
   agent.stdin.end();
   await exited;
   await page.locator("pk-annotator:not([data-agent])").waitFor({ state: "attached" });
@@ -139,7 +146,9 @@ test(
     await automated.close();
     t.diagnostic("Automation guard passed after the fixture hydrated.");
 
-    const interactive = await browser.newContext();
+    const interactive = await browser.newContext({
+      permissions: ["clipboard-read", "clipboard-write"],
+    });
     // Only this fixture context impersonates a manual browser; the guard above stays intact.
     await interactive.addInitScript(() => {
       Object.defineProperty(navigator, "webdriver", { get: () => false });
@@ -197,6 +206,17 @@ test(
     assert.match(await page.getByTestId("pka-prompt").innerText(), /Fixture smoke recording/);
     await page.getByTestId("pka-send").click();
     await page.getByTestId("pka-thread-item").filter({ hasText: prompt }).waitFor();
+    // With no agent connected, Send also copies the annotation and says so.
+    const copiedPopup = page.getByTestId("pka-copied");
+    await copiedPopup.waitFor();
+    assert.equal(await copiedPopup.getAttribute("data-outcome"), "ok");
+    const copiedText = await page.evaluate(() => navigator.clipboard.readText());
+    assert.match(
+      copiedText,
+      /<prompt>Fixture smoke recording \[attachment 1: Recording \d+:\d\d\]/,
+    );
+    await page.getByRole("button", { name: "OK", exact: true }).click();
+    await copiedPopup.waitFor({ state: "detached" });
 
     const cli = path.join(workspace, "dist/pka.mjs");
     const listed = await exec(process.execPath, [
@@ -226,6 +246,7 @@ test(
       /^Fixture smoke recording \[attachment 1: Recording \d+:\d\d\] shows the item list$/,
     );
     assert.equal(annotation.dir, path.join(workspace, "_interim/annotations", item.id));
+    assert.match(copiedText, new RegExp(`\nAnnotation files: _interim/annotations/${item.id}\n$`));
     assert.ok(annotation.attachments.some((attachment) => attachment.kind === "recording"));
 
     const recording = annotation.attachments.find((attachment) => attachment.kind === "recording");
@@ -349,6 +370,15 @@ test(
     await page.keyboard.type(`${global} `);
     await page.getByTestId("pka-send").click();
     await page.getByTestId("pka-thread-item").filter({ hasText: global }).waitFor();
+    // The batch copies too; Don't show again hides the pop-up for the rest of the tab session.
+    await copiedPopup.waitFor();
+    assert.match(
+      await page.evaluate(() => navigator.clipboard.readText()),
+      /<prompt>Fix these marks together\n\n## Mark 1/,
+    );
+    await page.getByRole("checkbox", { name: "Don't show again" }).check();
+    await page.keyboard.press("Escape");
+    await copiedPopup.waitFor({ state: "detached" });
     await drawing.waitFor({ state: "detached" });
     const batchedList = ListResult.parse(
       JSON.parse(
@@ -425,6 +455,11 @@ test(
     await page.getByTestId("pka-prompt").fill(judged);
     await page.getByTestId("pka-send").click();
     await page.getByTestId("pka-thread-item").filter({ hasText: judged }).waitFor();
+    assert.equal(await copiedPopup.count(), 0);
+    assert.match(
+      await page.evaluate(() => navigator.clipboard.readText()),
+      /<prompt>Practice smoke/,
+    );
     const titleBox = await page.getByTestId("practice-title").boundingBox();
     assert.ok(titleBox);
     await choose("pick", "Select", "menuitemcheckbox");
@@ -502,7 +537,24 @@ test(
     assert.ok(pickedAnnotation);
     assert.match(pickedAnnotation.elements[0]?.source ?? "", /routes\/practice\.tsx:\d+:\d+$/);
 
-    await checkAgentTheme(t, page, workspace);
+    // With the agent connected, Send neither copies nor opens the pop-up.
+    await page.evaluate(() => sessionStorage.removeItem("pka:copied-hint"));
+    await checkAgentTheme(t, page, workspace, async () => {
+      const connected = "Practice smoke: sent to the connected agent";
+      await choose("pick", "Select", "menuitemcheckbox");
+      await page.mouse.click(titleBox.x + titleBox.width / 2, titleBox.y + titleBox.height / 2);
+      await page.getByTestId("pka-element-ref").waitFor();
+      await page.getByTestId("pka-prompt").focus();
+      await page.keyboard.press("Control+End");
+      await page.keyboard.type(connected);
+      await page.getByTestId("pka-send").click();
+      await page.getByTestId("pka-thread-item").filter({ hasText: connected }).waitFor();
+      assert.equal(await copiedPopup.count(), 0);
+      assert.doesNotMatch(
+        await page.evaluate(() => navigator.clipboard.readText()),
+        /connected agent/,
+      );
+    });
 
     // Language switches in place, so the menu stays open on the Settings group.
     await choose("settings", "Language: English", "menuitem");
@@ -528,6 +580,9 @@ test(
       Object.defineProperty(navigator, "webdriver", { get: () => false });
       Reflect.deleteProperty(window, "SpeechRecognition");
       Reflect.deleteProperty(window, "webkitSpeechRecognition");
+      // A refused clipboard write must open the failure pop-up, not claim the copy.
+      navigator.clipboard.write = () =>
+        Promise.reject(new DOMException("Write permission denied.", "NotAllowedError"));
     });
     const scaled = await scaledContext.newPage();
     scaled.setDefaultTimeout(30_000);
@@ -548,6 +603,10 @@ test(
     await scaled.getByTestId("pka-prompt").fill(stroked);
     await scaled.getByTestId("pka-send").click();
     await scaled.getByTestId("pka-thread-item").filter({ hasText: stroked }).waitFor();
+    await scaled
+      .getByTestId("pka-copied")
+      .filter({ hasText: "Couldn't copy to clipboard" })
+      .waitFor();
     const strokedItem = ListResult.parse(
       JSON.parse(
         (
@@ -615,7 +674,7 @@ test(
     await scaledContext.close();
     assert.deepEqual(errors, []);
     t.diagnostic(
-      "Direct send, keyboard menu, remembered tools, the Select tip, saved marks, editing, area/full screenshots with crop, persisted drawings, two region GIF/WebM recordings chosen at start, batch send with badges, the hub count, the Claude agent theme, the practice page, language, session Exit, the 1.5× stroke position and CLI artifacts passed.",
+      "Direct send, keyboard menu, remembered tools, the Select tip, saved marks, editing, area/full screenshots with crop, persisted drawings, two region GIF/WebM recordings chosen at start, batch send with badges, the clipboard copy and pop-up without an agent, the hub count, the Claude agent theme, the practice page, language, session Exit, the 1.5× stroke position and CLI artifacts passed.",
     );
   },
 );

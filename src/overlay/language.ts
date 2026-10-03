@@ -68,6 +68,12 @@ const korean = new Map<string, string>(
     acknowledged: "확인됨",
     resolved: "해결됨",
     dismissed: "닫힘",
+    "Copied to clipboard": "클립보드에 복사됨",
+    "Couldn't copy to clipboard": "클립보드에 복사하지 못함",
+    "Connect an agent over MCP for live replies":
+      "MCP로 에이전트를 연결하면 바로 응답받을 수 있어요",
+    "Don't show again": "다시 보지 않기",
+    OK: "확인",
   }),
 );
 

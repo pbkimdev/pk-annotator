@@ -4,12 +4,14 @@ import type { ViteHotContext } from "vite/types/hot.d.ts";
 
 import { createCapture, type Capture } from "../core/index.ts";
 import type { CHANNEL } from "../shared/channel.ts";
+import { setAgentConnected } from "./agent-presence.ts";
 import { getActive, setActive } from "./capture.ts";
 import { send } from "./channel-client.ts";
 import { createLauncher, type Launcher, type ThemeSetting } from "./launcher.ts";
 import { setBadge } from "./registry.ts";
 
 const ERRORS_ACK: typeof CHANNEL.errorsAck = "pka:errors-ack";
+const AGENT: typeof CHANNEL.agent = "pka:agent";
 /** Set by Exit; until Alt+Shift+A clears it, the overlay stays unmounted in this tab. */
 const EXITED_KEY = "pka:exited";
 type AckListener = Parameters<ViteHotContext["on"]>[1];
@@ -65,6 +67,16 @@ export function mount(options: MountOptions): Mounted {
       });
     };
     options.hot.on(ERRORS_ACK, receiveAck);
+    // The plugin sends pka:agent only while a session is or was connected, so a page that
+    // never had one loads no schema for it.
+    const receiveAgent: AckListener = (payload) => {
+      void import("../shared/channel.ts").then(({ AgentMessage }) => {
+        const parsed = AgentMessage.safeParse(payload);
+        if (parsed.success) setAgentConnected(parsed.data.agent !== null);
+        else console.error(`[pk-annotator] dropped an invalid ${AGENT} message`, parsed.error);
+      });
+    };
+    options.hot.on(AGENT, receiveAgent);
     let open = 0;
     const stopBadge = capture.subscribe(() => {
       const count = capture.snapshot().groups.filter((group) => group.status === "open").length;
@@ -79,6 +91,8 @@ export function mount(options: MountOptions): Mounted {
       stop() {
         stopBadge();
         options.hot.off(ERRORS_ACK, receiveAck);
+        options.hot.off(AGENT, receiveAgent);
+        setAgentConnected(false);
         capture.stop();
         launcher.unmount();
         setBadge(0);

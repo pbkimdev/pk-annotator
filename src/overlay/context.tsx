@@ -12,6 +12,8 @@ import type { ThreadStore } from "./thread-store.ts";
 export const COMPOSE = "compose";
 export const THREAD = "thread";
 export const NOTE = "note";
+/** sessionStorage key set when the user turns off the clipboard pop-up for this tab. */
+export const COPIED_HINT_KEY = "pka:copied-hint";
 
 export type SavedMark = {
   id: string;
@@ -43,6 +45,8 @@ export type UiState = {
   lasso: readonly Point[] | null;
   marquee: { box: Box; containment: Containment } | null;
   corner: Corner;
+  /** The pop-up after a Send without an agent: the annotation was copied, or copying failed. */
+  copied: "ok" | "failed" | null;
 };
 
 export type Overlay = {
