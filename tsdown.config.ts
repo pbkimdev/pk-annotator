@@ -78,6 +78,8 @@ const overlay: UserConfig = {
   hooks: { "build:done": publish },
   minify: true,
   outExtensions: () => ({ js: ".mjs", dts: ".d.mts" }),
+  // Capture recognizes the overlay's own errors by this prefix (src/core/errors.ts).
+  outputOptions: { chunkFileNames: "pka-overlay-[name]-[hash].mjs" },
   // The UI chunk imports the launcher's modules from the entry instead of a third chunk,
   // so the first page load requests one small file. Radix ships "use client" directives
   // that mean nothing in this browser bundle.

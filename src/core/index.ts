@@ -12,7 +12,7 @@ import type {
   RequestEntry,
   TimelineEntry,
 } from "../shared/timeline.ts";
-import { fingerprintError, fingerprintResource } from "./errors.ts";
+import { fingerprintError, fingerprintResource, isOverlayError } from "./errors.ts";
 import { installNetwork, redactUrl } from "./network.ts";
 import { capString, errorText, formatArgs, serializeArgs } from "./serialize.ts";
 
@@ -361,6 +361,7 @@ export function createCapture(options: CaptureOptions): Capture {
     thrown: Thrown,
     extra: Pick<ErrorEntry, "componentStack" | "ownerStack">,
   ): void {
+    if (isOverlayError(thrown.stack)) return;
     const { fingerprint, topFrame } = fingerprintError(thrown.type, thrown.message, thrown.stack);
     const entry: ErrorEntry = {
       kind: "error",
@@ -400,6 +401,8 @@ export function createCapture(options: CaptureOptions): Capture {
     });
     changed();
     if (site === undefined) return;
+    const caller = callerStack(site);
+    if (isOverlayError(caller)) return;
     const error = args.find((arg): arg is Error => arg instanceof Error);
     if (error !== undefined) {
       if (counted.has(error)) return;
@@ -411,7 +414,7 @@ export function createCapture(options: CaptureOptions): Capture {
       {
         type: error?.name ?? "ConsoleError",
         message,
-        stack: error === undefined ? callerStack(site) : errorText(error),
+        stack: error === undefined ? caller : errorText(error),
       },
       {},
     );

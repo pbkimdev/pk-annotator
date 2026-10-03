@@ -150,6 +150,27 @@ describe("error groups", () => {
     );
   });
 
+  it("leaves errors raised through the overlay's chunks and no app file out of the groups", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const current = start();
+    const react =
+      "    at flushSync (http://localhost:3000/node_modules/.vite/deps/react-dom.js:92:5)";
+    const overlay =
+      "    at new ey (http://localhost:3000/node_modules/.vite/deps/pka-overlay-composer-A9J7FDgN-CFU8JGoe.js:197:9)";
+    const app = "    at onClick (http://localhost:3000/src/routes/lab.tsx:70:19)";
+    const raise = (...frames: string[]): void => {
+      const error = new Error("raised");
+      error.stack = ["Error: raised", ...frames].join("\n");
+      console.error(error);
+    };
+    raise(react, overlay);
+    raise(react, overlay, app);
+    expect(current.snapshot().console).toHaveLength(2);
+    expect(current.snapshot().groups.map((group) => group.topFrame)).toEqual([
+      "/src/routes/lab.tsx:70",
+    ]);
+  });
+
   it("groups messages that differ only in numbers and addresses", () => {
     const vendor =
       "    at render (http://localhost:3000/node_modules/.vite/deps/react-dom.js:10:5)";

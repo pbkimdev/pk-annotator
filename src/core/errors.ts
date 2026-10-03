@@ -9,6 +9,12 @@ const CHROME_FN = /^\s*at (?:async )?(.+?) \(/;
 const GECKO_FN = /^([^@\s]*)@/;
 const NOT_APP = /\/node_modules\/|\/\.vite\/deps\/|\/@vite\/|\/@react-refresh/;
 const FRAMES_IN_FINGERPRINT = 3;
+// The overlay's lazy chunks (named in tsdown.config.ts), served from dist/ or renamed with
+// a second hash by Vite's dependency optimizer.
+const OVERLAY_CHUNK = /\/pka-overlay-[^/]+\.m?js$/;
+// The overlay entry, which holds this module and the console and fetch wrappers that app
+// calls pass through.
+const OVERLAY_ENTRY = stripUrl(import.meta.url);
 
 // Parses Chrome ("at fn (url:1:2)") and Firefox/Safari ("fn@url:1:2") lines.
 // `path` drops the origin, query, and hash so cache-busting `?t=` and `?v=`
@@ -62,6 +68,17 @@ export function fingerprintError(type: string, message: string, stack: string): 
       .map((frame) => `${frame.path}:${frame.fn ?? frame.line}`),
   ].join("|");
   return { fingerprint: hash(key), topFrame: top && `${top.path}:${top.line}` };
+}
+
+// The overlay's UI raised this error: its stack runs through an overlay chunk and no app
+// file. Agents read the error groups as the page's errors, so these stay out of them.
+export function isOverlayError(stack: string): boolean {
+  let overlay = false;
+  for (const frame of parseFrames(stack)) {
+    if (OVERLAY_CHUNK.test(frame.path)) overlay = true;
+    else if (frame.path !== OVERLAY_ENTRY && !NOT_APP.test(frame.path)) return false;
+  }
+  return overlay;
 }
 
 export function fingerprintResource(tag: string, url: string): string {
