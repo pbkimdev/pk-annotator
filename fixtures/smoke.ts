@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
+import { once } from "node:events";
 import { cp, mkdir, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
 import path from "node:path";
-import { test } from "node:test";
+import { test, type TestContext } from "node:test";
 import { promisify } from "node:util";
 
-import { chromium, type Browser } from "playwright";
+import { chromium, type Browser, type Page } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 
 import { GetResult, ListResult } from "../src/ops/ops.ts";
@@ -13,6 +14,40 @@ import { NetworkLine, RecordingManifest } from "../src/shared/recording.ts";
 
 const exec = promisify(execFile);
 const repo = path.resolve(import.meta.dirname, "..");
+
+/** A pka-mcp session that names itself claude-code themes the overlay until it exits. */
+async function checkAgentTheme(t: TestContext, page: Page, workspace: string): Promise<void> {
+  const hub = page.locator("pk-annotator .pka-launcher");
+  assert.equal(await page.locator("pk-annotator").getAttribute("data-agent"), null);
+  const agent = spawn(
+    process.execPath,
+    [path.join(workspace, "dist/pka-mcp.mjs"), "--root", workspace],
+    {
+      stdio: ["pipe", "ignore", "inherit"],
+    },
+  );
+  t.after(() => agent.kill("SIGTERM"));
+  const exited = once(agent, "exit");
+  agent.stdin.write(
+    `${JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: "2025-06-18",
+        capabilities: {},
+        clientInfo: { name: "claude-code", version: "2.1.288" },
+      },
+    })}\n`,
+  );
+  await page.locator('pk-annotator[data-agent="claude"]').waitFor({ state: "attached" });
+  assert.match((await hub.getAttribute("aria-label")) ?? "", /Claude Code connected/);
+  await hub.locator('.pka-agent-logo[data-kind="claude"]').waitFor({ state: "attached" });
+  agent.stdin.end();
+  await exited;
+  await page.locator("pk-annotator:not([data-agent])").waitFor({ state: "attached" });
+  assert.doesNotMatch((await hub.getAttribute("aria-label")) ?? "", /connected/);
+}
 
 test(
   "fixture mounts only outside automation and sends a readable recording",
@@ -218,6 +253,10 @@ test(
       await page.getByTestId("pka-save").click();
     }
     assert.equal(await page.getByTestId("pka-saved-mark").count(), 5);
+    assert.equal(
+      await page.locator("pk-annotator .pka-launcher[data-count] .pka-count").innerText(),
+      "5",
+    );
     await choose("Settings", "Minimize", "menuitem");
     await hub.click();
     assert.equal(await page.getByTestId("pka-saved-mark").count(), 5);
@@ -356,15 +395,25 @@ test(
     assert.ok(pickedAnnotation);
     assert.match(pickedAnnotation.elements[0]?.source ?? "", /routes\/practice\.tsx:\d+:\d+$/);
 
+    await checkAgentTheme(t, page, workspace);
+
     // Language switches in place, so the menu stays open on the Settings group.
     await choose("Settings", "Language: English", "menuitem");
     await page.getByRole("menuitem", { name: "설정", exact: true }).waitFor();
     await page.getByRole("menuitem", { name: "언어: 한국어", exact: true }).click();
     await page.getByRole("menuitem", { name: "Exit annotator", exact: true }).click();
     await page.locator("pk-annotator").waitFor({ state: "detached" });
+    // Exit lasts for the tab session; Alt+Shift+A brings the overlay back.
+    await page.reload();
+    await page.locator("html[data-fixture-ready]").waitFor({ state: "attached" });
+    assert.equal(await page.locator("pk-annotator").count(), 0);
+    await page.keyboard.press("Alt+Shift+KeyA");
+    await hub.waitFor();
+    await page.reload();
+    await hub.waitFor();
     assert.deepEqual(errors, []);
     t.diagnostic(
-      "Direct send, saved marks, editing, cropped/drawn captures, two region GIF/WebM recordings, batch send, the practice page, language, minimize, Exit and CLI artifacts passed.",
+      "Direct send, saved marks, editing, cropped/drawn captures, two region GIF/WebM recordings, batch send, the practice page, the hub count, the Claude agent theme, language, minimize, session Exit and CLI artifacts passed.",
     );
   },
 );
