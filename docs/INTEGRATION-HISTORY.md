@@ -1,5 +1,7 @@
 # Integration history
 
+2026-10-03: the package was renamed `pk-annotator` and moved to the public npm registry; `@srv/pk-annotator` and the `@srv:registry` setup below apply only to releases through 0.5.0.
+
 This is the design and migration plan recorded on 2026-10-02, with build evidence added through 2026-10-03. It preserves the original investigation; it is not a statement of current deployments or instructions to execute a migration. Paths under `apps/`, `scripts/verify`, Mantra, and Platform belong to those consumer repositories, not pk-annotator. Check the owning repository before using them.
 
 Current package behavior is in [DESIGN.md](DESIGN.md), consumer setup is in [README.md](../README.md), and local development is in [DEVELOPING.md](DEVELOPING.md).
