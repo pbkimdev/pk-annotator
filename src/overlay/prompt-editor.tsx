@@ -346,6 +346,8 @@ function recognitionApi(): RecognitionApi | undefined {
   return scope.SpeechRecognition ?? scope.webkitSpeechRecognition;
 }
 
+const EMPTY_DOC = { type: "doc", content: [{ type: "paragraph" }] };
+
 /** A Markdown block editor; `actions` sit at the end of its bottom row. */
 export function PromptEditor({
   value,
@@ -383,8 +385,11 @@ export function PromptEditor({
       Interim,
       RefBadge.configure({ handlers }),
     ],
-    content: value,
+    // Tiptap reads a string that parses to no Markdown blocks as HTML.
+    content: value.trim() === "" ? EMPTY_DOC : value,
     contentType: "markdown",
+    // Tiptap's stylesheet would land in the page's head, outside the shadow root.
+    injectCSS: false,
     immediatelyRender: false,
     editable: !disabled,
     editorProps: {
@@ -402,14 +407,37 @@ export function PromptEditor({
         if (!disabled) onSend();
         return true;
       },
-      handlePaste(_view, event) {
-        const files = [...(event.clipboardData?.files ?? [])].filter((file) =>
-          file.type.startsWith("image/"),
-        );
-        if (files.length === 0 || onPasteImage === undefined) return false;
-        event.preventDefault();
-        for (const file of files) onPasteImage(file);
-        return true;
+      // ProseMirror parses pasted and dropped HTML with innerHTML, which a page enforcing
+      // Trusted Types refuses, so content from outside the editor arrives as plain text.
+      handleDOMEvents: {
+        paste(view, event) {
+          const data = event.clipboardData;
+          if (data === null || !view.editable) return false;
+          event.preventDefault();
+          const files = [...data.files].filter((file) => file.type.startsWith("image/"));
+          if (files.length > 0 && onPasteImage !== undefined) {
+            for (const file of files) onPasteImage(file);
+          } else {
+            view.pasteText(data.getData("text/plain"), event);
+          }
+          return true;
+        },
+        drop(view, event) {
+          const data = event.dataTransfer;
+          if (
+            view.dragging !== null ||
+            data === null ||
+            !view.editable ||
+            !data.types.includes("text/html")
+          ) {
+            return false;
+          }
+          event.preventDefault();
+          const at = view.posAtCoords({ left: event.clientX, top: event.clientY });
+          if (at !== null)
+            view.dispatch(view.state.tr.insertText(data.getData("text/plain"), at.pos));
+          return true;
+        },
       },
     },
     onUpdate: ({ editor: updated }) => {
