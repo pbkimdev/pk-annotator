@@ -4,24 +4,16 @@ import { Verdict } from "../shared/verdict.ts";
 import { DEFAULT_BUDGETS, computeVerdict, type RunMetric, type RunResult } from "./verdict.ts";
 
 function run(n: number, metrics: RunResult["metrics"]): RunResult {
-  return {
-    run: n,
-    metrics,
-    trace: `/tmp/out/trace-${n}.json.gz`,
-    analysis: {
-      insights: [
-        {
-          name: "INPBreakdown",
-          page: "http://127.0.0.1:3210/lab",
-          state: n === 2 ? "pass" : "fail",
-          summary: `run ${n}`,
-        },
-      ],
-      unavailable: [{ name: "ForcedReflow", reason: "not produced for /lab" }],
-      hotFunction: undefined,
-    },
-  };
+  return { run: n, metrics };
 }
+
+const hot = {
+  function: "slowHandler",
+  url: "http://127.0.0.1:3210/a.js",
+  line: 3,
+  column: 9,
+  selfMs: 41,
+};
 
 const inp = (value: number): RunMetric => ({
   value,
@@ -31,7 +23,7 @@ const inp = (value: number): RunMetric => ({
 });
 
 describe("computeVerdict", () => {
-  it("takes the median, band, and budget status per metric and the culprit from the median run", () => {
+  it("takes values from the untraced runs and insights from the traced run", () => {
     const verdict = computeVerdict({
       createdAt: "2026-10-02T12:00:00.000Z",
       conditions: {
@@ -57,6 +49,19 @@ describe("computeVerdict", () => {
         run(3, { INP: inp(320), LCP: { value: 1200, page: "p", breakdown: {} } }),
       ],
       failures: [{ run: 4, step: 1, message: "Step 1: cannot find" }],
+      diagnostic: {
+        insights: [
+          {
+            name: "INPBreakdown",
+            page: "http://127.0.0.1:3210/lab",
+            state: "fail",
+            summary: "traced",
+          },
+        ],
+        unavailable: [{ name: "ForcedReflow", reason: "not produced for /lab" }],
+        hotFunction: hot,
+      },
+      traces: ["/tmp/out/trace.json.gz"],
     });
 
     expect(Verdict.parse(verdict)).toEqual(verdict);
@@ -72,17 +77,20 @@ describe("computeVerdict", () => {
         run: 1,
         element: 'button[data-testid="lab-slow"]',
         breakdown: { inputDelay: 1, processingDuration: 290, presentationDelay: 9 },
-        insight: "run 1",
+        hotFunction: hot,
+        insight: "traced",
       },
     });
+    expect(verdict.metrics.LCP.culprit?.hotFunction).toBeUndefined();
     expect(verdict.metrics.LCP).toMatchObject({ median: 1100, band: 200, status: "pass" });
     expect(verdict.metrics.CLS).toMatchObject({ values: [null, 0.04, null, null], status: "pass" });
     expect(verdict.status).toBe("fail");
     expect(verdict.insights).toEqual([
-      { name: "INPBreakdown", page: "/lab", state: "fail", runs: 3, failed: 2, summary: "run 3" },
+      { name: "INPBreakdown", page: "/lab", state: "fail", runs: 1, failed: 1, summary: "traced" },
     ]);
     expect(verdict.unavailable).toEqual([
       { name: "ForcedReflow", reason: "not produced for /lab" },
     ]);
+    expect(verdict.traces).toEqual(["/tmp/out/trace.json.gz"]);
   });
 });

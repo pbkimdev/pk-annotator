@@ -69,11 +69,10 @@ export interface TraceAnalysis {
   hotFunction: HotFunction | undefined;
 }
 
+/** One untraced run: a verdict sample. */
 export interface RunResult {
   run: number;
   metrics: Partial<Record<LabMetric, RunMetric>>;
-  trace: string;
-  analysis: TraceAnalysis;
 }
 
 export interface RunFailure {
@@ -88,6 +87,9 @@ export interface VerdictInput {
   budgets: Budgets;
   runs: RunResult[];
   failures: RunFailure[];
+  /** From the separate traced run, whose metrics are not samples. */
+  diagnostic: TraceAnalysis;
+  traces: string[];
 }
 
 const CULPRIT_INSIGHT = {
@@ -119,8 +121,13 @@ function pagePath(url: string): string {
   }
 }
 
-function culpritFor(metric: LabMetric, result: RunResult, measured: RunMetric): Culprit {
-  const insights = result.analysis.insights.filter(
+function culpritFor(
+  metric: LabMetric,
+  result: RunResult,
+  measured: RunMetric,
+  diagnostic: TraceAnalysis,
+): Culprit {
+  const insights = diagnostic.insights.filter(
     (insight) => insight.name === CULPRIT_INSIGHT[metric],
   );
   const insight =
@@ -138,8 +145,8 @@ function culpritFor(metric: LabMetric, result: RunResult, measured: RunMetric): 
   if (measured.script !== undefined) {
     culprit.script = { ...measured.script, durationMs: Math.round(measured.script.durationMs) };
   }
-  if (metric === "INP" && result.analysis.hotFunction !== undefined) {
-    culprit.hotFunction = result.analysis.hotFunction;
+  if (metric === "INP" && diagnostic.hotFunction !== undefined) {
+    culprit.hotFunction = diagnostic.hotFunction;
   }
   if (insight !== undefined) culprit.insight = insight.summary;
   return culprit;
@@ -201,35 +208,33 @@ function metricVerdict(metric: LabMetric, input: VerdictInput): MetricVerdict {
     band: round(metric, max - min),
     budget,
     status: middle <= budget ? "pass" : "fail",
-    culprit: culpritFor(metric, representative, measured),
+    culprit: culpritFor(metric, representative, measured, input.diagnostic),
   };
 }
 
-function aggregateInsights(runs: RunResult[]): InsightVerdict[] {
+function aggregateInsights(insights: InsightSummary[]): InsightVerdict[] {
   const groups = new Map<string, InsightVerdict>();
-  for (const result of runs) {
-    for (const insight of result.analysis.insights) {
-      const page = pagePath(insight.page);
-      const key = `${insight.name}\u0000${page}`;
-      const group = groups.get(key) ?? {
-        name: insight.name,
-        page,
-        state: insight.state,
-        runs: 0,
-        failed: 0,
-        summary: insight.summary,
-      };
-      group.runs += 1;
-      if (insight.state === "fail") {
-        group.failed += 1;
-        group.state = "fail";
-        group.summary = insight.summary;
-      } else if (group.failed === 0) {
-        group.state = insight.state;
-        group.summary = insight.summary;
-      }
-      groups.set(key, group);
+  for (const insight of insights) {
+    const page = pagePath(insight.page);
+    const key = `${insight.name}\u0000${page}`;
+    const group = groups.get(key) ?? {
+      name: insight.name,
+      page,
+      state: insight.state,
+      runs: 0,
+      failed: 0,
+      summary: insight.summary,
+    };
+    group.runs += 1;
+    if (insight.state === "fail") {
+      group.failed += 1;
+      group.state = "fail";
+      group.summary = insight.summary;
+    } else if (group.failed === 0) {
+      group.state = insight.state;
+      group.summary = insight.summary;
     }
+    groups.set(key, group);
   }
   return [...groups.values()];
 }
@@ -257,15 +262,11 @@ export function computeVerdict(input: VerdictInput): Verdict {
     INP: metricVerdict("INP", input),
     CLS: metricVerdict("CLS", input),
   };
-  const computed = new Set(
-    input.runs.flatMap((result) => result.analysis.insights.map((insight) => insight.name)),
-  );
+  const computed = new Set(input.diagnostic.insights.map((insight) => insight.name));
   const unavailable = new Map<string, { name: string; reason: string }>();
-  for (const result of input.runs) {
-    for (const missing of result.analysis.unavailable) {
-      if (!computed.has(missing.name)) {
-        unavailable.set(`${missing.name}\u0000${missing.reason}`, missing);
-      }
+  for (const missing of input.diagnostic.unavailable) {
+    if (!computed.has(missing.name)) {
+      unavailable.set(`${missing.name}\u0000${missing.reason}`, missing);
     }
   }
   const statuses = Object.values(metrics).map((metric) => metric.status);
@@ -280,9 +281,9 @@ export function computeVerdict(input: VerdictInput): Verdict {
     status,
     conditions: input.conditions,
     metrics,
-    insights: aggregateInsights(input.runs),
+    insights: aggregateInsights(input.diagnostic.insights),
     unavailable: [...unavailable.values()],
     failures: input.failures,
-    traces: input.runs.map((result) => result.trace),
+    traces: input.traces,
   };
 }

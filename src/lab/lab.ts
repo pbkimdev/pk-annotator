@@ -26,6 +26,7 @@ import {
   type RunFailure,
   type RunMetric,
   type RunResult,
+  type TraceAnalysis,
 } from "./verdict.ts";
 
 export type FlowStep = ActionEntry | NavigationEntry;
@@ -668,10 +669,18 @@ interface RunContext {
   base: URL;
   cpuRate: number;
   network: NetworkPreset;
-  tracePath: string;
 }
 
-async function runOnce(run: number, options: RunContext): Promise<RunResult> {
+interface Session {
+  page: Page;
+  cdp: CDPSession;
+  tracker: Tracker;
+  changes: HistoryChange[];
+  reports: Map<string, PageMetric>;
+  invalid: string[];
+}
+
+async function openSession(options: RunContext): Promise<Session> {
   const { context } = options;
   const reports = new Map<string, PageMetric>();
   const changes: HistoryChange[] = [];
@@ -704,10 +713,32 @@ async function runOnce(run: number, options: RunContext): Promise<RunResult> {
       uploadThroughput: network.uploadBytesPerSec,
     });
   }
-  const tracker = trackRequests(page);
+  return { page, cdp, tracker: trackRequests(page), changes, reports, invalid };
+}
+
+function checkReports(session: Session, label: string): void {
+  if (session.invalid.length > 0) {
+    throw new Error(`${label}: the page script sent an invalid report:\n${session.invalid[0]}`);
+  }
+}
+
+/** One untraced replay; its metrics are a verdict sample. */
+async function measure(run: number, options: RunContext): Promise<RunResult> {
+  const session = await openSession(options);
+  await replay(session.page, session.tracker, session.changes, options.steps, options.base);
+  checkReports(session, `Run ${run}`);
+  return { run, metrics: worstPerMetric(session.reports) };
+}
+
+// The replay that supplies insights and the hot function. CPU sampling and the
+// timeline categories slow the page (a 4x CPU click measured median INP 56 ms
+// untraced and 64 ms traced), so its metrics never enter the verdict.
+async function diagnose(options: RunContext, file: string): Promise<TraceAnalysis> {
+  const session = await openSession(options);
+  const { cdp } = session;
   await startTrace(cdp);
   try {
-    await replay(page, tracker, changes, options.steps, options.base);
+    await replay(session.page, session.tracker, session.changes, options.steps, options.base);
   } catch (thrown) {
     // The run already failed; a trace that cannot be ended (target closed,
     // renderer crashed) is dropped so the step error stays the reported cause.
@@ -725,12 +756,9 @@ async function runOnce(run: number, options: RunContext): Promise<RunResult> {
     throw thrown;
   }
   const handle = await endTrace(cdp);
-  if (invalid.length > 0) {
-    throw new Error(`Run ${run}: the page script sent an invalid report:\n${invalid[0]}`);
-  }
-  const trace = await saveTrace(cdp, handle, options.tracePath);
-  const analysis = await analyzeTrace(TraceFile.parse(JSON.parse(trace)));
-  return { run, metrics: worstPerMetric(reports), trace: options.tracePath, analysis };
+  checkReports(session, "The traced run");
+  const trace = await saveTrace(cdp, handle, file);
+  return await analyzeTrace(TraceFile.parse(JSON.parse(trace)));
 }
 
 export interface LabOptions {
@@ -742,8 +770,8 @@ export interface LabOptions {
   network: NetworkPreset;
   budgets: Budgets;
   out: string;
-  /** Called after each run with its number, for progress on stderr. */
-  onRun: (run: number, failure: RunFailure | undefined) => void;
+  /** Called after each run with its number, or "trace" for the traced run, for progress on stderr. */
+  onRun: (run: number | "trace", failure: Pick<RunFailure, "message"> | undefined) => void;
 }
 
 async function loadPlaywright(): Promise<typeof import("playwright")> {
@@ -760,7 +788,10 @@ async function loadPlaywright(): Promise<typeof import("playwright")> {
   }
 }
 
-/** Replays the flow `runs` times in fresh contexts and writes <out>/verdict.json. */
+/**
+ * Replays the flow `runs` times untraced in fresh contexts, then once more under
+ * a DevTools trace for insights, and writes <out>/verdict.json.
+ */
 export async function runLab(options: LabOptions): Promise<{ verdict: Verdict; file: string }> {
   const { chromium } = await loadPlaywright();
   const base = new URL(options.url);
@@ -772,26 +803,44 @@ export async function runLab(options: LabOptions): Promise<{ verdict: Verdict; f
   });
   const results: RunResult[] = [];
   const failures: RunFailure[] = [];
+  const conditions = {
+    steps: options.flow,
+    base,
+    cpuRate: options.cpuRate,
+    network: options.network,
+  };
   try {
     for (let run = 1; run <= options.runs; run += 1) {
       const context = await browser.newContext({ viewport: VIEWPORT });
       try {
-        results.push(
-          await runOnce(run, {
-            context,
-            steps: options.flow,
-            base,
-            cpuRate: options.cpuRate,
-            network: options.network,
-            tracePath: path.join(out, `trace-${run}.json.gz`),
-          }),
-        );
+        results.push(await measure(run, { context, ...conditions }));
         options.onRun(run, undefined);
       } catch (thrown) {
         if (!(thrown instanceof StepError)) throw thrown;
         const failure = { run, step: thrown.step, message: thrown.message };
         failures.push(failure);
         options.onRun(run, failure);
+      } finally {
+        await context.close();
+      }
+    }
+    const traces: string[] = [];
+    // With no completed run the failures already explain the verdict.
+    let diagnostic: TraceAnalysis = { insights: [], unavailable: [], hotFunction: undefined };
+    if (results.length > 0) {
+      const trace = path.join(out, "trace.json.gz");
+      const context = await browser.newContext({ viewport: VIEWPORT });
+      try {
+        diagnostic = await diagnose({ context, ...conditions }, trace);
+        traces.push(trace);
+        options.onRun("trace", undefined);
+      } catch (thrown) {
+        if (!(thrown instanceof StepError)) throw thrown;
+        diagnostic.unavailable.push({
+          name: "trace",
+          reason: `the traced run failed: ${thrown.message}`,
+        });
+        options.onRun("trace", { message: thrown.message });
       } finally {
         await context.close();
       }
@@ -815,6 +864,8 @@ export async function runLab(options: LabOptions): Promise<{ verdict: Verdict; f
         budgets: options.budgets,
         runs: results,
         failures,
+        diagnostic,
+        traces,
       }),
     );
     const file = path.join(out, "verdict.json");
