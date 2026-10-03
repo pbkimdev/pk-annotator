@@ -1,5 +1,5 @@
 #!/bin/sh
-# Installs pk-annotator as a dev dependency of the project in the current
+# Installs pk-annotator as a dev dependency at the workspace root in the current
 # directory and registers pka-mcp with Claude Code when it is installed.
 # Usage: curl -fsSL https://pk-annotator.paulbkim.dev/install.sh | sh
 set -eu
@@ -9,44 +9,66 @@ fail() {
   exit 1
 }
 
-[ -f package.json ] || fail "no package.json here; run this from your project root"
-command -v node >/dev/null 2>&1 || fail "Node.js 24 or newer is required"
-node_major=$(node -p 'process.versions.node.split(".")[0]')
-[ "$node_major" -ge 24 ] || fail "Node.js 24 or newer is required (found $(node -v))"
+# The lockfile or workspace file nearest above $1, as "<manager> <directory>".
+find_root() {
+  dir=$1
+  while :; do
+    if [ -f "$dir/pnpm-lock.yaml" ] || [ -f "$dir/pnpm-workspace.yaml" ]; then echo "pnpm $dir"; return; fi
+    if [ -f "$dir/bun.lock" ] || [ -f "$dir/bun.lockb" ]; then echo "bun $dir"; return; fi
+    if [ -f "$dir/yarn.lock" ]; then echo "yarn $dir"; return; fi
+    if [ -f "$dir/package-lock.json" ]; then echo "npm $dir"; return; fi
+    [ "$dir" = / ] && return
+    dir=$(dirname "$dir")
+  done
+}
 
-if [ -f pnpm-lock.yaml ] || [ -f pnpm-workspace.yaml ]; then
-  manager=pnpm
-elif [ -f bun.lock ] || [ -f bun.lockb ]; then
-  manager=bun
-elif [ -f yarn.lock ]; then
-  manager=yarn
-else
-  manager=npm
-fi
-command -v "$manager" >/dev/null 2>&1 || fail "$manager is not on PATH"
+main() {
+  [ -f package.json ] || fail "no package.json here; run this from your workspace root"
+  command -v node >/dev/null 2>&1 || fail "Node.js 24 or newer is required"
+  node_major=$(node -p 'process.versions.node.split(".")[0]')
+  [ "$node_major" -ge 24 ] || fail "Node.js 24 or newer is required (found $(node -v))"
 
-printf 'pk-annotator: installing with %s\n' "$manager"
-case $manager in
-  pnpm)
-    # pnpm refuses to add to a workspace root without -w.
-    if [ -f pnpm-workspace.yaml ]; then pnpm add -D -w pk-annotator; else pnpm add -D pk-annotator; fi
-    ;;
-  bun) bun add -d pk-annotator ;;
-  yarn) yarn add -D pk-annotator ;;
-  npm) npm install -D pk-annotator ;;
-esac
-
-[ -x node_modules/.bin/pka-mcp ] || fail "node_modules/.bin/pka-mcp is missing after install"
-
-if command -v claude >/dev/null 2>&1; then
-  if claude mcp get pka >/dev/null 2>&1; then
-    printf 'pk-annotator: Claude Code already has an MCP server named pka; left it unchanged\n'
-  else
-    claude mcp add pka --scope project -- node_modules/.bin/pka-mcp
+  here=$(pwd -P)
+  found=$(find_root "$here")
+  manager=${found%% *}
+  root=${found#* }
+  if [ -z "$found" ]; then
+    manager=npm
+  elif [ "$root" != "$here" ]; then
+    # Installing in a member would put the dependency and pka-mcp in the wrong place.
+    fail "this is inside the $manager workspace at $root; run the installer there"
   fi
-fi
+  command -v "$manager" >/dev/null 2>&1 || fail "$manager is not on PATH"
 
-cat <<'EOF'
+  printf 'pk-annotator: installing with %s\n' "$manager"
+  case $manager in
+    pnpm)
+      # pnpm refuses to add to a workspace root without -w.
+      if [ -f pnpm-workspace.yaml ]; then pnpm add -D -w pk-annotator; else pnpm add -D pk-annotator; fi
+      ;;
+    yarn)
+      # Yarn 1 refuses to add to a workspace root without -W; later versions ignore the root check.
+      if grep -q '"workspaces"' package.json && yarn --version | grep -q '^1\.'; then
+        yarn add -D -W pk-annotator
+      else
+        yarn add -D pk-annotator
+      fi
+      ;;
+    bun) bun add -d pk-annotator ;;
+    npm) npm install -D pk-annotator ;;
+  esac
+
+  [ -x node_modules/.bin/pka-mcp ] || fail "node_modules/.bin/pka-mcp is missing after install"
+
+  if command -v claude >/dev/null 2>&1; then
+    if claude mcp get pka >/dev/null 2>&1; then
+      printf 'pk-annotator: Claude Code already has an MCP server named pka; left it unchanged\n'
+    else
+      claude mcp add pka --scope project -- node_modules/.bin/pka-mcp
+    fi
+  fi
+
+  cat <<'EOF'
 
 pk-annotator is installed. Next:
   1. vite.config.ts:  plugins: [...annotator()]  from "pk-annotator/vite"
@@ -58,3 +80,7 @@ Or let your agent finish the setup:
 
 Codex, Pi, and manual setup: https://pk-annotator.paulbkim.dev/#install
 EOF
+}
+
+# Called last, so a truncated download runs nothing.
+main
