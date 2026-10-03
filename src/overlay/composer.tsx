@@ -362,7 +362,12 @@ export function Composer({ batch = false }: { batch?: boolean }) {
         const state = ui.get();
         if (state.busy) return;
         const [kind, key] = id.split(":");
-        if (kind === "mark") ui.set({ marks: state.marks.filter((mark) => mark.id !== key) });
+        if (kind === "mark")
+          // Deleting the mark being edited leaves its draft open as a new, unsaved mark.
+          ui.set({
+            marks: state.marks.filter((mark) => mark.id !== key),
+            editing: state.editing === key ? null : state.editing,
+          });
         else if (kind === "element")
           ui.set({
             selection: state.selection.filter((element) => String(elementKey(element)) !== key),
