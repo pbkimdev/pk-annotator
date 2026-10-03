@@ -16,6 +16,7 @@ import {
   type ErrorGroup,
   type State,
 } from "../shared/schema.ts";
+import { PkaError } from "../store/store.ts";
 
 export const Detail = z.enum(["concise", "full"]);
 export type Detail = z.infer<typeof Detail>;
@@ -51,9 +52,12 @@ const BIDI = /\p{Bidi_Control}/gu;
 
 /** Strips control and bidirectional-override characters from page-derived text and caps its length. */
 export function pageText(value: string, max: number): string {
-  const clean = value.replace(CONTROL, "").replace(BIDI, "");
-  if (clean.length <= max) return clean;
-  return `${clean.slice(0, max)}… [${clean.length - max} more characters]`;
+  return capped(value.replace(CONTROL, "").replace(BIDI, ""), max);
+}
+
+function capped(value: string, max: number): string {
+  if (value.length <= max) return value;
+  return `${value.slice(0, max)}… [${value.length - max} more characters]`;
 }
 
 function optionalPageText(value: string | undefined, max: number): string | undefined {
@@ -175,7 +179,8 @@ export function annotationView(record: AnnotationRecord, detail: Detail): Annota
     id: annotation.id,
     createdAt: annotation.createdAt,
     status: state.status,
-    claimedBy: record.claim?.by,
+    claimedBy:
+      record.claim === undefined || full ? record.claim?.by : capped(record.claim.by, CAP.short),
     dir: record.dir,
     url: pageText(annotation.url, CAP.label),
     route: pageText(annotation.route, CAP.label),
@@ -240,20 +245,25 @@ function withinBudget(view: AnnotationView): AnnotationView {
   };
   const keptElements = fit(elements);
   const keptAttachments = fit(attachments);
-  if (
+  const result =
     promptCharacters === 0 &&
     keptElements.length === elements.length &&
     keptAttachments.length === attachments.length
-  ) {
-    return view;
+      ? view
+      : {
+          ...view,
+          prompt,
+          elements: keptElements,
+          attachments: keptAttachments,
+          omitted: omitted(keptElements.length, keptAttachments.length),
+        };
+  // Only the capped fields and the directory path remain, and they can still be too long.
+  if (jsonBytes(result) > CONCISE_BYTES) {
+    throw new PkaError(
+      `The concise view of annotation ${view.id} is over ${CONCISE_BYTES} bytes without its elements and attachments; request detail full.`,
+    );
   }
-  return {
-    ...view,
-    prompt,
-    elements: keptElements,
-    attachments: keptAttachments,
-    omitted: omitted(keptElements.length, keptAttachments.length),
-  };
+  return result;
 }
 
 const OMITTED_NOTE =
@@ -265,7 +275,7 @@ export function listItem(record: AnnotationRecord): ListItem {
     id: annotation.id,
     createdAt: annotation.createdAt,
     status: record.state.status,
-    claimedBy: record.claim?.by,
+    claimedBy: record.claim === undefined ? undefined : capped(record.claim.by, CAP.short),
     route: pageText(annotation.route, CAP.label),
     prompt:
       annotation.prompt.length > CAP.short

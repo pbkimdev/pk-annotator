@@ -28,7 +28,7 @@ import {
   type WaitOptions,
 } from "./ops.ts";
 import { thisProcess } from "./presence.ts";
-import { CONCISE_BYTES } from "./views.ts";
+import { CONCISE_BYTES, annotationView } from "./views.ts";
 
 const DRAFT: AnnotationDraft = {
   url: "http://localhost:3000/projects",
@@ -250,6 +250,18 @@ describe("get", () => {
     expect(capped.omitted?.promptCharacters).toBe(prompt.length - capped.prompt.length);
     expect(capped.elements.length).toBeGreaterThan(0);
     expect((await get(store, { id: longPrompt, detail: "full" })).annotation.prompt).toBe(prompt);
+
+    // A claimant name is capped the same way; metadata that cannot be cut is refused.
+    const claimant = "c".repeat(25_000);
+    await createClaim(store, longPrompt, { by: claimant, at: new Date().toISOString() });
+    const claimed = (await get(store, { id: longPrompt, detail: "concise" })).annotation;
+    expect(Buffer.byteLength(JSON.stringify(claimed))).toBeLessThanOrEqual(CONCISE_BYTES);
+    expect(claimed.claimedBy).toMatch(/^c{300}… \[24700 more characters\]$/);
+    const record = await loadAnnotation(store, longPrompt);
+    expect(annotationView(record, "full").claimedBy).toBe(claimant);
+    expect(() => annotationView({ ...record, dir: "d".repeat(25_000) }, "concise")).toThrow(
+      /request detail full/,
+    );
   });
 });
 
