@@ -33,6 +33,7 @@ import {
   readJson,
   readJsonLines,
   removeClaim,
+  replaceClaim,
   requireAnnotation,
   touchAnnotation,
   writeAnnotationDir,
@@ -51,6 +52,8 @@ import {
 } from "./views.ts";
 
 export const PROGRESS_INTERVAL_MS = 15_000;
+/** A claim this old on a still-pending annotation lost its claimant between the claim and the state write. */
+const ORPHANED_CLAIM_MS = 60_000;
 const MAX_ERROR_GROUPS = 200;
 
 const detailField = Detail.default("concise").describe(
@@ -168,6 +171,10 @@ export async function get(store: string, input: GetInput): Promise<GetResult> {
   return { annotation: annotationView(await loadAnnotation(store, input.id), input.detail) };
 }
 
+function isOrphaned(state: State, claim: Claim, now: number): boolean {
+  return state.status === "pending" && now - Date.parse(claim.at) > ORPHANED_CLAIM_MS;
+}
+
 async function oldestPendingUnclaimed(
   store: string,
   skip: ReadonlySet<string>,
@@ -175,7 +182,12 @@ async function oldestPendingUnclaimed(
   for (const id of await listIds(store)) {
     if (skip.has(id)) continue;
     const record = await loadListed(store, id);
-    if (record?.state.status === "pending" && record.claim === undefined) return record;
+    if (
+      record?.state.status === "pending" &&
+      (record.claim === undefined || isOrphaned(record.state, record.claim, Date.now()))
+    ) {
+      return record;
+    }
   }
   return undefined;
 }
@@ -296,7 +308,10 @@ export async function setStatus(
     throw closedError(input.id, state.status);
   }
   if (input.status === "acknowledged") {
-    const claim = await createClaim(store, input.id, { by, at });
+    let claim = await createClaim(store, input.id, { by, at });
+    if (!claim.won && claim.claim.by !== by && isOrphaned(state, claim.claim, Date.parse(at))) {
+      claim = await replaceClaim(store, input.id, claim.claim, { by, at });
+    }
     claimedBy = claim.claim.by;
     if (!claim.won) {
       if (claim.claim.by !== by) throw claimedError(input.id, claim.claim);

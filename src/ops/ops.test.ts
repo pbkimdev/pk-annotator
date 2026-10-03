@@ -6,7 +6,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { AnnotationDraft } from "../shared/schema.ts";
-import { PkaError, createStore, listIds } from "../store/store.ts";
+import { PkaError, createClaim, createStore, listIds, removeClaim } from "../store/store.ts";
 import {
   attach,
   create,
@@ -176,6 +176,42 @@ describe("closed annotations", () => {
     const record = await loadAnnotation(store, id);
     expect(record.state.history.at(-1)).toMatchObject({ status: "resolved", by: "agent-a" });
     expect(record.thread.map((entry) => entry.text)).toEqual(["Fixed the padding"]);
+  });
+});
+
+describe("claims", () => {
+  it("let another session replace a claim whose claimant died before acknowledging", async () => {
+    const { id } = await create(store, DRAFT);
+    const fresh = new Date(Date.now() - 30_000).toISOString();
+    const stale = new Date(Date.now() - 120_000).toISOString();
+    await createClaim(store, id, { by: "agent-a", at: fresh });
+    await expect(setStatus(store, { id, status: "acknowledged" }, "agent-b")).rejects.toThrow(
+      `${id} was claimed by agent-a`,
+    );
+
+    await removeClaim(store, id);
+    await createClaim(store, id, { by: "agent-a", at: stale });
+    expect((await wait(store, OPTIONS)).annotation?.id).toBe(id);
+    const results = await Promise.allSettled([
+      setStatus(store, { id, status: "acknowledged" }, "agent-b"),
+      setStatus(store, { id, status: "acknowledged" }, "agent-c"),
+    ]);
+    const won = results.filter((result) => result.status === "fulfilled");
+    expect(won).toHaveLength(1);
+    const winner = won[0]?.value.claimedBy;
+    expect(results.find((result) => result.status === "rejected")?.reason).toMatchObject({
+      message: expect.stringContaining(`${id} was claimed by ${winner}`),
+    });
+    expect((await loadAnnotation(store, id)).claim?.by).toBe(winner);
+    expect((await readdir(path.join(store, id))).filter((name) => name.includes("claim"))).toEqual([
+      "claim.json",
+    ]);
+
+    await removeClaim(store, id);
+    await createClaim(store, id, { by: "agent-a", at: stale });
+    await expect(setStatus(store, { id, status: "acknowledged" }, "agent-d")).rejects.toThrow(
+      `${id} was claimed by agent-a`,
+    );
   });
 });
 

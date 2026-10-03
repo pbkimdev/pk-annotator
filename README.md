@@ -107,7 +107,7 @@ pka prune                                                         remove closed 
 pka lab --url URL --flow ID                                       replay a recording against a production build
 ```
 
-Every command takes `--json` and `--root DIR`. `pka status <id> acknowledged` claims an annotation as `$PKA_CLAIMANT` (default `pka-cli`); later status changes, replies, and `lab --attach` must use the same claimant. `pka lab` needs Playwright; it writes `verdict.json` and exits 3 when the verdict fails a budget or is incomplete. Run `pka --help` for every option.
+Every command takes `--json` and `--root DIR`. `pka status <id> acknowledged` claims an annotation as `$PKA_CLAIMANT` (default `pka-cli`); later status changes, replies, and `lab --attach` must use the same claimant. If a claimant stops before the acknowledge is written, another claimant may take over the claim once it is 60 seconds old and the annotation is still `pending`. `pka lab` needs Playwright; it writes `verdict.json` and exits 3 when the verdict fails a budget or is incomplete. Run `pka --help` for every option.
 
 ## Resource budget
 

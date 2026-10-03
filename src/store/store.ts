@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { constants } from "node:fs";
 import {
   link,
@@ -290,7 +290,8 @@ export async function appendJsonLine(
 /**
  * Claims an annotation. The claim is written to a temporary file opened with
  * O_EXCL | O_NOFOLLOW and then hard-linked into place, so exactly one caller
- * wins and a loser never reads a half-written claim.
+ * wins and a loser never reads a half-written claim. A claim that disappears
+ * before the loser reads it was removed by replaceClaim, so the link is retried.
  */
 export async function createClaim(
   store: string,
@@ -301,13 +302,51 @@ export async function createClaim(
   const temporary = temporaryName(files.claim);
   await writeExclusive(temporary, `${JSON.stringify(claim)}\n`);
   try {
-    await link(temporary, files.claim);
-    return { won: true, claim };
-  } catch (thrown) {
-    if (!isErrno(thrown, "EEXIST")) throw thrown;
-    return { won: false, claim: await readJson(store, files.claim, Claim) };
+    for (;;) {
+      try {
+        await link(temporary, files.claim);
+        return { won: true, claim };
+      } catch (thrown) {
+        if (!isErrno(thrown, "EEXIST")) throw thrown;
+      }
+      try {
+        return { won: false, claim: await readJson(store, files.claim, Claim) };
+      } catch (thrown) {
+        if (!isErrno(thrown, "ENOENT")) throw thrown;
+      }
+    }
   } finally {
     await unlink(temporary);
+  }
+}
+
+/**
+ * Replaces `orphan` with `claim`. One caller at a time holds the takeover lock
+ * for this orphan and removes claim.json only while it still is the orphan, so
+ * a newer claim is never removed. The claim link in createClaim then decides
+ * between the callers, including those that found the lock taken.
+ */
+export async function replaceClaim(
+  store: string,
+  id: string,
+  orphan: Claim,
+  claim: Claim,
+): Promise<{ won: boolean; claim: Claim }> {
+  const files = await requireAnnotation(store, id);
+  const key = createHash("sha256").update(`${orphan.by}\n${orphan.at}`).digest("hex").slice(0, 16);
+  const lock = `${files.claim}.${key}.takeover`;
+  try {
+    await writeExclusive(lock, "");
+  } catch (thrown) {
+    if (!isErrno(thrown, "EEXIST")) throw thrown;
+    return createClaim(store, id, claim);
+  }
+  try {
+    const current = await readClaim(store, id);
+    if (current?.by === orphan.by && current.at === orphan.at) await unlink(files.claim);
+    return await createClaim(store, id, claim);
+  } finally {
+    await unlink(lock);
   }
 }
 
