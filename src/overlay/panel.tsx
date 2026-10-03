@@ -1,5 +1,5 @@
 import { useText } from "./language.ts";
-import { HistoryIcon, LayersIcon, PenLineIcon, XIcon } from "lucide-react";
+import { HistoryIcon, PenLineIcon, SendIcon, XIcon } from "lucide-react";
 import { lazy, Suspense, type ComponentType, type ReactNode } from "react";
 
 import { AgentIcon } from "./agent-icon.tsx";
@@ -89,7 +89,7 @@ export function PanelHost() {
       <PanelFrame
         id={panel === COMPOSE ? "compose" : "note"}
         title={panel === COMPOSE ? "Send" : "Annotation"}
-        icon={panel === COMPOSE ? LayersIcon : PenLineIcon}
+        icon={panel === COMPOSE ? SendIcon : PenLineIcon}
         close={close}
       >
         <Suspense

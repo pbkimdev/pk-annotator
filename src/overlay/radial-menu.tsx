@@ -3,14 +3,17 @@ import {
   CameraIcon,
   CircleDotIcon,
   CircleIcon,
+  ClipboardCheckIcon,
+  ClipboardCopyIcon,
+  ClipboardXIcon,
   HistoryIcon,
   LanguagesIcon,
   LassoSelectIcon,
-  LayersIcon,
   MousePointerClickIcon,
   PencilIcon,
   PowerIcon,
   RectangleHorizontalIcon,
+  SendIcon,
   Settings2Icon,
   SquareDashedMousePointerIcon,
 } from "lucide-react";
@@ -19,6 +22,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ComponentProps,
   type ComponentType,
   type FocusEvent,
@@ -28,6 +32,7 @@ import { flushSync } from "react-dom";
 
 import type { PickMode } from "../select/pick.ts";
 import { AgentIcon } from "./agent-icon.tsx";
+import { isAgentConnected, subscribeAgentConnected } from "./agent-presence.ts";
 import { COMPOSE, THREAD, useOverlay, type UiState } from "./context.tsx";
 import { useText } from "./language.ts";
 import { HUB_INSET, HUB_SIZE, SHORTCUT_LABEL, type Corner } from "./launcher.ts";
@@ -45,6 +50,14 @@ const BRANCH = RING + BAND + 20;
 const MARGIN = BAND / 2 + 24;
 const CANVAS = BRANCH + MARGIN;
 const HINT_RADIUS = 78;
+// In the hollow beside the stem, clear of the readout and the band.
+const CONNECT_RADIUS = 100;
+const CONNECT_ANGLE = 25;
+const CONNECT_PROMPT = `Connect this session to the pk-annotator MCP server so you receive the annotations I send from the page.
+Add a stdio server named "pka" with the command node_modules/.bin/pka-mcp, run from the workspace root where @srv/pk-annotator is installed:
+- Claude Code, .mcp.json: { "mcpServers": { "pka": { "command": "node_modules/.bin/pka-mcp" } } }
+- Codex, .codex/config.toml: [mcp_servers.pka] command = "node_modules/.bin/pka-mcp" and tool_timeout_sec = 1830
+Tell me if the session must restart to load it. Once its tools are available, call wait_for_annotation.`;
 /** Each corner's menu sweeps counterclockwise through the quadrant that faces the page. */
 const START = {
   "bottom-left": 0,
@@ -248,7 +261,7 @@ function useEntries(tools: Tools): Entry[] {
     {
       id: "compose",
       label: t("Send"),
-      icon: LayersIcon,
+      icon: SendIcon,
       checked: panel === COMPOSE,
       badge: pending,
       run: () => togglePanel(COMPOSE),
@@ -427,6 +440,8 @@ export function RadialMenu() {
   const entries = useEntries(tools);
   const [branch, setBranch] = useState<string | null>(null);
   const [hint, setHint] = useState<Hint | null>(null);
+  const connected = useSyncExternalStore(subscribeAgentConnected, isAgentConnected);
+  const [copied, setCopied] = useState<"ok" | "failed" | null>(null);
   const root = useRef<HTMLDivElement>(null);
   const intent = useRef<number | undefined>(undefined);
   const open = menu !== "closed";
@@ -443,12 +458,32 @@ export function RadialMenu() {
     if (menu === "closed") return;
     setBranch(null);
     setHint(null);
+    setCopied(null);
     const target = root.current?.querySelector<HTMLElement>(
       menu === "keyboard" ? '[data-level="1"]' : '[role="menu"]',
     );
     target?.focus();
   }, [menu]);
   useEffect(() => () => window.clearTimeout(intent.current), []);
+  useEffect(() => {
+    if (!connected) return;
+    const shadow = hub.getRootNode();
+    const focused = shadow instanceof ShadowRoot ? shadow.activeElement : null;
+    if (focused instanceof HTMLElement && focused.dataset.testid === "pka-connect") {
+      root.current?.querySelector<HTMLElement>('[role="menu"]')?.focus();
+    }
+  }, [connected, hub]);
+  useEffect(() => {
+    if (menu === "closed") return;
+    // A mouseout with no relatedTarget means the pointer left the browser window.
+    const leave = (event: MouseEvent) => {
+      if (event.relatedTarget === null) ui.set({ menu: "closed" });
+    };
+    document.addEventListener("mouseout", leave);
+    return () => {
+      document.removeEventListener("mouseout", leave);
+    };
+  }, [menu, ui]);
 
   const close = () => {
     window.clearTimeout(intent.current);
@@ -476,6 +511,18 @@ export function RadialMenu() {
     leaf.run();
     if (leaf.stay !== true) close();
   };
+  const copySetup = async () => {
+    try {
+      await navigator.clipboard.writeText(CONNECT_PROMPT);
+      setCopied("ok");
+      setHint({ id: "connect", label: t("Copied to clipboard") });
+    } catch (cause) {
+      console.error("[pk-annotator] copying the MCP setup failed", cause);
+      setCopied("failed");
+      setHint({ id: "connect", label: t("Couldn't copy to clipboard") });
+    }
+  };
+  const connectLabel = t("Copy MCP setup");
   const describe = (next: Hint) => ({
     onFocus: () => setHint(next),
     onBlur: () => setHint((current) => (current?.id === next.id ? null : current)),
@@ -676,6 +723,39 @@ export function RadialMenu() {
               </div>
             );
           })}
+          <div role="none">
+            <Node
+              entry={{
+                id: copied === null ? "connect" : copied === "ok" ? "copied" : "connect-failed",
+                label: connectLabel,
+                icon:
+                  copied === null
+                    ? ClipboardCopyIcon
+                    : copied === "ok"
+                      ? ClipboardCheckIcon
+                      : ClipboardXIcon,
+                stay: true,
+                run: () => void copySetup(),
+              }}
+              angle={start + CONNECT_ANGLE}
+              radius={CONNECT_RADIUS}
+              order={entries.length}
+              count={entries.length + 1}
+              shown={open && !connected}
+              role="menuitem"
+              aria-hidden={connected || undefined}
+              data-level={connected ? undefined : "1"}
+              data-floating=""
+              data-testid="pka-connect"
+              onClick={() => void copySetup()}
+              onPointerEnter={() => {
+                hover(null);
+                if (copied === null) setHint({ id: "connect", label: connectLabel });
+              }}
+              onPointerLeave={() => window.clearTimeout(intent.current)}
+              {...describe({ id: "connect", label: connectLabel })}
+            />
+          </div>
         </div>
         {open && hint !== null && (
           <div

@@ -243,6 +243,22 @@
 .pka-node:focus-visible {
   box-shadow: 0 0 0 1.5px color-mix(in oklch, var(--popover-foreground) 55%, var(--pka-surface));
 }
+/* The connect item floats in the hollow, off the band, so it carries its own surface. */
+.pka-node[data-floating] {
+  background-color: var(--pka-surface);
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, var(--foreground) 10%, transparent),
+    0 6px 16px -6px rgb(0 0 0 / 0.3);
+}
+.pka-node[data-floating]:hover,
+.pka-node[data-floating]:focus-visible {
+  background-color: color-mix(in oklch, var(--popover-foreground) 9%, var(--pka-surface));
+}
+.pka-node[data-floating]:focus-visible {
+  box-shadow:
+    0 0 0 1.5px color-mix(in oklch, var(--popover-foreground) 55%, var(--pka-surface)),
+    0 6px 16px -6px rgb(0 0 0 / 0.3);
+}
 .pka-node[data-active] {
   color: var(--pka-pick);
   background-color: color-mix(in oklch, var(--pka-pick) 14%, transparent);

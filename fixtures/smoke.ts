@@ -196,6 +196,22 @@ test(
       assert.equal(await group(id).getAttribute("aria-label"), name);
       await group(id).click();
     };
+    // Without an agent, the menu offers the MCP setup; copying keeps the menu open, and the
+    // pointer leaving the window closes it.
+    await hub.click();
+    await page.getByRole("menuitem", { name: "Copy MCP setup", exact: true }).click();
+    assert.match(
+      await page.evaluate(() => navigator.clipboard.readText()),
+      /node_modules\/\.bin\/pka-mcp[\s\S]*wait_for_annotation/,
+    );
+    assert.equal(await hub.getAttribute("aria-expanded"), "true");
+    await page.evaluate(() =>
+      document.body.dispatchEvent(
+        new MouseEvent("mouseout", { bubbles: true, relatedTarget: null }),
+      ),
+    );
+    await page.locator('pk-annotator .pka-launcher[aria-expanded="false"]').waitFor();
+
     await choose("capture", "Record", "menuitemcheckbox");
     await page.getByTestId("pka-record-start").click();
     await page.getByTestId("lab-fetch-items").click();
@@ -566,6 +582,9 @@ test(
       await page.getByTestId("pka-send").click();
       await page.getByTestId("pka-thread-item").filter({ hasText: connected }).waitFor();
       assert.equal(await copiedPopup.count(), 0);
+      await hub.click();
+      assert.equal(await page.getByTestId("pka-connect").getAttribute("data-open"), null);
+      await page.keyboard.press("Escape");
       assert.doesNotMatch(
         await page.evaluate(() => navigator.clipboard.readText()),
         /connected agent/,
@@ -691,7 +710,7 @@ test(
     assert.deepEqual(errors, []);
     assert.deepEqual(consoleErrors, []);
     t.diagnostic(
-      "Direct send, keyboard menu, remembered tools, the Select tip, saved marks, editing, area/full screenshots with crop, persisted drawings, two region GIF/WebM recordings chosen at start, batch send with badges, the clipboard copy and pop-up without an agent, the hub count, the Claude agent theme, the practice page, language, session Exit, the 1.5× stroke position and CLI artifacts passed.",
+      "Direct send, keyboard menu, remembered tools, the Select tip, saved marks, editing, area/full screenshots with crop, persisted drawings, two region GIF/WebM recordings chosen at start, batch send with badges, the clipboard copy and pop-up without an agent, the MCP setup copy, closing on pointer exit, the hub count, the Claude agent theme, the practice page, language, session Exit, the 1.5× stroke position and CLI artifacts passed.",
     );
   },
 );
