@@ -416,7 +416,7 @@ async function run(command: Command, args: string[], values: Values): Promise<vo
     }
     case "reply": {
       const input = parseInput(ReplyInput, { id: args[0], text: args[1] });
-      const result = await reply(store, input, { from: "agent", by: cliClaimant() });
+      const result = await reply(store, input, cliClaimant());
       output(result, () => line(`Replied to ${result.id}.`));
       return;
     }

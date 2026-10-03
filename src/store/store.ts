@@ -11,7 +11,6 @@ import {
   rm,
   stat,
   unlink,
-  utimes,
 } from "node:fs/promises";
 import path from "node:path";
 
@@ -376,20 +375,6 @@ export async function replaceClaim(
   return replaced ?? { won: false, claim: (await readClaim(store, id)) ?? orphan };
 }
 
-/** Removes `orphan` through the takeover lock; false when another caller changed it first. */
-export async function releaseClaim(
-  store: string,
-  id: string,
-  orphan: Claim,
-  stillOrphaned: (state: State) => boolean,
-): Promise<boolean> {
-  const released = await takeOver(store, id, orphan, stillOrphaned, async (files) => {
-    await unlink(files.claim);
-    return true;
-  });
-  return released ?? false;
-}
-
 /** Puts `claim` back over the caller's own claim with one rename, so claim.json never goes missing. */
 export async function restoreClaim(store: string, id: string, claim: Claim): Promise<void> {
   const files = await requireAnnotation(store, id);
@@ -407,16 +392,6 @@ export async function restoreClaim(store: string, id: string, claim: Claim): Pro
 export async function removeClaim(store: string, id: string): Promise<void> {
   const files = await requireAnnotation(store, id);
   await rm(files.claim, { force: true });
-}
-
-/**
- * Updates the annotation directory's times. Watchers of the store root do not
- * see writes inside an annotation directory, but they do see this.
- */
-export async function touchAnnotation(store: string, id: string): Promise<void> {
-  const files = await requireAnnotation(store, id);
-  const now = new Date();
-  await utimes(files.dir, now, now);
 }
 
 export async function readClaim(store: string, id: string): Promise<Claim | undefined> {

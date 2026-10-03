@@ -101,7 +101,7 @@ The tools are `list_annotations`, `get_annotation`, `wait_for_annotation`, `set_
 
 Codex stops a tool call after `tool_timeout_sec`, 300 seconds by default, and progress does not extend it, so the example raises it above the longest wait.
 
-`set_status acknowledged` claims an annotation for one `pka-mcp` process, which `claim.json` records. When that process has exited, for example after a client reconnect or restart, `wait_for_annotation` offers the annotation again, another session may take it over with `set_status acknowledged`, and a reply from the overlay returns it to pending. A claim made from another PID namespace, such as a container, is judged only by the 60-second rule below, which applies while the annotation is still pending.
+`set_status acknowledged` claims an annotation for one `pka-mcp` process, which `claim.json` records. When that process has exited, for example after a client reconnect or restart, `wait_for_annotation` offers the annotation again, and another session may take it over with `set_status acknowledged`. A claim made from another PID namespace, such as a container, is judged only by the 60-second rule below, which applies while the annotation is still pending.
 
 ## CLI
 

@@ -26,13 +26,9 @@ import {
   reply,
   setStatus,
   wait,
-  type Author,
   type WaitOptions,
 } from "./ops.ts";
 import { thisProcess } from "./presence.ts";
-
-const AGENT_A: Author = { from: "agent", by: "agent-a" };
-const AGENT_B: Author = { from: "agent", by: "agent-b" };
 
 const DRAFT: AnnotationDraft = {
   url: "http://localhost:3000/projects",
@@ -153,12 +149,12 @@ describe("create", () => {
 });
 
 describe("closed annotations", () => {
-  it("refuse agent changes, and a human reply reopens one for a waiting agent", async () => {
+  it("refuse agent changes", async () => {
     const { id } = await create(store, DRAFT);
     await setStatus(store, { id, status: "acknowledged" }, "agent-a");
     await setStatus(store, { id, status: "resolved" }, "agent-a");
 
-    await expect(reply(store, { id, text: "late" }, AGENT_A)).rejects.toThrow(
+    await expect(reply(store, { id, text: "late" }, "agent-a")).rejects.toThrow(
       `Annotation ${id} is resolved; reply before set_status resolved`,
     );
     await expect(setStatus(store, { id, status: "dismissed" }, "agent-a")).rejects.toThrow(
@@ -180,16 +176,6 @@ describe("closed annotations", () => {
     ).rejects.toThrow(/is resolved/);
     expect((await loadAnnotation(store, id)).annotation.attachments).toEqual([]);
     expect((await loadAnnotation(store, id)).state.history).toHaveLength(3);
-
-    const waiting = wait(store, OPTIONS);
-    await sleep(50);
-    await reply(store, { id, text: "Still broken on mobile" }, { from: "human" });
-    expect((await waiting).annotation?.id).toBe(id);
-    const record = await loadAnnotation(store, id);
-    expect(record.state.status).toBe("pending");
-    expect(record.state.history.at(-1)).toMatchObject({ by: "human", note: "reopened by reply" });
-    expect(record.claim).toBeUndefined();
-    expect(record.thread.map((entry) => entry.from)).toEqual(["human"]);
   });
 
   it("leave an acknowledged annotation to the session that claimed it", async () => {
@@ -205,10 +191,10 @@ describe("closed annotations", () => {
     };
 
     await expect(setStatus(store, { id, status: "resolved" }, "agent-b")).rejects.toThrow(claimed);
-    await expect(reply(store, { id, text: "mine" }, AGENT_B)).rejects.toThrow(claimed);
+    await expect(reply(store, { id, text: "mine" }, "agent-b")).rejects.toThrow(claimed);
     await expect(attach(store, id, [lab], "agent-b")).rejects.toThrow(claimed);
 
-    await reply(store, { id, text: "Fixed the padding" }, AGENT_A);
+    await reply(store, { id, text: "Fixed the padding" }, "agent-a");
     await attach(store, id, [lab], "agent-a");
     await setStatus(store, { id, status: "resolved" }, "agent-a");
     const record = await loadAnnotation(store, id);
@@ -252,12 +238,12 @@ describe("claims", () => {
     );
   });
 
-  it("offer an acknowledged annotation again once its claimant exits, for takeover or a human reply", async () => {
+  it("offer an acknowledged annotation again once its claimant exits, for takeover", async () => {
     const exited = await exitedProcess();
     const { id } = await create(store, DRAFT);
     await setStatus(store, { id, status: "acknowledged" }, `mcp:${exited.pid}`, exited);
     expect((await wait(store, OPTIONS)).annotation?.id).toBe(id);
-    await expect(reply(store, { id, text: "mine" }, AGENT_B)).rejects.toThrow(
+    await expect(reply(store, { id, text: "mine" }, "agent-b")).rejects.toThrow(
       /whose session has exited/,
     );
 
@@ -273,13 +259,6 @@ describe("claims", () => {
       "claim.json",
     ]);
     await setStatus(store, { id, status: "resolved" }, winner);
-
-    const second = await create(store, DRAFT);
-    await setStatus(store, { id: second.id, status: "acknowledged" }, `mcp:${exited.pid}`, exited);
-    await reply(store, { id: second.id, text: "Any news?" }, { from: "human" });
-    const record = await loadAnnotation(store, second.id);
-    expect(record.state.status).toBe("pending");
-    expect(record.claim).toBeUndefined();
   });
 
   it("leave a claim from another PID namespace to the age rule", async () => {
@@ -291,8 +270,6 @@ describe("claims", () => {
     await expect(setStatus(store, { id, status: "acknowledged" }, "agent-b")).rejects.toThrow(
       `${id} was claimed by mcp:${exited.pid}`,
     );
-    await reply(store, { id, text: "Any news?" }, { from: "human" });
-    expect((await loadAnnotation(store, id)).state.status).toBe("acknowledged");
   });
 
   it("keep an acknowledge that a stalled claimant writes after another session found its claim orphaned", async () => {

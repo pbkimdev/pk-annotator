@@ -210,7 +210,7 @@ function createServer(): McpServer {
         "this session and fails if another session already claimed it; later status changes and replies must " +
         "come from that session. resolved means the change is done; " +
         "dismissed means it will not be done. Add a note saying what changed or why it was dismissed. " +
-        "resolved and dismissed are final: any other status after them fails, and only the human can reopen the annotation.",
+        "resolved and dismissed are final: any other status after them fails.",
       inputSchema: SetStatusInput,
       outputSchema: SetStatusResult,
       annotations: {
@@ -242,8 +242,7 @@ function createServer(): McpServer {
         openWorldHint: false,
       },
     },
-    (input) =>
-      respond(async () => reply(await resolveStore(), input, { from: "agent", by: claimant() })),
+    (input) => respond(async () => reply(await resolveStore(), input, claimant())),
   );
 
   server.registerTool(

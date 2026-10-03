@@ -33,7 +33,6 @@ export const CHANNEL = {
   create: "pka:create",
   file: "pka:file",
   errors: "pka:errors",
-  reply: "pka:reply",
   created: "pka:created",
   createFailed: "pka:create-failed",
   state: "pka:state",
@@ -76,11 +75,6 @@ export const FileChunkMessage = z.strictObject({
 // live/errors.json. `stack` is the raw browser stack; the plugin symbolicates it.
 export const ErrorsMessage = z.strictObject({
   groups: z.array(ErrorGroup).min(1).max(50),
-});
-
-export const ReplyMessage = z.strictObject({
-  id: Id,
-  text: z.string().min(1).max(10_000),
 });
 
 export const SyncMessage = z.strictObject({
@@ -155,7 +149,6 @@ export const AgentMessage = z.strictObject({
 export type CreateMessage = z.infer<typeof CreateMessage>;
 export type FileChunkMessage = z.infer<typeof FileChunkMessage>;
 export type ErrorsMessage = z.infer<typeof ErrorsMessage>;
-export type ReplyMessage = z.infer<typeof ReplyMessage>;
 export type CreatedMessage = z.infer<typeof CreatedMessage>;
 export type CreateFailedMessage = z.infer<typeof CreateFailedMessage>;
 export type StateMessage = z.infer<typeof StateMessage>;
@@ -172,7 +165,6 @@ export interface ChannelEvents {
   [CHANNEL.create]: CreateMessage;
   [CHANNEL.file]: FileChunkMessage;
   [CHANNEL.errors]: ErrorsMessage;
-  [CHANNEL.reply]: ReplyMessage;
   [CHANNEL.created]: CreatedMessage;
   [CHANNEL.createFailed]: CreateFailedMessage;
   [CHANNEL.state]: StateMessage;

@@ -112,6 +112,7 @@ export const Claim = z.strictObject({
 
 export const ThreadEntry = z.strictObject({
   at: Timestamp,
+  // Stores written before the overlay dropped its reply field can hold human entries.
   from: z.enum(["agent", "human"]),
   text: z.string().min(1),
 });

@@ -15,7 +15,7 @@ import {
 } from "vite";
 import { z } from "zod";
 
-import { checkCaptureFiles, create, loadAnnotation, reply, upsertErrorGroups } from "../ops/ops.ts";
+import { checkCaptureFiles, create, loadAnnotation, upsertErrorGroups } from "../ops/ops.ts";
 import { agentsDir, liveAgents } from "../ops/presence.ts";
 import {
   CHANNEL,
@@ -23,7 +23,6 @@ import {
   ErrorsMessage,
   FileChunkMessage,
   PresenceMessage,
-  ReplyMessage,
   SymbolicateMessage,
   SyncMessage,
   type AgentMessage,
@@ -455,10 +454,6 @@ async function serve(
     client.send(CHANNEL.symbolicated, reply);
   });
 
-  listen(CHANNEL.reply, ReplyMessage, async (message) => {
-    await reply(store, message, { from: "human" });
-  });
-
   listen(CHANNEL.sync, SyncMessage, async (message, client) => {
     const synced: SyncedMessage = { annotations: [] };
     for (const id of message.ids) {
@@ -543,9 +538,7 @@ async function serve(
 
   /**
    * Brings one annotation's watch and broadcasts up to date. An annotation
-   * seen for the first time sets the baseline without broadcasting. Closed
-   * annotations keep their baseline, so a human reply that reopens one (which
-   * touches its directory and so reaches the store root watch) is broadcast.
+   * seen for the first time sets the baseline without broadcasting.
    */
   async function sync(id: string): Promise<void> {
     let record;

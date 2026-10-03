@@ -35,12 +35,10 @@ import {
   readClaim,
   readJson,
   readJsonLines,
-  releaseClaim,
   removeClaim,
   replaceClaim,
   requireAnnotation,
   restoreClaim,
-  touchAnnotation,
   writeAnnotationDir,
   writeJsonAtomic,
   type StagedFiles,
@@ -286,7 +284,7 @@ export function wait(store: string, options: WaitOptions): Promise<WaitResult> {
     let rescan = false;
 
     // Staging directories and live/ change without offering an annotation; only an id's
-    // directory appearing or being touched (a reopen) can.
+    // directory appearing can.
     const watcher = watch(store, { persistent: true }, (_event, name) => {
       if (name === null || ID_PATTERN.test(name)) void scan();
     });
@@ -347,9 +345,7 @@ function isClosed(status: Status): status is "resolved" | "dismissed" {
 }
 
 function closedError(id: string, status: Status): PkaError {
-  return new PkaError(
-    `Annotation ${id} is ${status}; reply before set_status ${status}, or ask the human to reopen it from the overlay.`,
-  );
+  return new PkaError(`Annotation ${id} is ${status}; reply before set_status ${status}.`);
 }
 
 function claimedError(id: string, claim: Claim): PkaError {
@@ -429,49 +425,13 @@ export async function setStatus(
   return { id: input.id, status: input.status, changed: true, claimedBy };
 }
 
-export type Author = { from: "human" } | { from: "agent"; by: string };
-
-export async function reply(
-  store: string,
-  input: ReplyInput,
-  author: Author,
-): Promise<ReplyResult> {
+export async function reply(store: string, input: ReplyInput, by: string): Promise<ReplyResult> {
   const files = await requireAnnotation(store, input.id);
   const state = await readJson(store, files.state, State);
-  const closed = isClosed(state.status);
-  if (author.from === "agent") {
-    if (closed) throw closedError(input.id, state.status);
-    await requireClaimant(store, input.id, author.by);
-  }
-  const entry: ThreadEntry = {
-    at: new Date().toISOString(),
-    from: author.from,
-    text: input.text,
-  };
+  if (isClosed(state.status)) throw closedError(input.id, state.status);
+  await requireClaimant(store, input.id, by);
+  const entry: ThreadEntry = { at: new Date().toISOString(), from: "agent", text: input.text };
   await appendJsonLine(store, files.thread, entry);
-  let note: string | undefined;
-  if (closed) {
-    // The old claim belongs to the agent that closed it; the next agent must be able to take it.
-    await removeClaim(store, input.id);
-    note = "reopened by reply";
-  } else if (author.from === "human" && state.status === "acknowledged") {
-    // A claimant that exited cannot answer; release its claim so a waiting agent gets the reply.
-    const claim = await readClaim(store, input.id);
-    if (
-      claim !== undefined &&
-      claimantExited(claim) &&
-      (await releaseClaim(store, input.id, claim, (current) => current.status === "acknowledged"))
-    ) {
-      note = `released by reply: ${claim.by} exited`;
-    }
-  }
-  if (note !== undefined) {
-    await writeJsonAtomic(store, files.state, {
-      status: "pending",
-      history: [...state.history, { status: "pending", at: entry.at, by: "human", note }],
-    });
-    await touchAnnotation(store, input.id);
-  }
   return { id: input.id, entry };
 }
 
