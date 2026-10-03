@@ -118,6 +118,13 @@ export function open(context: UiContext): UiController {
     corner: readCorner(),
   });
   const thread = connectThread(hot);
+  let markCount = 0;
+  const stopMarkCount = ui.subscribe(() => {
+    const { length } = ui.get().marks;
+    if (length === markCount) return;
+    markCount = length;
+    context.setMarkCount(length);
+  });
   const overlay: Overlay = {
     host,
     hub,
@@ -185,6 +192,7 @@ export function open(context: UiContext): UiController {
     },
     unmount() {
       root.unmount();
+      stopMarkCount();
       for (const stop of stopPanels) stop();
       stopHuntTracking();
       stopTheme();

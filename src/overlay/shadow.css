@@ -390,3 +390,32 @@
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+
+/* Agent mascots beside agent replies in History. A newly shown reply's mascot hops in. */
+.pka-reply-mascot {
+  display: inline-grid;
+  place-items: end center;
+  width: 18px;
+  height: 14px;
+  color: var(--foreground);
+}
+.pka-reply-mascot svg {
+  width: 100%;
+  height: auto;
+  max-height: 100%;
+  overflow: visible;
+  transform-origin: 50% 100%;
+  animation: pka-reply-mascot-in 520ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes pka-reply-mascot-in {
+  from {
+    opacity: 0;
+    translate: 0 4px;
+    scale: 0.4;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pka-reply-mascot svg {
+    animation: none;
+  }
+}

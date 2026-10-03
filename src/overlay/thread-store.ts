@@ -10,6 +10,7 @@ import {
 } from "../shared/channel.ts";
 import { Id, Timestamp, type State, type ThreadEntry } from "../shared/schema.ts";
 import { listen, send } from "./channel-client.ts";
+import { agentReacted, setAgentWorking } from "./hub-state.ts";
 import { createStore, type Store } from "./store.ts";
 
 const SENT_KEY = "pka:sent";
@@ -63,7 +64,10 @@ export function connectThread(hot: ViteHotContext): ThreadStore {
   const stops = [
     listen(hot, CHANNEL.state, StateMessage, (message) => {
       if (!isOurs(message.id)) return;
+      const before = store.get().states.get(message.id)?.status;
       store.set({ states: new Map(store.get().states).set(message.id, message.state) });
+      const closed = message.state.status === "resolved" || message.state.status === "dismissed";
+      if (closed && before !== message.state.status) agentReacted();
     }),
     listen(hot, CHANNEL.thread, ThreadMessage, ({ id, entry }) => {
       if (!isOurs(id)) return;
@@ -75,6 +79,7 @@ export function connectThread(hot: ViteHotContext): ThreadStore {
         outgoing: echoed < 0 ? outgoing : new Map(outgoing).set(id, waiting.toSpliced(echoed, 1)),
         unread: unread || entry.from === "agent",
       });
+      if (entry.from === "agent") agentReacted();
     }),
     listen(hot, CHANNEL.synced, SyncedMessage, (message) => {
       const states = new Map(store.get().states);
@@ -90,6 +95,11 @@ export function connectThread(hot: ViteHotContext): ThreadStore {
       store.set({ sent, states, entries });
     }),
   ];
+  // The hub shows an agent at work while one of this tab's annotations is claimed and open.
+  const stopWorking = store.subscribe(() => {
+    const { sent, states } = store.get();
+    setAgentWorking(sent.some((record) => states.get(record.id)?.status === "acknowledged"));
+  });
   const ids = store.get().sent.map((record) => record.id);
   if (ids.length > 0) send(hot, CHANNEL.sync, { ids });
 
@@ -114,6 +124,8 @@ export function connectThread(hot: ViteHotContext): ThreadStore {
     },
     disconnect() {
       for (const stop of stops) stop();
+      stopWorking();
+      setAgentWorking(false);
     },
   };
 }
