@@ -8,6 +8,9 @@ import { agentReacted, setAgentWorking } from "./hub-state.ts";
 import { SENT_KEY } from "./launcher.ts";
 import { createStore, type Store } from "./store.ts";
 
+/** SyncMessage's limit. */
+const MAX_SYNC_IDS = 200;
+
 const SentRecord = z.strictObject({
   id: Id,
   prompt: z.string(),
@@ -49,6 +52,14 @@ export function connectThread(hot: ViteHotContext): ThreadStore {
     unread: false,
   });
   const isOurs = (id: string) => store.get().sent.some((record) => record.id === id);
+  // pka:sync carries at most MAX_SYNC_IDS ids, so the list syncs newest first, one batch at a
+  // time: each pka:synced answers the batch sent before it, which says which ids are gone.
+  const unsynced = store.get().sent.map((record) => record.id);
+  let batch: ReadonlySet<string> = new Set();
+  const syncNext = () => {
+    batch = new Set(unsynced.splice(0, MAX_SYNC_IDS));
+    if (batch.size > 0) send(hot, CHANNEL.sync, { ids: [...batch] });
+  };
 
   const stops = [
     listen(hot, CHANNEL.state, StateMessage, (message) => {
@@ -74,11 +85,14 @@ export function connectThread(hot: ViteHotContext): ThreadStore {
         states.set(annotation.id, annotation.state);
         entries.set(annotation.id, annotation.thread);
       }
-      // Annotations removed from the store (pka prune) leave the tab's list.
+      // Annotations of this batch removed from the store (pka prune) leave the tab's list.
       const known = new Set(message.annotations.map((annotation) => annotation.id));
-      const sent = store.get().sent.filter((record) => known.has(record.id));
+      const sent = store
+        .get()
+        .sent.filter((record) => !batch.has(record.id) || known.has(record.id));
       sessionStorage.setItem(SENT_KEY, JSON.stringify(sent));
       store.set({ sent, states, entries });
+      syncNext();
     }),
   ];
   // The hub shows an agent at work while one of this tab's annotations is claimed and open.
@@ -86,8 +100,7 @@ export function connectThread(hot: ViteHotContext): ThreadStore {
     const { sent, states } = store.get();
     setAgentWorking(sent.some((record) => states.get(record.id)?.status === "acknowledged"));
   });
-  const ids = store.get().sent.map((record) => record.id);
-  if (ids.length > 0) send(hot, CHANNEL.sync, { ids });
+  syncNext();
 
   return {
     ...store,
