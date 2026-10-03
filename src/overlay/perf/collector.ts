@@ -279,10 +279,9 @@ let observing = false;
 export function startObservers(): void {
   if (observing) return;
   observing = true;
-  if (started) {
-    resumePerf();
-    return;
-  }
+  // Includes web-vitals' import-time observer when the panel closed before its chunk loaded.
+  resumePerf();
+  if (started) return;
   started = true;
   const options = { reportAllChanges: true, reportSoftNavs: true, generateTarget };
   onLCP((metric) => perf.set({ lcp: toLcp(metric) }), options);
