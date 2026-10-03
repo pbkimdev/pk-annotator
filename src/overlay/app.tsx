@@ -107,7 +107,7 @@ function CopiedDialog({ outcome }: { outcome: "ok" | "failed" }) {
       data-testid="pka-copied"
       data-outcome={outcome}
       className={cn(
-        "fixed z-10 flex w-[min(22rem,calc(100vw-2.5rem))] flex-col gap-3 rounded-[20px] bg-popover p-4 text-popover-foreground ring-1 ring-foreground/10",
+        "fixed z-10 flex w-max max-w-[calc(100vw-2.5rem)] min-w-[min(20rem,calc(100vw-2.5rem))] flex-col gap-3 rounded-[20px] bg-popover p-4 text-popover-foreground ring-1 ring-foreground/10",
         "shadow-[0_1px_2px_rgb(0_0_0/0.08),0_24px_48px_-16px_rgb(0_0_0/0.3)] dark:shadow-[0_1px_2px_rgb(0_0_0/0.3),0_24px_56px_-12px_rgb(0_0_0/0.6)]",
         "animate-in duration-200 ease-out fade-in-0 zoom-in-[0.96] motion-reduce:animate-none",
         POPUP_CORNER[corner],
@@ -125,7 +125,7 @@ function CopiedDialog({ outcome }: { outcome: "ok" | "failed" }) {
           <h2 id={titleId} className="text-[13px] font-semibold tracking-[-0.005em]">
             {t(outcome === "ok" ? "Copied to clipboard" : "Couldn't copy to clipboard")}
           </h2>
-          <p id={lineId} className="text-[13px] text-muted-foreground">
+          <p id={lineId} className="text-[13px] whitespace-nowrap text-muted-foreground">
             {t("Connect an agent over MCP for live replies")}
           </p>
         </div>
