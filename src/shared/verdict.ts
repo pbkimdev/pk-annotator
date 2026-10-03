@@ -70,6 +70,8 @@ export const Verdict = z.strictObject({
     flow: z.string(),
     steps: z.number().int().nonnegative(),
     runs: z.number().int().positive(),
+    measurementTracing: z.literal(false).optional(),
+    diagnosticRuns: z.number().int().nonnegative().max(1).optional(),
     cpuRate: z.number().positive(),
     network: NetworkPreset,
     networkConditions: z
