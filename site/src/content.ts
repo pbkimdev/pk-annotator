@@ -170,6 +170,7 @@ const en = {
   },
   pick: {
     launcher: "Try marking this page",
+    status: "Marking · Esc to stop",
     exit: "Stop marking",
     hint: "Click any element to mark it · Esc to stop",
     placeholder: "Describe the change…",
@@ -351,6 +352,7 @@ const ko: Content = {
   },
   pick: {
     launcher: "이 페이지에 표시해 보기",
+    status: "표시 중 · Esc로 종료",
     exit: "표시 그만하기",
     hint: "요소를 클릭해 표시하세요 · Esc로 종료",
     placeholder: "무엇을 바꿀지 적어 주세요…",

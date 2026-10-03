@@ -1355,6 +1355,16 @@ kbd {
   align-items: center;
 }
 
+.tb-marking {
+  display: none;
+  font: 600 0.95rem var(--label);
+  letter-spacing: 0.04em;
+}
+
+html[data-picking] .tb-marking {
+  display: inline;
+}
+
 .launcher {
   display: inline-flex;
   align-items: center;
@@ -1782,6 +1792,13 @@ html[data-picking] .mark-editor button {
   }
   .general-notes {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .step {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+  .step-no {
+    font-size: 3.5rem;
   }
   .tb-launcher {
     grid-column: 1 / -1;

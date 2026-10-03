@@ -188,27 +188,30 @@ function hero(t: Content): string {
       <div><dt>${esc(t.block.rev)}</dt><dd>${VERSION}</dd></div>
       <div><dt>${esc(t.block.date)}</dt><dd>2026-10-03</dd></div>
       <div><dt>${esc(t.block.by)}</dt><dd>Paul B. Kim</dd></div>
-      <div class="tb-launcher">${launcher(t)}</div>
+      <div class="tb-launcher">${launcher(t)}<span class="tb-marking">${esc(t.pick.status)}</span></div>
     </dl>
   </section>`;
 }
 
 function annotationXml(t: Content): string {
   const balloon = (n: number) => `<span class="balloon" data-item="${n}">${n}</span>`;
-  const [first, second] =
+  const prompt: [string, string, string] =
     t.lang === "ko"
       ? [
           "[element 1]을 주 버튼으로 바꿔 주세요.",
-          "취소 옆에서 링크처럼 보여요. [attachment 1: Screenshot] 참고.",
+          "취소 옆에서 링크처럼 보여요.",
+          "[attachment 1: Screenshot] 참고.",
         ]
       : [
           "Make [element 1] the primary action;",
-          "it reads like a link next to Cancel. See [attachment 1: Screenshot].",
+          "it reads like a link next to Cancel.",
+          "See [attachment 1: Screenshot].",
         ];
   return [
     `&lt;annotation id="k3v9q2m7" route="/settings/billing" viewport="1440x900@2"&gt;`,
-    `  ${balloon(1)}&lt;prompt&gt;${esc(first ?? "")}`,
-    `          ${esc(second ?? "")}&lt;/prompt&gt;`,
+    `  ${balloon(1)}&lt;prompt&gt;${esc(prompt[0])}`,
+    `          ${esc(prompt[1])}`,
+    `          ${esc(prompt[2])}&lt;/prompt&gt;`,
     `  ${balloon(2)}&lt;element n="1" source="src/ui/button.tsx:12:3"`,
     `           usedAt="src/routes/billing.tsx:42:9"`,
     `           owners="BillingForm &gt; SettingsPage"`,
