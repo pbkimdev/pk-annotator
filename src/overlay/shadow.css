@@ -385,43 +385,80 @@
   text-decoration: underline;
   text-underline-offset: 3px;
 }
-.pka-editor .pka-mark-badge {
+.pka-editor .pka-ref {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
+  max-width: 16rem;
   margin: 0 2px;
-  padding: 0 2px 0 7px;
+  padding: 0 2px 0 6px;
   border-radius: 9999px;
-  background: var(--pka-pick);
-  color: var(--pka-pick-foreground);
+  background: var(--muted);
+  box-shadow: inset 0 0 0 1px var(--border);
+  color: var(--foreground);
   font-size: 11px;
-  font-weight: 600;
-  line-height: 18px;
-  font-variant-numeric: tabular-nums;
+  line-height: 20px;
   vertical-align: 1px;
+  white-space: nowrap;
   cursor: grab;
   user-select: none;
 }
-.pka-editor .pka-mark-badge.ProseMirror-selectednode {
+.pka-editor .pka-ref-mark {
+  padding-left: 7px;
+  background: var(--pka-pick);
+  box-shadow: none;
+  color: var(--pka-pick-foreground);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.pka-editor .pka-ref-element {
+  padding-left: 2px;
+}
+.pka-editor .pka-ref-attachment svg {
+  color: var(--muted-foreground);
+}
+.pka-editor .pka-ref-n {
+  display: grid;
+  place-items: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 9999px;
+  background: var(--pka-pick);
+  color: var(--pka-pick-foreground);
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.pka-editor .pka-ref-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pka-editor .pka-ref [role="button"] {
+  cursor: pointer;
+}
+.pka-editor .ProseMirror-selectednode > [data-node-view-wrapper] > .pka-ref {
   outline: 2px solid var(--ring);
   outline-offset: 1px;
 }
-.pka-editor .pka-mark-badge [role="button"] {
-  cursor: pointer;
-}
-.pka-editor .pka-mark-remove {
+.pka-editor .pka-ref-remove {
   display: grid;
   place-items: center;
   width: 16px;
   height: 16px;
   border-radius: 9999px;
+  color: inherit;
   font-size: 13px;
   line-height: 1;
-  opacity: 0.7;
+  opacity: 0.65;
+  cursor: pointer;
 }
-.pka-editor .pka-mark-remove:hover {
+.pka-editor .pka-ref-remove:hover,
+.pka-editor .pka-ref-remove:focus-visible {
   opacity: 1;
-  background: color-mix(in oklch, var(--pka-pick-foreground) 15%, transparent);
+  background: color-mix(in oklch, currentColor 15%, transparent);
+  outline: none;
 }
 .pka-editor .pka-interim {
   color: var(--muted-foreground);

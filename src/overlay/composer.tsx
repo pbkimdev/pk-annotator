@@ -1,30 +1,6 @@
-import { useText } from "./language.ts";
-import {
-  ArrowDownUpIcon,
-  ArrowRightIcon,
-  CheckIcon,
-  CopyIcon,
-  ImageIcon,
-  TriangleAlertIcon,
-  VideoIcon,
-  GaugeIcon,
-  PenLineIcon,
-  SendIcon,
-  type LucideIcon,
-} from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { locate, ownerName, type Location } from "../select/source.ts";
-import type { AttachmentKind } from "../shared/schema.ts";
-import {
-  Attachment,
-  AttachmentHoverCard,
-  AttachmentHoverCardContent,
-  AttachmentHoverCardTrigger,
-  AttachmentInfo,
-  AttachmentPreview,
-  AttachmentRemove,
-  Attachments,
-} from "./ai-elements/attachments.tsx";
+import { CheckIcon, CopyIcon, SendIcon } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+
 import {
   COMPOSE,
   NOTE,
@@ -35,7 +11,8 @@ import {
   type UiState,
 } from "./context.tsx";
 import { annotationBlock } from "./markdown.ts";
-import { badgeToken, PromptEditor } from "./prompt-editor.tsx";
+import { useText } from "./language.ts";
+import { BADGE_TOKENS, PromptEditor, type Badge, type Badges } from "./prompt-editor.tsx";
 import { attachments as attachmentList, type ComposerAttachment } from "./registry.ts";
 import {
   currentViewport,
@@ -47,14 +24,6 @@ import {
 import { useList, useStore } from "./store.ts";
 import { Button } from "./ui/button.tsx";
 
-const KIND_ICON = {
-  recording: VideoIcon,
-  video: VideoIcon,
-  errors: TriangleAlertIcon,
-  network: ArrowDownUpIcon,
-  perf: GaugeIcon,
-  frame: ImageIcon,
-} satisfies Record<AttachmentKind, LucideIcon>;
 const MAX_MARKS = 50;
 const MAX_DRAFT_BYTES = 256 * 1024 * 1024;
 const SEND_KEY = /Mac|iPhone|iPad/.test(navigator.userAgent) ? "⌘ ↵" : "Ctrl ↵";
@@ -63,98 +32,6 @@ function markId(): string {
   return Array.from(crypto.getRandomValues(new Uint8Array(8)), (byte) =>
     byte.toString(16).padStart(2, "0"),
   ).join("");
-}
-
-function fileLine(location: string): string {
-  const [file = location, line] = location.split(":");
-  return line === undefined ? file : `${file.split("/").at(-1)}:${line}`;
-}
-
-function ElementChip({ element, n, remove }: { element: Element; n: number; remove(): void }) {
-  const { ui } = useOverlay();
-  const corner = useStore(ui, (state) => state.corner);
-  const [location, setLocation] = useState<Location | undefined>();
-  useEffect(() => {
-    let current = true;
-    void locate(element).then((resolved) => {
-      if (current) setLocation(resolved);
-    });
-    return () => {
-      current = false;
-    };
-  }, [element]);
-  const name = location?.component ?? ownerName(element) ?? element.localName;
-  const where = location?.source ?? location?.usedAt;
-  const title = where === undefined ? name : `${name} ${fileLine(where)}`;
-  return (
-    <AttachmentHoverCard>
-      <AttachmentHoverCardTrigger asChild>
-        <Attachment
-          data-testid="pka-element-chip"
-          data={{
-            id: `element-${elementKey(element)}`,
-            type: "source-document",
-            sourceId: `element-${elementKey(element)}`,
-            mediaType: "text/html",
-            title,
-          }}
-          onRemove={remove}
-          className="h-7 max-w-56 cursor-default rounded-full pl-1 text-xs"
-        >
-          <AttachmentPreview
-            className="size-5 rounded-full bg-pick text-[10px] font-semibold text-pick-foreground tabular-nums"
-            fallbackIcon={<span aria-hidden="true">{n}</span>}
-          />
-          <AttachmentInfo className="font-mono text-[11px]" />
-          <AttachmentRemove label={`Remove element ${n}`} className="focus-visible:opacity-100" />
-        </Attachment>
-      </AttachmentHoverCardTrigger>
-      {/* Beside the panel, toward the page, so the card never covers the prompt. */}
-      <AttachmentHoverCardContent
-        side={corner.endsWith("right") ? "left" : "right"}
-        sideOffset={24}
-        className="w-80 space-y-1 font-mono text-[11px] leading-4"
-      >
-        <p className="font-sans text-xs font-semibold">{name}</p>
-        {location?.source !== undefined && <p className="break-all">source {location.source}</p>}
-        {location?.usedAt !== undefined && <p className="break-all">used at {location.usedAt}</p>}
-        {location !== undefined && location.owners.length > 0 && (
-          <p className="break-all text-muted-foreground">{location.owners.join(" › ")}</p>
-        )}
-      </AttachmentHoverCardContent>
-    </AttachmentHoverCard>
-  );
-}
-
-function AttachmentChip({ attachment }: { attachment: ComposerAttachment }) {
-  const { ui } = useOverlay();
-  const Icon = KIND_ICON[attachment.kind];
-  return (
-    <Attachment
-      data-testid="pka-attachment-chip"
-      data={{
-        id: attachment.id,
-        type: "source-document",
-        sourceId: attachment.id,
-        mediaType: "text/plain",
-        title: attachment.label,
-      }}
-      onRemove={() => {
-        if (!ui.get().busy) attachmentList.remove(attachment.id);
-      }}
-      className="h-7 max-w-56 cursor-default rounded-full pl-1 text-xs"
-    >
-      <AttachmentPreview
-        className="rounded-full"
-        fallbackIcon={<Icon className="size-3 text-muted-foreground" />}
-      />
-      <AttachmentInfo />
-      <AttachmentRemove
-        label={`Remove ${attachment.label}`}
-        className="focus-visible:opacity-100"
-      />
-    </Attachment>
-  );
 }
 
 function phaseText(phase: SendPhase): string {
@@ -166,54 +43,85 @@ function phaseText(phase: SendPhase): string {
 
 /** The first line of a Markdown prompt without its markup, for a one-line title. */
 function promptTitle(prompt: string): string {
-  const line = prompt.split("\n").find((candidate) => candidate.trim() !== "") ?? "";
+  const line =
+    prompt
+      .replace(BADGE_TOKENS, "")
+      .split("\n")
+      .find((candidate) => candidate.trim() !== "") ?? "";
   return line
     .replace(/\\(.)/g, "$1")
     .replace(/[*_`#>~]/g, "")
     .trim();
 }
 
-function ResumeCurrent({ busy, resume }: { busy: boolean; resume(): void }) {
-  const t = useText();
-  return (
-    <button
-      type="button"
-      disabled={busy}
-      onClick={resume}
-      className="flex w-full items-center gap-2.5 rounded-xl border border-dashed px-3 py-2 text-left text-[13px] outline-none transition-colors hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-    >
-      <PenLineIcon className="size-4 text-muted-foreground" strokeWidth={1.75} />
-      <span className="min-w-0 flex-1 truncate">{t("Current mark in progress")}</span>
-      <span className="flex items-center gap-1 text-xs font-medium text-pick">
-        {t("Continue")}
-        <ArrowRightIcon className="size-3.5" />
-      </span>
-    </button>
+/**
+ * Replaces element and attachment badge tokens with references the agent resolves against
+ * the sent annotation: `[element n]` for the element's `n`, and `[attachment n: label]` for
+ * the files under `capture/attachments/<n>/`. `offset` counts attachments sent before these.
+ */
+function references(
+  text: string,
+  elements: readonly Element[],
+  attachments: readonly ComposerAttachment[],
+  offset: number,
+): string {
+  return text.replace(
+    BADGE_TOKENS,
+    (token, kind: string, id: string, at: number, whole: string) => {
+      let reference = token;
+      if (kind === "element") {
+        const n = elements.findIndex((element) => String(elementKey(element)) === id) + 1;
+        reference = n === 0 ? "" : `[element ${n}]`;
+      } else if (kind === "attachment") {
+        const index = attachments.findIndex((attachment) => attachment.id === id);
+        const attachment = attachments[index];
+        reference =
+          attachment === undefined ? "" : `[attachment ${offset + index + 1}: ${attachment.label}]`;
+      }
+      if (reference === "" || reference === token) return reference;
+      // A badge sits apart from the words beside it; its text reference must too.
+      const before = /\S/.test(whole[at - 1] ?? " ") ? " " : "";
+      const after = /[^\s.,;:!?)]/.test(whole[at + token.length] ?? " ") ? " " : "";
+      return `${before}${reference}${after}`;
+    },
   );
 }
 
-/** The global comment with each mark's section at its badge, or appended when it has none. */
+function tidy(text: string): string {
+  return text
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/**
+ * The global comment with each mark's section at its badge, or appended when it has none.
+ * Attachments are numbered across all marks in order, as they are sent.
+ */
 function batchText(
   global: string,
   marks: readonly SavedMark[],
   elements: readonly Element[],
 ): string {
-  const trailing: string[] = [];
-  let text = global;
+  const sections = new Map<string, string>();
+  let offset = 0;
   for (const [index, mark] of marks.entries()) {
     const refs = mark.elements.map((element) => elements.indexOf(element) + 1);
-    const section = `## Mark ${index + 1}${refs.length === 0 ? "" : ` (elements ${refs.join(", ")})`}\n\n${mark.prompt || "See attached capture."}`;
-    const token = badgeToken(mark.id);
-    if (text.includes(token)) text = text.replace(token, () => `\n\n${section}\n\n`);
-    else trailing.push(section);
+    const prompt = references(mark.prompt, elements, mark.attachments, offset);
+    offset += mark.attachments.length;
+    sections.set(
+      mark.id,
+      `## Mark ${index + 1}${refs.length === 0 ? "" : ` (elements ${refs.join(", ")})`}\n\n${prompt.trim() || "See attached capture."}`,
+    );
   }
   // A badge whose mark was sent on its own has no section left.
-  text = text.replace(/\{\{mark:[0-9a-f]+\}\}/g, "");
-  return [text, ...trailing]
-    .join("\n\n")
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  const text = global.replace(BADGE_TOKENS, (_token, kind: string, id: string) => {
+    const section = kind === "mark" ? sections.get(id) : undefined;
+    if (section === undefined) return "";
+    sections.delete(id);
+    return `\n\n${section}\n\n`;
+  });
+  return tidy([text, ...sections.values()].join("\n\n"));
 }
 
 function canSubmit(state: UiState, batch: boolean): boolean {
@@ -305,7 +213,9 @@ export function Composer({ batch = false }: { batch?: boolean }) {
           },
         ];
     const elements = [...new Set(chosen.flatMap((mark) => [...mark.elements]))];
-    const text = batch ? batchText(current.globalPrompt, chosen, elements) : current.prompt;
+    const text = batch
+      ? batchText(current.globalPrompt, chosen, elements)
+      : tidy(references(current.prompt, elements, extra, 0));
     if (text.trim() === "") return;
     setError(null);
     ui.set({ busy: true, picking: null });
@@ -360,7 +270,11 @@ export function Composer({ batch = false }: { batch?: boolean }) {
       const elements = await locateElements(selection);
       await navigator.clipboard.writeText(
         annotationBlock(
-          { route: location.pathname, viewport: currentViewport(), prompt },
+          {
+            route: location.pathname,
+            viewport: currentViewport(),
+            prompt: tidy(references(prompt, selection, extra, 0)),
+          },
           elements,
         ),
       );
@@ -395,46 +309,50 @@ export function Composer({ batch = false }: { batch?: boolean }) {
     });
   };
 
-  const badges = useMemo(
-    () => ({
-      items: marks.map((mark, index) => ({
-        id: mark.id,
-        n: index + 1,
-        title: promptTitle(mark.prompt) || mark.attachments[0]?.label || t("Selected elements"),
-      })),
-      edit(id: string) {
-        const mark = ui.get().marks.find((item) => item.id === id);
+  const badges = useMemo((): Badges => {
+    const items: Badge[] = batch
+      ? marks.map((mark, index) => ({
+          id: `mark:${mark.id}`,
+          kind: "mark",
+          n: index + 1,
+          title: promptTitle(mark.prompt) || mark.attachments[0]?.label || t("Selected elements"),
+        }))
+      : [
+          ...selection.map((element, index): Badge => ({
+            id: `element:${elementKey(element)}`,
+            kind: "element",
+            n: index + 1,
+            element,
+          })),
+          ...extra.map((attachment): Badge => ({
+            id: `attachment:${attachment.id}`,
+            kind: "attachment",
+            attachment,
+          })),
+        ];
+    return {
+      items,
+      edit(id) {
+        const mark = ui.get().marks.find((item) => `mark:${item.id}` === id);
         if (mark !== undefined && !ui.get().busy) latest.current.edit(mark);
       },
-      remove(id: string) {
-        if (!ui.get().busy) ui.set({ marks: ui.get().marks.filter((item) => item.id !== id) });
+      remove(id) {
+        const state = ui.get();
+        if (state.busy) return;
+        const [kind, key] = id.split(":");
+        if (kind === "mark") ui.set({ marks: state.marks.filter((mark) => mark.id !== key) });
+        else if (kind === "element")
+          ui.set({
+            selection: state.selection.filter((element) => String(elementKey(element)) !== key),
+          });
+        else if (key !== undefined) attachmentList.remove(key);
       },
-    }),
+    };
     // t is a new function each render; language is what changes its output.
-    [marks, ui, language],
-  );
+  }, [batch, marks, selection, extra, ui, language]);
 
   return (
     <div className="space-y-3 p-4">
-      {batch ? (
-        hasCurrent && <ResumeCurrent busy={busy} resume={() => ui.set({ panel: NOTE })} />
-      ) : (
-        <Attachments variant="inline" className="gap-1.5 empty:hidden">
-          {selection.map((element, index) => (
-            <ElementChip
-              key={elementKey(element)}
-              element={element}
-              n={index + 1}
-              remove={() => {
-                if (!busy) ui.set({ selection: selection.filter((item) => item !== element) });
-              }}
-            />
-          ))}
-          {extra.map((attachment) => (
-            <AttachmentChip key={attachment.id} attachment={attachment} />
-          ))}
-        </Attachments>
-      )}
       <PromptEditor
         // The placeholder and label are set when the editor is created; the prompt itself
         // lives in the store, so a language switch remounts the editor without losing it.
@@ -446,7 +364,8 @@ export function Composer({ batch = false }: { batch?: boolean }) {
         disabled={busy}
         onSend={() => void submit()}
         onError={setError}
-        {...(batch ? { marks: badges } : { onPasteImage: pasteImage })}
+        badges={badges}
+        {...(batch ? {} : { onPasteImage: pasteImage })}
         actions={
           <>
             {!batch && (

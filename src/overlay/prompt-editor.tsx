@@ -1,155 +1,287 @@
 import { Placeholder } from "@tiptap/extensions";
 import { Markdown } from "@tiptap/markdown";
-import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { NodeSelection, Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
-import { EditorContent, Extension, Node, useEditor, type Editor } from "@tiptap/react";
+import {
+  EditorContent,
+  Extension,
+  Node,
+  NodeViewWrapper,
+  ReactNodeViewRenderer,
+  useEditor,
+  type Editor,
+  type ReactNodeViewProps,
+} from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { MicIcon } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  ArrowDownUpIcon,
+  GaugeIcon,
+  ImageIcon,
+  MicIcon,
+  TriangleAlertIcon,
+  VideoIcon,
+  type LucideIcon,
+} from "lucide-react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
+import { locate, ownerName, type Location } from "../select/source.ts";
+import type { AttachmentKind } from "../shared/schema.ts";
 import { useOverlay } from "./context.tsx";
 import { useText } from "./language.ts";
+import type { ComposerAttachment } from "./registry.ts";
 import { useStore } from "./store.ts";
 import { Button } from "./ui/button.tsx";
-
-/** A saved mark as a badge in the editor; `n` is its number in the saved list. */
-export type BadgeMark = { id: string; n: number; title: string };
-type BadgeHandlers = { edit(id: string): void; remove(id: string): void };
-
-const BADGE = "markBadge";
-const BADGE_TOKEN = /^\{\{mark:([0-9a-f]+)\}\}/;
-
-/** The Markdown a badge serializes to; Send replaces it with the mark's section. */
-export function badgeToken(id: string): string {
-  return `{{mark:${id}}}`;
-}
-
-/** An inline, draggable mark badge; clicking it edits the mark and × removes the mark. */
-function markBadge(handlers: { current: BadgeHandlers }, label: (value: string) => string) {
-  const stepOver = (editor: Editor, forward: boolean): boolean => {
-    const { selection } = editor.state;
-    if (selection instanceof NodeSelection) return selection.node.type.name === BADGE;
-    if (!selection.empty) return false;
-    const next = forward ? selection.$from.nodeAfter : selection.$from.nodeBefore;
-    if (next?.type.name !== BADGE) return false;
-    // Text editing never deletes a mark; × does.
-    return editor.commands.setTextSelection(selection.from + (forward ? 1 : -1));
-  };
-  return Node.create({
-    name: BADGE,
-    group: "inline",
-    inline: true,
-    atom: true,
-    selectable: true,
-    draggable: true,
-    addAttributes: () => ({
-      id: {
-        default: "",
-        parseHTML: (element) => element.getAttribute("data-mark-id"),
-        renderHTML: (attributes) => ({ "data-mark-id": attributes.id }),
-      },
-      n: { default: 0, rendered: false },
-      title: { default: "", rendered: false },
-    }),
-    parseHTML: () => [{ tag: "span[data-mark-id]" }],
-    renderHTML: ({ HTMLAttributes, node }) => ["span", HTMLAttributes, `#${node.attrs.n}`],
-    markdownTokenName: BADGE,
-    markdownTokenizer: {
-      name: BADGE,
-      level: "inline",
-      start: "{{mark:",
-      tokenize: (source) => {
-        const match = BADGE_TOKEN.exec(source);
-        return match === null ? undefined : { type: BADGE, raw: match[0], id: match[1] };
-      },
-    },
-    parseMarkdown: (token) => ({ type: BADGE, attrs: { id: token.id } }),
-    renderMarkdown: (node) => badgeToken(String(node.attrs?.id)),
-    addKeyboardShortcuts() {
-      return {
-        Enter: ({ editor }) => {
-          const { selection } = editor.state;
-          if (!(selection instanceof NodeSelection) || selection.node.type.name !== BADGE)
-            return false;
-          handlers.current.edit(String(selection.node.attrs.id));
-          return true;
-        },
-        Backspace: ({ editor }) => stepOver(editor, false),
-        Delete: ({ editor }) => stepOver(editor, true),
-      };
-    },
-    addNodeView: () => (props) => {
-      const dom = document.createElement("span");
-      dom.className = "pka-mark-badge";
-      dom.contentEditable = "false";
-      dom.draggable = true;
-      dom.dataset.testid = "pka-saved-mark";
-      const edit = document.createElement("span");
-      edit.setAttribute("role", "button");
-      const remove = document.createElement("span");
-      remove.setAttribute("role", "button");
-      remove.className = "pka-mark-remove";
-      remove.textContent = "×";
-      dom.append(edit, remove);
-      let id = "";
-      const render = (node: ProseMirrorNode) => {
-        id = String(node.attrs.id);
-        const n = String(node.attrs.n);
-        edit.textContent = `#${n}`;
-        edit.setAttribute("aria-label", `${label("Edit mark")} ${n}`);
-        remove.setAttribute("aria-label", `${label("Remove mark")} ${n}`);
-        dom.title = String(node.attrs.title);
-      };
-      render(props.node);
-      edit.addEventListener("click", () => handlers.current.edit(id));
-      remove.addEventListener("click", () => handlers.current.remove(id));
-      return {
-        dom,
-        update(node) {
-          if (node.type.name !== BADGE) return false;
-          render(node);
-          return true;
-        },
-        ignoreMutation: () => true,
-      };
-    },
-  });
-}
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card.tsx";
 
 /**
- * Makes the badges match `marks`: renumbers them, drops badges of removed marks and
- * duplicates, and appends a badge for each mark that has none.
+ * A reference shown as a badge in the editor text: a saved mark (Send panel), or a picked
+ * element or composer attachment (mark composer). `id` is `<kind>:<item id>`.
  */
-function syncBadges(editor: Editor, marks: readonly BadgeMark[]): void {
+export type Badge =
+  | { id: string; kind: "mark"; n: number; title: string }
+  | { id: string; kind: "element"; n: number; element: Element }
+  | { id: string; kind: "attachment"; attachment: ComposerAttachment };
+export type Badges = {
+  items: readonly Badge[];
+  edit(id: string): void;
+  remove(id: string): void;
+};
+
+const BADGE = "refBadge";
+const BADGE_SOURCE = String.raw`\[\[((?:mark|element|attachment):[\w-]+)\]\]`;
+const BADGE_TOKEN = new RegExp(`^${BADGE_SOURCE}`);
+/**
+ * Every badge token in Markdown, with its kind and item id. Tiptap's Markdown serializer
+ * backslash-escapes `[` and `]` in typed text, so typed text never forms a token.
+ */
+export const BADGE_TOKENS = /\[\[(mark|element|attachment):([\w-]+)\]\]/g;
+
+/** The Markdown a badge serializes to. */
+export function badgeToken(id: string): string {
+  return `[[${id}]]`;
+}
+
+const BadgeContext = createContext<{ items: ReadonlyMap<string, Badge>; handlers: Badges } | null>(
+  null,
+);
+
+function fileLine(location: string): string {
+  const [file = location, line] = location.split(":");
+  return line === undefined ? file : `${file.split("/").at(-1)}:${line}`;
+}
+
+const KIND_ICON = {
+  recording: VideoIcon,
+  video: VideoIcon,
+  errors: TriangleAlertIcon,
+  network: ArrowDownUpIcon,
+  perf: GaugeIcon,
+  frame: ImageIcon,
+} satisfies Record<AttachmentKind, LucideIcon>;
+
+function RemoveButton({ label, remove }: { label: string; remove(): void }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      className="pka-ref-remove"
+      onClick={(event) => {
+        event.preventDefault();
+        remove();
+      }}
+    >
+      ×
+    </button>
+  );
+}
+
+function ElementBadge({ id, n, element }: { id: string; n: number; element: Element }) {
+  const t = useText();
+  const { ui } = useOverlay();
+  const corner = useStore(ui, (state) => state.corner);
+  const context = useContext(BadgeContext);
+  const [location, setLocation] = useState<Location | undefined>();
+  useEffect(() => {
+    let current = true;
+    void locate(element).then((resolved) => {
+      if (current) setLocation(resolved);
+    });
+    return () => {
+      current = false;
+    };
+  }, [element]);
+  const name = location?.component ?? ownerName(element) ?? element.localName;
+  const where = location?.source ?? location?.usedAt;
+  return (
+    <HoverCard openDelay={300}>
+      <HoverCardTrigger asChild>
+        <span className="pka-ref pka-ref-element" data-testid="pka-element-ref">
+          <span className="pka-ref-n" aria-hidden="true">
+            {n}
+          </span>
+          <span className="pka-ref-label font-mono">
+            {where === undefined ? name : `${name} ${fileLine(where)}`}
+          </span>
+          <RemoveButton
+            label={`${t("Remove element")} ${n}`}
+            remove={() => context?.handlers.remove(id)}
+          />
+        </span>
+      </HoverCardTrigger>
+      {/* Beside the panel, toward the page, so the card never covers the prompt. */}
+      <HoverCardContent
+        side={corner.endsWith("right") ? "left" : "right"}
+        sideOffset={24}
+        className="w-80 space-y-1 font-mono text-[11px] leading-4"
+      >
+        <p className="font-sans text-xs font-semibold">{name}</p>
+        {location?.source !== undefined && <p className="break-all">source {location.source}</p>}
+        {location?.usedAt !== undefined && <p className="break-all">used at {location.usedAt}</p>}
+        {location !== undefined && location.owners.length > 0 && (
+          <p className="break-all text-muted-foreground">{location.owners.join(" › ")}</p>
+        )}
+      </HoverCardContent>
+    </HoverCard>
+  );
+}
+
+/** The node view: a draggable badge whose look comes from the item it references. */
+function BadgeView({ node }: ReactNodeViewProps) {
+  const t = useText();
+  const context = useContext(BadgeContext);
+  const id = String(node.attrs.id);
+  const item = context?.items.get(id);
+  if (context === null || item === undefined) return <NodeViewWrapper as="span" />;
+  const { handlers } = context;
+  let body: ReactNode;
+  if (item.kind === "mark")
+    body = (
+      <span className="pka-ref pka-ref-mark" data-testid="pka-saved-mark" title={item.title}>
+        <span
+          role="button"
+          aria-label={`${t("Edit mark")} ${item.n}`}
+          onClick={() => handlers.edit(id)}
+        >
+          #{item.n}
+        </span>
+        <RemoveButton label={`${t("Remove mark")} ${item.n}`} remove={() => handlers.remove(id)} />
+      </span>
+    );
+  else if (item.kind === "element")
+    body = <ElementBadge id={id} n={item.n} element={item.element} />;
+  else {
+    const Icon = KIND_ICON[item.attachment.kind];
+    body = (
+      <span className="pka-ref pka-ref-attachment" data-testid="pka-attachment-ref">
+        <Icon className="size-3 shrink-0" strokeWidth={1.75} aria-hidden="true" />
+        <span className="pka-ref-label">{item.attachment.label}</span>
+        <RemoveButton
+          label={`${t("Remove")} ${item.attachment.label}`}
+          remove={() => handlers.remove(id)}
+        />
+      </span>
+    );
+  }
+  return (
+    <NodeViewWrapper as="span" data-drag-handle="">
+      {body}
+    </NodeViewWrapper>
+  );
+}
+
+/** Text editing never deletes a badge; × does. */
+function stepOver(editor: Editor, forward: boolean): boolean {
+  const { selection } = editor.state;
+  if (selection instanceof NodeSelection) return selection.node.type.name === BADGE;
+  if (!selection.empty) return false;
+  const next = forward ? selection.$from.nodeAfter : selection.$from.nodeBefore;
+  if (next?.type.name !== BADGE) return false;
+  return editor.commands.setTextSelection(selection.from + (forward ? 1 : -1));
+}
+
+const RefBadge = Node.create<{ handlers: { current: Badges | null } }>({
+  name: BADGE,
+  group: "inline",
+  inline: true,
+  atom: true,
+  selectable: true,
+  draggable: true,
+  addOptions: () => ({ handlers: { current: null } }),
+  addAttributes: () => ({
+    id: {
+      default: "",
+      parseHTML: (element) => element.getAttribute("data-ref"),
+      renderHTML: (attributes) => ({ "data-ref": attributes.id }),
+    },
+  }),
+  parseHTML: () => [{ tag: "span[data-ref]" }],
+  renderHTML: ({ HTMLAttributes }) => ["span", HTMLAttributes],
+  markdownTokenName: BADGE,
+  markdownTokenizer: {
+    name: BADGE,
+    level: "inline",
+    start: "[[",
+    tokenize: (source) => {
+      const match = BADGE_TOKEN.exec(source);
+      return match === null ? undefined : { type: BADGE, raw: match[0], id: match[1] };
+    },
+  },
+  parseMarkdown: (token) => ({ type: BADGE, attrs: { id: token.id } }),
+  renderMarkdown: (node) => badgeToken(String(node.attrs?.id)),
+  addKeyboardShortcuts() {
+    return {
+      Enter: ({ editor }) => {
+        const { selection } = editor.state;
+        if (!(selection instanceof NodeSelection) || selection.node.type.name !== BADGE)
+          return false;
+        const id = String(selection.node.attrs.id);
+        if (!id.startsWith("mark:")) return false;
+        this.options.handlers.current?.edit(id);
+        return true;
+      },
+      Backspace: ({ editor }) => stepOver(editor, false),
+      Delete: ({ editor }) => stepOver(editor, true),
+    };
+  },
+  addNodeView: () => ReactNodeViewRenderer(BadgeView, { as: "span" }),
+});
+
+/**
+ * Makes the badges match `items`: drops badges without an item and duplicates, and adds a
+ * badge for each item that has none, at the cursor while the editor has focus, else at
+ * the end.
+ */
+function syncBadges(editor: Editor, items: readonly Badge[]): void {
   const { state } = editor;
   const type = state.schema.nodes[BADGE];
   const paragraph = state.schema.nodes.paragraph;
   if (type === undefined || paragraph === undefined) throw new Error("Badge schema is missing");
-  const wanted = new Map(marks.map((mark) => [mark.id, mark]));
+  const wanted = new Set(items.map((item) => item.id));
   const seen = new Set<string>();
-  const changes: { pos: number; size: number; mark: BadgeMark | null }[] = [];
+  const stale: { pos: number; size: number }[] = [];
   state.doc.descendants((node, pos) => {
     if (node.type !== type) return;
-    const mark = wanted.get(String(node.attrs.id));
-    if (mark === undefined || seen.has(mark.id))
-      changes.push({ pos, size: node.nodeSize, mark: null });
-    else {
-      seen.add(mark.id);
-      if (node.attrs.n !== mark.n || node.attrs.title !== mark.title)
-        changes.push({ pos, size: node.nodeSize, mark });
-    }
+    const id = String(node.attrs.id);
+    if (!wanted.has(id) || seen.has(id)) stale.push({ pos, size: node.nodeSize });
+    else seen.add(id);
   });
-  const missing = marks.filter((mark) => !seen.has(mark.id));
-  if (changes.length === 0 && missing.length === 0) return;
+  const missing = items.filter((item) => !seen.has(item.id));
+  if (stale.length === 0 && missing.length === 0) return;
   const transaction = state.tr;
-  for (const change of changes.toReversed()) {
-    if (change.mark === null) transaction.delete(change.pos, change.pos + change.size);
-    else transaction.setNodeMarkup(change.pos, undefined, change.mark);
-  }
+  for (const { pos, size } of stale.toReversed()) transaction.delete(pos, pos + size);
   if (missing.length > 0) {
-    const nodes = missing.map((mark) => type.create(mark));
-    if (transaction.doc.lastChild?.type === paragraph)
+    const nodes = missing.map((item) => type.create({ id: item.id }));
+    const { $head } = transaction.selection;
+    if (editor.isFocused && $head.parent.inlineContent) transaction.insert($head.pos, nodes);
+    else if (transaction.doc.lastChild?.type === paragraph)
       transaction.insert(transaction.doc.content.size - 1, nodes);
     else transaction.insert(transaction.doc.content.size, paragraph.create(null, nodes));
   }
@@ -220,7 +352,7 @@ export function PromptEditor({
   onSend,
   onPasteImage,
   onError,
-  marks,
+  badges,
   actions,
 }: {
   value: string;
@@ -231,24 +363,21 @@ export function PromptEditor({
   onSend(): void;
   onPasteImage?(file: File): void;
   onError(message: string): void;
-  marks?: { items: readonly BadgeMark[] } & BadgeHandlers;
+  badges: Badges;
   actions: ReactNode;
 }) {
   const t = useText();
   const { ui } = useOverlay();
   const language = useStore(ui, (state) => state.language);
-  const handlers = useRef<BadgeHandlers>({ edit() {}, remove() {} });
-  if (marks !== undefined) handlers.current = marks;
-  const items = useRef(marks?.items);
-  items.current = marks?.items;
-  const badges = marks !== undefined;
+  const handlers = useRef<Badges | null>(badges);
+  handlers.current = badges;
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ heading: { levels: [2, 3] }, link: { openOnClick: false } }),
       Markdown,
       Placeholder.configure({ placeholder }),
       Interim,
-      ...(badges ? [markBadge(handlers, t)] : []),
+      RefBadge.configure({ handlers }),
     ],
     content: value,
     contentType: "markdown",
@@ -280,7 +409,7 @@ export function PromptEditor({
       },
     },
     onUpdate: ({ editor: updated }) => {
-      if (items.current !== undefined) syncBadges(updated, items.current);
+      if (handlers.current !== null) syncBadges(updated, handlers.current.items);
       onChange(updated.getMarkdown());
     },
   });
@@ -288,8 +417,12 @@ export function PromptEditor({
     editor?.setEditable(!disabled);
   }, [editor, disabled]);
   useEffect(() => {
-    if (editor !== null && marks !== undefined) syncBadges(editor, marks.items);
-  }, [editor, marks]);
+    if (editor !== null) syncBadges(editor, badges.items);
+  }, [editor, badges]);
+  const context = useMemo(
+    () => ({ items: new Map(badges.items.map((item) => [item.id, item])), handlers: badges }),
+    [badges],
+  );
 
   const Api = recognitionApi();
   const recognition = useRef<Recognition | null>(null);
@@ -344,7 +477,9 @@ export function PromptEditor({
 
   return (
     <div className="rounded-2xl border bg-background transition-[border-color,box-shadow] focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/15 dark:bg-input/20">
-      <EditorContent editor={editor} />
+      <BadgeContext value={context}>
+        <EditorContent editor={editor} />
+      </BadgeContext>
       <div className="flex items-center gap-0.5 px-1.5 pb-1.5">
         {Api !== undefined && (
           <Button
