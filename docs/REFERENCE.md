@@ -6,7 +6,9 @@
 
 `pk-annotator` is on the public npm registry. Releases through 0.5.0 were `@srv/pk-annotator` on the Forgejo registry; replace that name in imports and `package.json` when upgrading.
 
-Install it in the workspace root so `node_modules/.bin/pka-mcp` resolves there. If pnpm's `minimumReleaseAge` is set, a fresh release is held back for that long; add `pk-annotator` to `minimumReleaseAgeExclude` to take it at once.
+Install it in the workspace root so `node_modules/.bin/pka-mcp` resolves there. Yarn 2+ requires `nodeLinker: node-modules` in `.yarnrc.yml`; Plug’n’Play does not create that binary path.
+
+Package-manager release-age policies can delay a new version. Wait for the configured period, or explicitly approve the package under your project's policy. For pnpm this is `minimumReleaseAgeExclude`; Yarn uses `npmPreapprovedPackages`. The installer passes no release-age overrides, but pnpm's default non-strict policy can record an exclusion automatically. Review the package manager's configuration changes.
 
 ## Vite plugin
 

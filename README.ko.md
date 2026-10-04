@@ -8,7 +8,7 @@ pk-annotator는 Vite와 React 앱을 위한 개발 전용 오버레이입니다.
 
 ## 설치
 
-Node 24 이상, Vite 8, React 19가 필요합니다.
+Node 24 이상, Vite 8, React 19가 필요합니다. Yarn 2 이상에서는 `.yarnrc.yml`에 `nodeLinker: node-modules`도 필요하며, Plug’n’Play는 지원하지 않습니다.
 
 **에이전트에게 맡기기.** 프로젝트 루트에서 Claude Code, Codex, Pi에 다음을 붙여 넣으세요.
 

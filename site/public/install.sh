@@ -47,12 +47,18 @@ main() {
       if [ -f pnpm-workspace.yaml ]; then pnpm add -D -w pk-annotator; else pnpm add -D pk-annotator; fi
       ;;
     yarn)
-      # Yarn 1 refuses to add to a workspace root without -W; later versions ignore the root check.
-      if grep -q '"workspaces"' package.json && yarn --version | grep -q '^1\.'; then
-        yarn add -D -W pk-annotator
-      else
-        yarn add -D pk-annotator
-      fi
+      yarn_version=$(yarn --version)
+      case $yarn_version in
+        1.*)
+          # Yarn 1 refuses to add to a workspace root without -W.
+          if grep -q '"workspaces"' package.json; then yarn add -D -W pk-annotator; else yarn add -D pk-annotator; fi
+          ;;
+        *)
+          yarn_linker=$(yarn config get nodeLinker)
+          [ "$yarn_linker" = node-modules ] || fail "Yarn requires nodeLinker: node-modules in .yarnrc.yml for the MCP binary; no dependencies were changed"
+          yarn add -D pk-annotator
+          ;;
+      esac
       ;;
     bun) bun add -d pk-annotator ;;
     npm) npm install -D pk-annotator ;;

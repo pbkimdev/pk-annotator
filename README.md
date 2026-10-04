@@ -8,7 +8,7 @@ pk-annotator is a dev-only overlay for Vite and React apps. Anyone reviewing the
 
 ## Install
 
-Requires Node 24+, Vite 8, and React 19.
+Requires Node 24+, Vite 8, and React 19. Yarn 2+ also requires `nodeLinker: node-modules` in `.yarnrc.yml`; Plug’n’Play is not supported.
 
 **Ask your agent.** Paste this into Claude Code, Codex, or Pi from the project root:
 

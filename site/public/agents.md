@@ -7,6 +7,7 @@ You are a coding agent. Follow these steps in the user's project. pk-annotator i
 - Requirements: Node 24+, Vite 8, React 19. Stop and tell the user if the app is not a Vite app, or uses an older major version.
 - Find the workspace root (the directory with the lockfile and, for pnpm, `pnpm-workspace.yaml`) and the Vite config of the app the user runs in the browser.
 - Find that app's client entry: the module that calls `createRoot` or `hydrateRoot`.
+- For Yarn 2+, run `yarn config get nodeLinker` before installing. These MCP commands require `nodeLinker: node-modules` in `.yarnrc.yml`. If the project uses another linker, stop and ask before changing it; Plug’n’Play is not supported.
 
 ## 2. Install
 
@@ -19,7 +20,7 @@ yarn add -D pk-annotator
 bun add -d pk-annotator
 ```
 
-If pnpm's `minimumReleaseAge` blocks a fresh release, add `pk-annotator` to `minimumReleaseAgeExclude` in `pnpm-workspace.yaml`.
+If the package manager's release-age policy blocks a fresh release, wait or ask before adding an exception. Review configuration changes after installation: pnpm's default non-strict policy can add `minimumReleaseAgeExclude` automatically.
 
 ## 3. Add the Vite plugin
 
