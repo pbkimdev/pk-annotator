@@ -9,7 +9,7 @@ Start with [docs/DEVELOPING.md](docs/DEVELOPING.md) for the task map, fixture wo
 - Implement what DESIGN.md says. If a section cannot be built as written, build the closest correct version and report the deviation with its reason; do not silently reduce scope.
 - TypeScript strict, ESM, Node 24, pnpm 11. React 19 is a peer dependency of the overlay. Vite 8 plugin API.
 - Validate every boundary with Zod 4 `strictObject`: HMR channel messages, store files read from disk, CLI arguments, MCP tool inputs. Reject unknown fields; never strip them.
-- The MCP server targets specification 2026-07-28 through `@modelcontextprotocol/server` 2.x with `serveStdio`. Tools only: no resources, prompts, sampling, roots, logging, or tasks. stdout carries only JSON-RPC; diagnostics go to stderr.
+- The MCP server targets specification 2026-07-28 through `@modelcontextprotocol/server` 2.x with `serveStdio`. Tools only, plus Claude Code's experimental `claude/channel` capability as DESIGN.md's Channel section defines it: no resources, prompts, sampling, roots, logging, or tasks. stdout carries only JSON-RPC; diagnostics go to stderr.
 - `src/ops/` holds every store operation. The CLI and the MCP server are thin wrappers over it; neither touches the store directly.
 - The resource budget in DESIGN.md is a requirement: no polling, no idle timers, bounded buffers, lazy loading of UI and Perf observers (the bounded Network observer starts with capture), nothing mounted when `navigator.webdriver` is true, nothing from `overlay/` or `core/` in a production build of a consumer.
 - Lint with Oxlint and the pkai anti-slop plugin; format with oxfmt. Do not add ESLint, Prettier, or Biome.
