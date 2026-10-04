@@ -145,12 +145,18 @@
         "purpose": "Selectable setup prompts and commands."
       }
     },
-    "shadows": [],
+    "shadows": [
+      {
+        "name": "glass-shadow",
+        "value": "0 1px 2px rgb(40 40 40 / 0.08), 0 6px 16px -6px rgb(40 40 40 / 0.18)",
+        "purpose": "Soft lift under glass buttons only; containers stay flat."
+      }
+    ],
     "motion": [
       {
         "name": "dur",
         "value": "200ms",
-        "purpose": "Setup background and chapter color/border transitions."
+        "purpose": "Button fill, shadow, and press scale; chapter color/border transitions."
       },
       {
         "name": "ease",
@@ -160,7 +166,7 @@
       {
         "name": "reduced-motion",
         "value": "0ms",
-        "purpose": "CSS transitions become immediate under prefers-reduced-motion: reduce; video still requires a user action."
+        "purpose": "CSS transitions become immediate and the press scale stays at 1 under prefers-reduced-motion: reduce; video still requires a user action."
       }
     ],
     "breakpoints": [
@@ -175,25 +181,25 @@
       "name": "Setup action",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "Ink-filled setup anchor with inline SVG arrow.",
-      "html": "<a class=\"ds-primary\" href=\"#install\">Set up with your agent<svg viewBox=\"0 0 20 20\" aria-hidden=\"true\"><path d=\"M4 10h12m-5-5 5 5-5 5\"/></svg></a>",
-      "css": ".ds-primary{min-height:44px;display:inline-flex;align-items:center;justify-content:center;gap:var(--sp-3);padding:var(--sp-3) var(--sp-5);border-radius:var(--radius-soft);font-family:var(--font-sans);font-size:var(--t-small);line-height:var(--lh-body);text-decoration:none;color:var(--paper);background:var(--ink);transition:background var(--dur) var(--ease)}.ds-primary:hover{background:var(--ink-3)}.ds-primary:focus-visible{outline:var(--bar) solid var(--ink);outline-offset:var(--sp-1);}.ds-primary svg{width:var(--sp-5);height:var(--sp-5);fill:none;stroke:currentColor;stroke-width:var(--stroke-strong)}"
+      "description": "Dark glass pill setup anchor with inline SVG arrow.",
+      "html": "<a class=\"ds-glass ds-ink\" href=\"#install\">Set up with your agent<svg viewBox=\"0 0 20 20\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><path d=\"M4 10h12m-5-5 5 5-5 5\"/></svg></a>",
+      "css": ".ds-glass{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:var(--sp-2);min-height:var(--control-height);padding:0 var(--sp-5);border:var(--hair) solid var(--glass-edge);border-radius:var(--radius-pill);font-family:var(--font-sans);font-size:var(--t-small);line-height:1;color:var(--ink);text-decoration:none;cursor:pointer;background:var(--glass-clear);-webkit-backdrop-filter:var(--glass-filter);backdrop-filter:var(--glass-filter);box-shadow:var(--glass-highlight),var(--glass-shadow);transition:background-color var(--dur) var(--ease),box-shadow var(--dur) var(--ease),transform var(--dur) var(--ease)}.ds-glass::after{content:\"\";position:absolute;inset:min(0px,calc(50% - var(--hit) / 2))}.ds-glass:hover{background:var(--glass-clear-hover)}.ds-glass:active{transform:scale(var(--press-scale));box-shadow:var(--glass-highlight),var(--glass-shadow-press)}.ds-glass:focus-visible{outline:var(--bar) solid var(--ink);outline-offset:var(--sp-1)}.ds-glass svg{flex:none;width:var(--sp-4);height:var(--sp-4)}.ds-glass.ds-ink{color:var(--paper);background:var(--glass-ink);border-color:var(--glass-edge-ink);box-shadow:var(--glass-highlight-ink),var(--glass-shadow)}.ds-glass.ds-ink:hover{background:var(--glass-ink-hover)}"
     },
     {
       "name": "Copy action",
       "kind": "button",
       "refersTo": "button-copy",
-      "description": "Compact filled action for copying selectable text; preview does not implement clipboard behavior.",
-      "html": "<button class=\"ds-copy-button\" type=\"button\">Copy setup prompt</button>",
-      "css": ".ds-copy-button{font-family:var(--font-sans);font-size:var(--t-small);color:var(--ink);background:var(--paper);border:var(--hair) solid var(--rule-strong);border-radius:var(--radius-soft);padding:var(--sp-3) var(--sp-4);min-height:44px;cursor:pointer;background:var(--ink);color:var(--paper);border-color:var(--ink)}.ds-copy-button:hover{background:var(--ink-3);border-color:var(--ink)}.ds-copy-button:focus-visible{outline:var(--bar) solid var(--ink);outline-offset:var(--sp-1);}"
+      "description": "Icon-only clear glass circle; the copy icon swaps to check or alert after copying. Preview does not implement clipboard behavior.",
+      "html": "<button class=\"ds-glass ds-copy-button\" type=\"button\" aria-label=\"Copy setup prompt\" title=\"Copy setup prompt\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\" ry=\"2\"/><path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\"/></svg></button>",
+      "css": ".ds-glass{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:var(--sp-2);min-height:var(--control-height);padding:0 var(--sp-5);border:var(--hair) solid var(--glass-edge);border-radius:var(--radius-pill);font-family:var(--font-sans);font-size:var(--t-small);line-height:1;color:var(--ink);text-decoration:none;cursor:pointer;background:var(--glass-clear);-webkit-backdrop-filter:var(--glass-filter);backdrop-filter:var(--glass-filter);box-shadow:var(--glass-highlight),var(--glass-shadow);transition:background-color var(--dur) var(--ease),box-shadow var(--dur) var(--ease),transform var(--dur) var(--ease)}.ds-glass::after{content:\"\";position:absolute;inset:min(0px,calc(50% - var(--hit) / 2))}.ds-glass:hover{background:var(--glass-clear-hover)}.ds-glass:active{transform:scale(var(--press-scale));box-shadow:var(--glass-highlight),var(--glass-shadow-press)}.ds-glass:focus-visible{outline:var(--bar) solid var(--ink);outline-offset:var(--sp-1)}.ds-glass svg{flex:none;width:var(--sp-4);height:var(--sp-4)}.ds-copy-button{flex:none;width:var(--control-size);min-height:var(--control-size);padding:0}.ds-copy-button svg{width:1.125rem;height:1.125rem}"
     },
     {
       "name": "Retry action",
       "kind": "button",
       "refersTo": "button-secondary",
-      "description": "Outlined secondary action for video recovery.",
-      "html": "<button class=\"ds-secondary\" type=\"button\">Retry video</button>",
-      "css": ".ds-secondary{font-family:var(--font-sans);font-size:var(--t-small);color:var(--ink);background:var(--paper);border:var(--hair) solid var(--rule-strong);border-radius:var(--radius-soft);padding:var(--sp-3) var(--sp-4);min-height:44px;cursor:pointer;}.ds-secondary:hover{background:var(--paper-3);border-color:var(--ink)}.ds-secondary:focus-visible{outline:var(--bar) solid var(--ink);outline-offset:var(--sp-1);}"
+      "description": "Clear glass pill for video recovery.",
+      "html": "<button class=\"ds-glass\" type=\"button\">Retry video</button>",
+      "css": ".ds-glass{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:var(--sp-2);min-height:var(--control-height);padding:0 var(--sp-5);border:var(--hair) solid var(--glass-edge);border-radius:var(--radius-pill);font-family:var(--font-sans);font-size:var(--t-small);line-height:1;color:var(--ink);text-decoration:none;cursor:pointer;background:var(--glass-clear);-webkit-backdrop-filter:var(--glass-filter);backdrop-filter:var(--glass-filter);box-shadow:var(--glass-highlight),var(--glass-shadow);transition:background-color var(--dur) var(--ease),box-shadow var(--dur) var(--ease),transform var(--dur) var(--ease)}.ds-glass::after{content:\"\";position:absolute;inset:min(0px,calc(50% - var(--hit) / 2))}.ds-glass:hover{background:var(--glass-clear-hover)}.ds-glass:active{transform:scale(var(--press-scale));box-shadow:var(--glass-highlight),var(--glass-shadow-press)}.ds-glass:focus-visible{outline:var(--bar) solid var(--ink);outline-offset:var(--sp-1)}.ds-glass svg{flex:none;width:var(--sp-4);height:var(--sp-4)}"
     },
     {
       "name": "Chapter navigation",
@@ -208,8 +214,8 @@
       "kind": "card",
       "refersTo": "copy-panel",
       "description": "Flat, wrapping command container; code is selectable rather than editable.",
-      "html": "<div class=\"ds-copy\"><code class=\"ds-code\" tabindex=\"0\">Set up pk-annotator in this project by following https://pk-annotator.paulbkim.dev/agents.md</code><button class=\"ds-copy-button\" type=\"button\">Copy setup prompt</button></div>",
-      "css": ".ds-copy{margin-top:var(--sp-5);padding:var(--sp-5);background:var(--paper-2);color:var(--ink);display:flex;flex-direction:column;align-items:flex-start;gap:var(--sp-4)}.ds-code{font-family:var(--font-mono);font-size:var(--t-code);line-height:var(--lh-body);white-space:pre-wrap;overflow-wrap:anywhere}.ds-code:focus-visible{outline:var(--bar) solid var(--ink);outline-offset:var(--sp-1);}.ds-copy-button{font-family:var(--font-sans);font-size:var(--t-small);color:var(--ink);background:var(--paper);border:var(--hair) solid var(--rule-strong);border-radius:var(--radius-soft);padding:var(--sp-3) var(--sp-4);min-height:44px;cursor:pointer;background:var(--ink);color:var(--paper);border-color:var(--ink)}.ds-copy-button:hover{background:var(--ink-3);border-color:var(--ink)}.ds-copy-button:focus-visible{outline:var(--bar) solid var(--ink);outline-offset:var(--sp-1);}"
+      "html": "<div class=\"ds-copy\"><code class=\"ds-code\" tabindex=\"0\">Set up pk-annotator in this project by following https://pk-annotator.paulbkim.dev/agents.md</code><button class=\"ds-glass ds-copy-button\" type=\"button\" aria-label=\"Copy setup prompt\" title=\"Copy setup prompt\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\" ry=\"2\"/><path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\"/></svg></button></div>",
+      "css": ".ds-copy{margin-top:var(--sp-5);padding:var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-5);background:var(--paper-2);color:var(--ink);display:flex;align-items:flex-start;gap:var(--sp-3)}.ds-code{flex:1;padding-block:calc((var(--control-size) - 1lh) / 2);font-family:var(--font-mono);font-size:var(--t-code);line-height:var(--lh-body);white-space:pre-wrap;overflow-wrap:anywhere}.ds-code:focus-visible{outline:var(--bar) solid var(--ink);outline-offset:var(--sp-1)}.ds-glass{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:var(--sp-2);min-height:var(--control-height);padding:0 var(--sp-5);border:var(--hair) solid var(--glass-edge);border-radius:var(--radius-pill);font-family:var(--font-sans);font-size:var(--t-small);line-height:1;color:var(--ink);text-decoration:none;cursor:pointer;background:var(--glass-clear);-webkit-backdrop-filter:var(--glass-filter);backdrop-filter:var(--glass-filter);box-shadow:var(--glass-highlight),var(--glass-shadow);transition:background-color var(--dur) var(--ease),box-shadow var(--dur) var(--ease),transform var(--dur) var(--ease)}.ds-glass::after{content:\"\";position:absolute;inset:min(0px,calc(50% - var(--hit) / 2))}.ds-glass:hover{background:var(--glass-clear-hover)}.ds-glass:active{transform:scale(var(--press-scale));box-shadow:var(--glass-highlight),var(--glass-shadow-press)}.ds-glass:focus-visible{outline:var(--bar) solid var(--ink);outline-offset:var(--sp-1)}.ds-glass svg{flex:none;width:var(--sp-4);height:var(--sp-4)}.ds-copy-button{flex:none;width:var(--control-size);min-height:var(--control-size);padding:0}.ds-copy-button svg{width:1.125rem;height:1.125rem}"
     },
     {
       "name": "Native disclosure",
@@ -225,14 +231,14 @@
     "keyCharacteristics": [
       "Paper surfaces, ink actions, and restrained red feedback.",
       "Serif prose, sans-serif controls, and monospaced commands.",
-      "Flat rectangular containers with slightly softened controls.",
+      "Flat rectangular containers with rounded glass controls.",
       "Real footage with explicit playback and plain chapter navigation.",
       "Shared English and Korean structure with deliberate Hangul typography."
     ],
     "rules": [
       {
         "name": "The Ink Actions Rule",
-        "body": "Primary actions use ink on paper in reverse; red is reserved for the existing Play hover and tap feedback, not generalized page chrome.",
+        "body": "Primary actions use paper text on ink-tinted glass; red is reserved for copy failure and tap feedback, not generalized page chrome.",
         "section": "colors"
       },
       {
@@ -247,20 +253,20 @@
       },
       {
         "name": "The Flat Surface Rule",
-        "body": "Separate in-flow surfaces with tone, whitespace, and the existing hairline border rather than shadows.",
+        "body": "Separate in-flow surfaces with tone, whitespace, and the existing hairline border; only buttons carry glass and shadow.",
         "section": "elevation"
       }
     ],
     "dos": [
       "Do keep surrounding chrome quiet so actual product footage supplies the detail.",
       "Do preserve the serif prose, sans-serif controls, and mono command roles in both locales.",
-      "Do retain explicit playback, native video controls, localized captions, and readable steps.",
+      "Do retain explicit playback, native video controls, the localized figure caption, and readable steps.",
       "Do keep current chapter state visible with text weight and an underline, not color alone.",
       "Do preserve keyboard focus, 44px control height, and selectable setup text without script."
     ],
     "donts": [
       "Don't restore blueprint grids, sheet furniture, architectural diagrams, or decorative feature-card grids.",
-      "Don't add shadows to the site's flat containers or promote unused shadow tokens into new components.",
+      "Don't add shadows or glass to the site's flat containers; keep glass on buttons.",
       "Don't autoplay on entry, advance chapters automatically, or add entrance animation.",
       "Don't turn unused palette or eyebrow declarations into new site styles.",
       "Don't replace real footage with invented product or agent-success evidence."

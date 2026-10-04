@@ -26,10 +26,17 @@ function glyph(): string {
   </svg>`;
 }
 
+// Icon paths from Lucide 1.49.0 (copy, check, circle-alert, play), ISC License.
+const ICON = `viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"`;
+
 function copyField(t: Content, id: string, value: string, label: string): string {
   return `<div class="copy" data-value="${esc(value)}">
     <code id="${id}" tabindex="0">${esc(value)}</code>
-    <button class="copy-button" type="button" hidden aria-describedby="${id}" data-done="${esc(t.install.copied)}" data-failed="${esc(t.install.failed)}">${esc(label)}</button>
+    <button class="glass copy-button" type="button" hidden aria-label="${esc(label)}" title="${esc(label)}" aria-describedby="${id}" data-done="${esc(t.install.copied)}" data-failed="${esc(t.install.failed)}">
+      <svg data-icon="copy" ${ICON}><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+      <svg data-icon="done" ${ICON}><path d="M20 6 9 17l-5-5"/></svg>
+      <svg data-icon="failed" ${ICON}><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+    </button>
   </div>`;
 }
 
@@ -47,25 +54,24 @@ export function renderPage(locale: Locale): string {
     <section class="hero frame" aria-labelledby="hero-title">
       <h1 id="hero-title">${esc(t.hero.title)}<br><em>${esc(t.hero.ending)}</em></h1>
       <p class="lead">${esc(t.hero.lead)}</p>
-      <a class="button primary" href="#install">${esc(t.hero.action)}<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h12m-5-5 5 5-5 5"/></svg></a>
+      <a class="glass ink" href="#install">${esc(t.hero.action)}<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h12m-5-5 5 5-5 5"/></svg></a>
       <p class="hero-note">${esc(t.hero.note)}</p>
     </section>
     <section class="demo frame" aria-label="${esc(t.demo.label)}">
-      <nav class="chapters" aria-label="${esc(t.demo.label)}">${CLIPS.map((clip, index) => `<a class="chapter" href="/demo/${clip}.mp4" data-clip="${clip}" data-caption="${esc(t.demo.captions[index]!)}" aria-controls="demo-player"${index === 0 ? ' aria-current="true"' : ""}>${esc(t.demo.chapters[index]!)}</a>`).join("")}</nav>
+      <nav class="chapters" aria-label="${esc(t.demo.label)}">${CLIPS.map((clip, index) => `<a class="chapter" href="/demo/${clip}.mp4" data-clip="${clip}" data-caption="${esc(t.demo.summaries[index]!)}" aria-controls="demo-player"${index === 0 ? ' aria-current="true"' : ""}>${esc(t.demo.chapters[index]!)}</a>`).join("")}</nav>
       <figure>
         <div class="film">
           <video id="demo-player" controls playsinline muted preload="metadata" poster="/demo/annotate.webp" src="/demo/annotate.mp4" aria-describedby="demo-caption">
-            <track kind="captions" src="/demo/annotate.${locale}.vtt" srclang="${locale}" label="${locale === "ko" ? "한국어" : "English"}" default>
             ${esc(t.demo.fallback)}
           </video>
-          <button class="play-cover" type="button" aria-controls="demo-player" hidden><img src="/demo/annotate.webp" alt="" width="1600" height="1000"><span>${esc(t.demo.play)}</span></button>
+          <button class="play-cover" type="button" aria-controls="demo-player" hidden><img src="/demo/annotate.webp" alt="" width="1600" height="1000"><span class="glass ink"><svg ${ICON}><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/></svg>${esc(t.demo.play)}</span></button>
         </div>
-        <figcaption id="demo-caption" aria-live="polite">${esc(t.demo.captions[0]!)}</figcaption>
+        <figcaption id="demo-caption" aria-live="polite">${esc(t.demo.summaries[0]!)}</figcaption>
       </figure>
       <p class="media-status" role="status" aria-live="polite" data-loading hidden>${esc(t.demo.loading)}</p>
       <div class="media-error" role="alert" data-media-error hidden>
         <p>${esc(t.demo.error)}</p>
-        <button type="button" data-retry>${esc(t.demo.retry)}</button>
+        <button class="glass" type="button" data-retry>${esc(t.demo.retry)}</button>
         <a data-video-link href="/demo/annotate.mp4">${esc(t.demo.download)}</a>
       </div>
       <div class="demo-meta">

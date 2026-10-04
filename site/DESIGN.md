@@ -60,7 +60,7 @@ typography:
     lineHeight: 1.6
 rounded:
   radius: "0"
-  radius-soft: "2px"
+  radius-pill: "999px"
 spacing:
   sp-1: "0.25rem"
   sp-2: "0.5rem"
@@ -75,29 +75,39 @@ spacing:
   sp-20: "5rem"
 components:
   button-primary:
-    backgroundColor: "{colors.ink}"
+    backgroundColor: "rgb(40 40 40 / 0.88)"
     textColor: "{colors.paper}"
     typography: "{typography.label}"
-    rounded: "{rounded.radius-soft}"
-    padding: "0.75rem 1.25rem"
+    rounded: "{rounded.radius-pill}"
+    padding: "0 1.25rem"
+    height: "2.5rem"
   button-primary-hover:
-    backgroundColor: "{colors.ink-3}"
-  button-copy:
-    backgroundColor: "{colors.ink}"
+    backgroundColor: "rgb(40 40 40 / 0.8)"
+  button-play:
+    backgroundColor: "rgb(40 40 40 / 0.7)"
     textColor: "{colors.paper}"
     typography: "{typography.label}"
-    rounded: "{rounded.radius-soft}"
-    padding: "0.75rem 1rem"
+    rounded: "{rounded.radius-pill}"
+    padding: "0 1.25rem 0 1rem"
+    height: "2.5rem"
+  button-play-hover:
+    backgroundColor: "rgb(40 40 40 / 0.88)"
+  button-copy:
+    backgroundColor: "rgb(255 255 255 / 0.62)"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.radius-pill}"
+    size: "2.25rem"
   button-copy-hover:
-    backgroundColor: "{colors.ink-3}"
+    backgroundColor: "rgb(255 255 255 / 0.9)"
   button-secondary:
-    backgroundColor: "{colors.paper}"
+    backgroundColor: "rgb(255 255 255 / 0.62)"
     textColor: "{colors.ink}"
     typography: "{typography.label}"
-    rounded: "{rounded.radius-soft}"
-    padding: "0.75rem 1rem"
+    rounded: "{rounded.radius-pill}"
+    padding: "0 1.25rem"
+    height: "2.5rem"
   button-secondary-hover:
-    backgroundColor: "{colors.paper-3}"
+    backgroundColor: "rgb(255 255 255 / 0.9)"
   chapter:
     textColor: "{colors.mute}"
     typography: "{typography.label}"
@@ -134,7 +144,7 @@ Only values consumed by this site are promoted from the larger token inventory.
 
 - Paper surfaces, ink actions, and restrained red feedback.
 - Serif prose, sans-serif controls, and monospaced commands.
-- Flat rectangular containers with slightly softened controls.
+- Flat rectangular containers with rounded glass controls.
 - Real footage with explicit playback and plain chapter navigation.
 - Shared English and Korean structure with deliberate Hangul typography.
 
@@ -144,22 +154,22 @@ The palette is neutral paper and dark ink, with a small red interaction accent.
 
 ### Primary
 
-- **Ink** (`ink`): headings, body text, selected chapters, focus outlines, the brand mark, and filled actions.
-- **Deep warm gray** (`ink-3`): hover fill for setup and copy actions.
-- **Red accent** (`accent`): the Play label's hover fill.
+- **Ink** (`ink`): headings, body text, selected chapters, focus outlines, the brand mark, and the tint of dark glass actions.
+- **Deep warm gray** (`ink-3`): hover fill of dark actions when glass falls back to solid.
+- **Red accent** (`accent`): the copy button's failure icon.
 - **Red tap tint** (`accent-tint`): touch feedback on links, buttons, and disclosures.
 
 ### Neutral
 
 - **Paper** (`paper`): page ground and reversed text on filled actions.
 - **Inset paper** (`paper-2`): film background and copyable prompt or command containers.
-- **Hover paper** (`paper-3`): secondary button hover background.
+- **Hover paper** (`paper-3`): light button hover background when glass falls back to solid.
 - **Muted ink** (`mute`): supporting copy, unselected navigation, metadata, and footer text.
-- **Strong rule** (`rule-strong`): media frame, button borders, resting link underlines, and scrollbar thumb.
+- **Strong rule** (`rule-strong`): media frame, solid fallback button borders, resting link underlines, and scrollbar thumb.
 
 ### Named Rules
 
-**The Ink Actions Rule.** Primary actions use ink on paper in reverse; red is reserved for the existing Play hover and tap feedback, not generalized page chrome.
+**The Ink Actions Rule.** Primary actions use paper text on ink-tinted glass; red is reserved for copy failure and tap feedback, not generalized page chrome.
 
 **The Footage Color Rule.** Preserve the product's native colors inside recordings rather than recoloring them to the site's palette.
 
@@ -223,7 +233,7 @@ The film preserves an 8:5 aspect ratio and contains its media without cropping.
 Installation uses 5rem block padding; the footer returns to the wide frame.
 
 Spacing follows the quarter-rem steps recorded in the frontmatter, with larger section gaps from the same inventory.
-Interactive links, buttons, and disclosure summaries provide a minimum 44px height.
+Interactive links, buttons, and disclosure summaries provide a hit target at least 44px tall.
 Copyable code wraps and breaks long strings rather than forcing horizontal page overflow.
 
 At a maximum viewport width of 640px, navigation and chapter gaps reduce to 1rem,
@@ -234,34 +244,42 @@ The frame remains fluid; chapter links remain visible and wrap instead of being 
 
 ## Elevation & Depth
 
-The site has no applied shadows, translucent layers, or backdrop blur.
-Depth comes from the inset paper fill and a single hairline media border.
+Containers stay flat: depth comes from the inset paper fill and a single hairline media border.
 The poster cover occupies the film bounds without introducing an elevated card.
-Unused shadow declarations in `src/tokens.css` are not part of this site's vocabulary.
+
+Buttons are the only raised layer.
+Each is a glass control: a translucent fill with `backdrop-filter: blur(16px) saturate(180%)`,
+a hairline edge, a 1px inner top highlight, and a soft two-step shadow (`--glass-*` tokens in `src/tokens.css`).
+Clear glass is white at 62% over paper; dark glass is ink at 88% on paper and 70% over the poster.
+Paper text on the 70% poster glass stays above 4.5:1 even over a white frame.
+Under `prefers-reduced-transparency: reduce`, or where `backdrop-filter` is unsupported,
+the same tokens resolve to solid paper or ink with a strong-rule edge and no blur.
+The older `--shadow-lift` and `--shadow-press` declarations remain unused.
 
 ### Named Rules
 
-**The Flat Surface Rule.** Separate in-flow surfaces with tone, whitespace, and the existing hairline border rather than shadows.
+**The Flat Surface Rule.** Separate in-flow surfaces with tone, whitespace, and the existing hairline border; only buttons carry glass and shadow.
 
 ## Shapes
 
 Film and copy containers have square corners.
-Buttons and the Play label use the small control radius from the frontmatter.
+Buttons are fully rounded: text buttons are 2.5rem pills and copy buttons are 2.25rem circles.
+A transparent `::after` extends each visual control to a 44px hit target.
 The film border is 1px; the active chapter underline and focus outline are 2px.
 Focus outlines are offset by 0.25rem and apply to links, buttons, summaries, video, and focusable code.
 The hub identity is an inline SVG core with three moons on a quarter orbit.
-The setup arrow and the footer GitHub mark from simple-icons are also inline SVGs; none requires an icon font.
+The setup arrow, the footer GitHub mark from simple-icons, and the Lucide 1.49.0 `copy`, `check`, `circle-alert`, and `play` paths (ISC License) are inline SVGs; none requires an icon font.
 
 ## Components
 
 ### Buttons
 
-Filled actions use paper text on ink with the small control radius.
-The setup anchor uses the primary padding and a 20px stroked SVG arrow; its hover changes the fill to deep warm gray.
-Copy buttons use the slightly narrower button padding and an ink border.
-The retry button is paper with an ink label and strong-rule border; hover changes to hover paper with an ink border.
+All buttons share the `.glass` control described under Elevation & Depth.
+The setup anchor is a dark glass pill with paper text and a 16px stroked SVG arrow; hover thins the tint slightly.
+The retry button is a clear glass pill with an ink label; hover raises the fill toward opaque white.
+Copy buttons are icon-only clear glass circles described under Copy panels.
+Pressing scales a control to 97% and flattens its shadow; reduced motion keeps the scale at 100%.
 All retain the shared visible focus outline.
-No custom pressed-state animation is implemented.
 
 ### Navigation
 
@@ -275,16 +293,16 @@ The language link uses the destination language and route; English and Korean sh
 ### Film and poster
 
 One bordered film frame shows five actual clips: `annotate`, `capture`, `record`, `multi`, and `rapid`.
-Each uses `/demo/<clip>.mp4`, a matching WebP poster, and locale-specific `.en.vtt` or `.ko.vtt` captions.
+Each uses `/demo/<clip>.mp4` and a matching WebP poster; the silent clips carry no subtitle tracks.
 The current first clip is Annotate.
 An explicit poster button appears when script runs; successful playback hides it and exposes the native player controls.
-The cover image contains the full poster, and its text label sits 1.25rem from the lower-left corner.
-Its fill changes from ink to red on hover.
-The cover uses a localized text-only Play label.
+The cover image contains the full poster, and its Play pill sits 1.25rem from the lower-left corner (0.75rem at 640px and below).
+The pill is dark glass at 70% that blurs the footage beneath it and deepens to 88% on hover.
+It carries a filled play icon and the localized Play label.
 
-Chapter selection changes the video, poster, caption, download link, and caption track together, then requests playback.
+Chapter selection changes the video, poster, figure caption, and download link together, then requests playback.
 There is no initial autoplay, automatic chapter advance, entrance animation, or decorative animation loop.
-The player is muted, inline, and metadata-preloaded; native pause, timeline, and captions remain available.
+The player is muted, inline, and metadata-preloaded; native pause and timeline remain available.
 Playback pauses when the document becomes hidden or the film leaves the viewport.
 The cover retains a usable state if playback is blocked and transfers focus to the video when it successfully starts from the focused button.
 
@@ -296,15 +314,18 @@ The footage disclosure states that the requests are demonstrations with no conne
 ### Copy panels and disclosures
 
 Copyable prompts and commands are selectable code, not text inputs.
-The flat inset-paper panel stacks text and a button with a 1rem gap and 1.25rem padding.
+The flat inset-paper panel places the code beside a copy button at its top-right, with a 0.75rem gap.
+The panel has 0.75rem padding and 1.25rem on the left; the code's block padding centres its first line on the button.
 Buttons appear only with script.
-Success updates a polite status region; clipboard failure selects and focuses the code for manual copying.
+Each copy button shows only a copy icon, with the localized copy label as `aria-label` and `title`.
+Success swaps the icon to a check and failure to a red alert icon for two seconds.
+Success also updates a polite status region; clipboard failure selects and focuses the code for manual copying.
 A reserved 1.5rem status height limits layout movement.
 Native details and summary elements expose the terminal option without adding a custom accordion system.
 
 ### Motion
 
-Setup hover and chapter state changes use `200ms ease-in-out` transitions.
+Button fill, shadow, and press scale, and chapter state changes use `200ms ease-in-out` transitions.
 Under `prefers-reduced-motion: reduce`, the token duration becomes `0ms`.
 The imported slow duration is unused by this surface.
 User-requested video playback remains available under reduced motion; the page does not start it on entry.
@@ -315,14 +336,14 @@ User-requested video playback remains available under reduced motion; the page d
 
 - **Do** keep surrounding chrome quiet so actual product footage supplies the detail.
 - **Do** preserve the serif prose, sans-serif controls, and mono command roles in both locales.
-- **Do** retain explicit playback, native video controls, and localized captions.
+- **Do** retain explicit playback, native video controls, and the localized figure caption.
 - **Do** keep current chapter state visible with text weight and an underline, not color alone.
-- **Do** preserve keyboard focus, 44px control height, and selectable setup text without script.
+- **Do** preserve keyboard focus, 44px hit targets, and selectable setup text without script.
 
 ### Don't:
 
 - **Don't** restore blueprint grids, sheet furniture, architectural diagrams, or decorative feature-card grids.
-- **Don't** add shadows to the site's flat containers or promote unused shadow tokens into new components.
+- **Don't** add shadows or glass to the site's flat containers; keep glass on buttons.
 - **Don't** autoplay on entry, advance chapters automatically, or add entrance animation.
 - **Don't** turn unused palette or eyebrow declarations into new site styles.
 - **Don't** replace real footage with invented product or agent-success evidence.

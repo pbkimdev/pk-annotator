@@ -7,21 +7,28 @@ import "./style.css";
 
 const copyStatus = document.querySelector<HTMLElement>(".copy-status");
 if (!copyStatus) throw new Error("Missing copy status");
-for (const button of document.querySelectorAll<HTMLButtonElement>(".copy-button")) {
+const copyButtons = [...document.querySelectorAll<HTMLButtonElement>(".copy-button")];
+let copyReset: ReturnType<typeof setTimeout> | undefined;
+for (const button of copyButtons) {
   button.hidden = false;
   button.addEventListener("click", async () => {
     const field = button.closest<HTMLElement>(".copy");
     const code = field?.querySelector("code");
     const value = field?.dataset.value;
     if (value === undefined || !code) throw new Error("Copy control has no value");
+    clearTimeout(copyReset);
+    for (const other of copyButtons) delete other.dataset.state;
     try {
       await navigator.clipboard.writeText(value);
+      button.dataset.state = "done";
       copyStatus.textContent = button.dataset.done!;
     } catch {
       getSelection()?.selectAllChildren(code);
       code.focus();
+      button.dataset.state = "failed";
       copyStatus.textContent = button.dataset.failed!;
     }
+    copyReset = setTimeout(() => delete button.dataset.state, 2000);
   });
 }
 
@@ -36,9 +43,6 @@ if (!video || !caption || !loading || !error || !download || !retry) {
 }
 const player = video;
 const chapters = [...document.querySelectorAll<HTMLAnchorElement>("[data-clip]")];
-const track = player.querySelector("track");
-if (!track) throw new Error("Missing demo captions");
-const captions = track;
 const cover = document.querySelector<HTMLButtonElement>(".play-cover");
 const poster = cover?.querySelector("img");
 if (!cover || !poster) throw new Error("Missing demo poster");
@@ -74,7 +78,6 @@ for (const chapter of chapters) {
     poster.src = player.poster;
     cover.hidden = false;
     player.src = chapter.href;
-    captions.src = `/demo/${clip}.${document.documentElement.lang}.vtt`;
     download.href = chapter.href;
     player.load();
     play();

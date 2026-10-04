@@ -40,7 +40,7 @@ a:hover {
 button,
 summary,
 nav,
-.button,
+.glass,
 .brand,
 .hero-note,
 .demo-meta,
@@ -56,17 +56,7 @@ a {
 }
 button {
   cursor: pointer;
-  font-size: var(--t-small);
   color: var(--ink);
-  background: var(--paper);
-  border: var(--hair) solid var(--rule-strong);
-  border-radius: var(--radius-soft);
-  padding: var(--sp-3) var(--sp-4);
-  min-height: 44px;
-}
-button:hover {
-  background: var(--paper-3);
-  border-color: var(--ink);
 }
 a:focus-visible,
 button:focus-visible,
@@ -146,28 +136,60 @@ h1 em {
   color: var(--mute);
   text-wrap: balance;
 }
-.button {
-  min-height: 44px;
+.glass {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: var(--sp-3);
-  padding: var(--sp-3) var(--sp-5);
-  border-radius: var(--radius-soft);
+  gap: var(--sp-2);
+  min-height: var(--control-height);
+  padding: 0 var(--sp-5);
+  border: var(--hair) solid var(--glass-edge);
+  border-radius: var(--radius-pill);
   font-size: var(--t-small);
+  line-height: 1;
+  color: var(--ink);
   text-decoration: none;
-  transition: background var(--dur) var(--ease);
+  background: var(--glass-clear);
+  -webkit-backdrop-filter: var(--glass-filter);
+  backdrop-filter: var(--glass-filter);
+  box-shadow: var(--glass-highlight), var(--glass-shadow);
+  transition:
+    background-color var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease),
+    transform var(--dur) var(--ease);
 }
-.primary {
+/* Keeps a 44px hit target around the smaller visual control. */
+.glass::after {
+  content: "";
+  position: absolute;
+  inset: min(0px, calc(50% - var(--hit) / 2));
+}
+.glass:hover {
+  background: var(--glass-clear-hover);
+}
+.glass:active {
+  transform: scale(var(--press-scale));
+  box-shadow: var(--glass-highlight), var(--glass-shadow-press);
+}
+.glass.ink {
   color: var(--paper);
-  background: var(--ink);
+  background: var(--glass-ink);
+  border-color: var(--glass-edge-ink);
+  box-shadow: var(--glass-highlight-ink), var(--glass-shadow);
 }
-.primary:hover {
-  background: var(--ink-3);
+.glass.ink:hover {
+  background: var(--glass-ink-hover);
 }
-.button svg {
-  width: var(--sp-5);
-  height: var(--sp-5);
+.glass.ink:active {
+  box-shadow: var(--glass-highlight-ink), var(--glass-shadow-press);
+}
+.glass svg {
+  flex: none;
+  width: var(--sp-4);
+  height: var(--sp-4);
+}
+.hero .glass svg {
   fill: none;
   stroke: currentColor;
   stroke-width: var(--stroke-strong);
@@ -211,6 +233,7 @@ h1 em {
   width: 100%;
   padding: 0;
   border: 0;
+  background: none;
 }
 .play-cover img {
   display: block;
@@ -218,17 +241,22 @@ h1 em {
   height: 100%;
   object-fit: contain;
 }
-.play-cover span {
+.play-cover .glass {
   position: absolute;
   bottom: var(--sp-5);
   left: var(--sp-5);
-  padding: var(--sp-3) var(--sp-5);
-  color: var(--paper);
-  background: var(--ink);
-  border-radius: var(--radius-soft);
+  padding-inline: var(--sp-4) var(--sp-5);
+  background: var(--glass-ink-thin);
 }
-.play-cover:hover span {
-  background: var(--accent);
+.play-cover:hover .glass {
+  background: var(--glass-ink);
+}
+.play-cover:active .glass {
+  transform: scale(var(--press-scale));
+  box-shadow: var(--glass-highlight-ink), var(--glass-shadow-press);
+}
+.play-cover .glass svg {
+  fill: currentColor;
 }
 .film {
   position: relative;
@@ -293,12 +321,15 @@ h2 {
 }
 .copy {
   margin-top: var(--sp-5);
-  padding: var(--sp-5);
+  padding: var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-5);
   background: var(--paper-2);
   display: flex;
-  flex-direction: column;
   align-items: flex-start;
-  gap: var(--sp-4);
+  gap: var(--sp-3);
+}
+.copy code {
+  flex: 1;
+  padding-block: calc((var(--control-size) - 1lh) / 2);
 }
 code {
   font-family: var(--font-mono);
@@ -308,12 +339,23 @@ code {
   overflow-wrap: anywhere;
 }
 .copy-button {
-  background: var(--ink);
-  color: var(--paper);
-  border-color: var(--ink);
+  flex: none;
+  width: var(--control-size);
+  min-height: var(--control-size);
+  padding: 0;
 }
-.copy-button:hover {
-  background: var(--ink-3);
+.copy-button svg {
+  display: none;
+  width: 1.125rem;
+  height: 1.125rem;
+}
+.copy-button:not([data-state]) [data-icon="copy"],
+.copy-button[data-state="done"] [data-icon="done"],
+.copy-button[data-state="failed"] [data-icon="failed"] {
+  display: block;
+}
+.copy-button[data-state="failed"] {
+  color: var(--accent);
 }
 .copy-status {
   font-size: var(--t-caption);
@@ -418,6 +460,10 @@ code {
   }
   .chapter {
     font-size: var(--t-caption);
+  }
+  .play-cover .glass {
+    bottom: var(--sp-3);
+    left: var(--sp-3);
   }
   .footer {
     flex-direction: column;

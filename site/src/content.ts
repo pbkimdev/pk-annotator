@@ -26,7 +26,7 @@ const en = {
     label: "See how it works",
     play: "Play demo",
     chapters: ["Annotate", "Capture", "Record", "Multi-add", "Rapid-fire"],
-    captions: [
+    summaries: [
       "Draw right on the page. Send the mark with a clear request.",
       "Capture the area that matters. Crop it, add a note, send.",
       "Show the interaction, not just the result. Record a region as video or GIF.",
@@ -84,7 +84,7 @@ const ko: Content = {
     label: "사용 방법 보기",
     play: "데모 재생",
     chapters: ["화면에 표시", "캡처", "녹화", "모아서 보내기", "연달아 보내기"],
-    captions: [
+    summaries: [
       "페이지 위에 바로 그리세요. 표시와 함께 원하는 변경을 보내세요.",
       "필요한 부분을 캡처하고, 자르고, 한마디를 더해 보내세요.",
       "결과만으로 부족할 때. 동작하는 모습을 영상이나 GIF로 담으세요.",

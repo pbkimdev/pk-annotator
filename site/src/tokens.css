@@ -71,6 +71,25 @@
   --shadow-press: 3px 3px 0 var(--ink);
   --shadow-lift: 0 8px 24px rgb(0 0 0 / 0.12), 0 2px 6px rgb(0 0 0 / 0.06);
 
+  /* --- glass controls: pill and circle buttons over paper or footage --- */
+  --radius-pill: 999px;
+  --control-height: 2.5rem;
+  --control-size: 2.25rem;
+  --hit: 44px;
+  --glass-filter: blur(16px) saturate(180%);
+  --glass-clear: rgb(255 255 255 / 0.62);
+  --glass-clear-hover: rgb(255 255 255 / 0.9);
+  --glass-ink: rgb(40 40 40 / 0.88);
+  --glass-ink-hover: rgb(40 40 40 / 0.8);
+  --glass-ink-thin: rgb(40 40 40 / 0.7);
+  --glass-edge: rgb(40 40 40 / 0.14);
+  --glass-edge-ink: rgb(255 255 255 / 0.16);
+  --glass-highlight: inset 0 1px 0 rgb(255 255 255 / 0.9);
+  --glass-highlight-ink: inset 0 1px 0 rgb(255 255 255 / 0.2);
+  --glass-shadow: 0 1px 2px rgb(40 40 40 / 0.08), 0 6px 16px -6px rgb(40 40 40 / 0.18);
+  --glass-shadow-press: 0 1px 1px rgb(40 40 40 / 0.08);
+  --press-scale: 0.97;
+
   /* --- space --- */
   --flow: 1.333rem;
   --sp-1: 0.25rem;
@@ -131,5 +150,30 @@
   :root {
     --dur: 0ms;
     --dur-slow: 0ms;
+    --press-scale: 1;
+  }
+}
+
+/* Solid controls where translucency is unwanted or cannot blur its backdrop. */
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --glass-filter: none;
+    --glass-clear: var(--paper);
+    --glass-clear-hover: var(--paper-3);
+    --glass-ink: var(--ink);
+    --glass-ink-hover: var(--ink-3);
+    --glass-ink-thin: var(--ink);
+    --glass-edge: var(--rule-strong);
+  }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root {
+    --glass-filter: none;
+    --glass-clear: var(--paper);
+    --glass-clear-hover: var(--paper-3);
+    --glass-ink: var(--ink);
+    --glass-ink-hover: var(--ink-3);
+    --glass-ink-thin: var(--ink);
+    --glass-edge: var(--rule-strong);
   }
 }
