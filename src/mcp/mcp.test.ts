@@ -7,7 +7,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
-import { Client } from "@modelcontextprotocol/client";
+import { Client, type JSONRPCMessage } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { build } from "tsdown";
 import { afterAll, beforeAll, expect, it } from "vitest";
@@ -54,9 +54,9 @@ afterAll(async () => {
 });
 
 // Another process writes the annotation, as the Vite plugin would.
-async function createInOtherProcess(): Promise<string> {
+async function createInOtherProcess(target = store): Promise<string> {
   const script = `import { create } from ${JSON.stringify(OPS)};
-const { id } = await create(${JSON.stringify(store)}, ${JSON.stringify(DRAFT)});
+const { id } = await create(${JSON.stringify(target)}, ${JSON.stringify(DRAFT)});
 process.stdout.write(id);`;
   const { stdout } = await promisify(execFile)(process.execPath, [
     "--input-type=module",
@@ -166,7 +166,8 @@ it("names a 2026-07-28 client from its envelope, drops dead and invalid records,
       responses.set(response.id, response);
     }
   });
-  // Claude Code 2.1.288 opens this way and never sends initialize.
+  // Claude Code 2.1.288 opens this way. pka refuses it so Claude Code falls back to
+  // initialize, where channels work; a 2026-07-28 request is still served without discovery.
   const meta = {
     "io.modelcontextprotocol/protocolVersion": "2026-07-28",
     "io.modelcontextprotocol/clientInfo": {
@@ -191,7 +192,9 @@ it("names a 2026-07-28 client from its envelope, drops dead and invalid records,
     }
     throw new Error(`No response to ${method}`);
   };
-  await request("discover", "server/discover", {});
+  expect(await request("discover", "server/discover", {})).toMatchObject({
+    error: { code: -32601 },
+  });
   const presence = agentFile(store, "claude-code", child.pid ?? 0);
   await waitForFile(presence);
 
@@ -259,5 +262,100 @@ it("starts without a store and serves tools once the dev server creates one", as
   } finally {
     await client.close();
     await rm(project, { recursive: true, force: true });
+  }
+}, 30_000);
+
+it("pushes each new annotation to a Claude Code session once, and nothing to other clients", async () => {
+  const project = await mkdtemp(path.join(tmpdir(), "pka-mcp-channel-"));
+  const empty = await mkdtemp(path.join(tmpdir(), "pka-mcp-channel-empty-"));
+  const channelStore = await createStore(project);
+  const backlogId = await createInOtherProcess(channelStore);
+  const Message = z.looseObject({
+    id: z.string().optional(),
+    method: z.string().optional(),
+    params: z.looseObject({}).optional(),
+    result: z.looseObject({}).optional(),
+  });
+  type Message = z.infer<typeof Message>;
+  const connect = async (name: string, root = project) => {
+    const child = spawn(process.execPath, [path.join(PACKAGE_ROOT, "dist", "pka-mcp.mjs")], {
+      env: { ...process.env, PKA_ROOT: root },
+      stdio: ["pipe", "pipe", "inherit"],
+    });
+    const messages: Message[] = [];
+    let buffered = "";
+    child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
+      buffered += chunk;
+      const lines = buffered.split("\n");
+      buffered = lines.pop() ?? "";
+      for (const line of lines) messages.push(Message.parse(JSON.parse(line)));
+    });
+    const until = async (found: () => Message | undefined): Promise<Message> => {
+      for (let attempt = 0; attempt < 250; attempt += 1) {
+        const message = found();
+        if (message !== undefined) return message;
+        await sleep(20);
+      }
+      throw new Error(`${name} did not receive the expected message`);
+    };
+    const write = (message: JSONRPCMessage) => child.stdin.write(`${JSON.stringify(message)}\n`);
+    write({
+      jsonrpc: "2.0",
+      id: "init",
+      method: "initialize",
+      params: {
+        protocolVersion: "2025-11-25",
+        capabilities: {},
+        clientInfo: { name, version: "0.0.0" },
+      },
+    });
+    const initialized = await until(() => messages.find((message) => message.id === "init"));
+    write({ jsonrpc: "2.0", method: "notifications/initialized" });
+    const channel = () =>
+      messages.filter((message) => message.method === "notifications/claude/channel");
+    return { child, initialized, until, channel };
+  };
+  try {
+    const claude = await connect("claude-code");
+    const codex = await connect("codex-mcp-client");
+    const storeless = await connect("claude-code", empty);
+    expect(claude.initialized.result).toMatchObject({
+      capabilities: { experimental: { "claude/channel": {} } },
+      instructions: expect.stringContaining("set_status"),
+    });
+    expect(codex.initialized.result?.capabilities).not.toHaveProperty("experimental");
+    expect(codex.initialized.result).not.toHaveProperty("instructions");
+
+    const missing = await storeless.until(() => storeless.channel()[0]);
+    expect(missing.params?.meta).toEqual({ event: "error" });
+    expect(missing.params?.content).toEqual(expect.stringContaining("pka pushes nothing yet"));
+
+    const backlog = await claude.until(() => claude.channel()[0]);
+    expect(backlog.params?.meta).toEqual({ event: "backlog", count: "1" });
+
+    const id = await createInOtherProcess(channelStore);
+    const pushed = await claude.until(() => claude.channel()[1]);
+    expect(pushed.params?.meta).toEqual({
+      event: "annotation",
+      annotation_id: id,
+      route: DRAFT.route,
+      status: "pending",
+    });
+    expect(pushed.params?.content).toEqual(expect.stringContaining(DRAFT.prompt));
+    expect(pushed.params?.content).toEqual(expect.stringContaining("```untrusted\nurl: "));
+    await sleep(300);
+    expect(claude.channel()).toHaveLength(2);
+    expect(JSON.stringify(claude.channel())).not.toContain(backlogId);
+    expect(codex.channel()).toEqual([]);
+
+    // The store watcher must not keep the process alive after stdin closes.
+    for (const { child } of [claude, codex, storeless]) {
+      const exited = once(child, "exit");
+      child.stdin.end();
+      await exited;
+    }
+  } finally {
+    await rm(project, { recursive: true, force: true });
+    await rm(empty, { recursive: true, force: true });
   }
 }, 30_000);

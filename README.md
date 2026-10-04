@@ -65,6 +65,14 @@ Codex keeps servers in its global config, so that entry points at one project. A
 
 The agent calls `wait_for_annotation`, claims what you send with `set_status`, answers with `reply`, and reads page errors with `get_errors`. While it is connected, the overlay takes on Claude's or Codex's look.
 
+In Claude Code, each annotation can instead appear in the session the moment you send it. Start Claude Code with pka as a channel and confirm its prompt:
+
+```sh
+claude --dangerously-load-development-channels server:pka
+```
+
+Channels are a Claude Code research preview, and Team and Enterprise organizations must enable them. Annotations that were waiting before the session started are counted, not sent.
+
 ## Use
 
 | Group    | Tools                                               |

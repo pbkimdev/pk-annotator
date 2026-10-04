@@ -65,6 +65,14 @@ Codex는 서버를 전역 설정에 저장하므로 이 항목은 한 프로젝�
 
 에이전트는 `wait_for_annotation`으로 기다리고, 보낸 주석을 `set_status`로 맡고, `reply`로 답하고, `get_errors`로 페이지 오류를 읽습니다. 연결되어 있는 동안 오버레이는 Claude나 Codex의 모습으로 바뀝니다.
 
+Claude Code에서는 주석을 보내는 즉시 세션에 나타나게 할 수도 있습니다. pka를 채널로 불러와 Claude Code를 시작하고 확인 화면에서 승인하세요.
+
+```sh
+claude --dangerously-load-development-channels server:pka
+```
+
+채널은 Claude Code의 리서치 프리뷰 기능이며, Team과 Enterprise 조직은 먼저 채널을 허용해야 합니다. 세션을 시작하기 전부터 기다리던 주석은 보내지 않고 개수만 알려 줍니다.
+
 ## 사용
 
 | 그룹      | 도구                                        |

@@ -53,7 +53,7 @@ Each Pick, Capture, and Annotate group shows its last-used tool and runs it on c
 
 ## MCP server
 
-`pka-mcp` is a stdio server with tools only: `list_annotations`, `get_annotation`, `wait_for_annotation`, `set_status`, `reply`, and `get_errors`. Launch it from `node_modules/.bin` directly; `pnpm exec` adds a second process.
+`pka-mcp` is a stdio server with six tools: `list_annotations`, `get_annotation`, `wait_for_annotation`, `set_status`, `reply`, and `get_errors`. For Claude Code it is also a channel. Launch it from `node_modules/.bin` directly; `pnpm exec` adds a second process.
 
 It finds the store from `--root` or `PKA_ROOT`, then `CLAUDE_PROJECT_DIR`, then the nearest `_interim/annotations` above the working directory, and prints the store it uses to stderr. In a checkout with no store yet, tool calls report the missing store until the app's Vite dev server creates it, and then work without a restart.
 
@@ -79,6 +79,8 @@ tool_timeout_sec = 1830 # above wait_for_annotation's longest timeoutSec, 1800
 
 Codex stops a tool call after `tool_timeout_sec`, 300 seconds by default, and progress does not extend it. Pi 1.0.0's bundled MCP documentation and the [upstream tool-exposure reference](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/mcp.md#control-tool-exposure) support `"exposure": "direct"` (checked 2026-10-03); an interactive Pi session with this server has not been exercised.
 
+Claude Code channels are a research preview. Start the session with `claude --dangerously-load-development-channels server:pka`, using the name pka is registered under, and confirm the development-channels prompt; Team and Enterprise organizations must also enable channels. Each annotation sent afterwards arrives as `<channel source="pka" event="annotation" annotation_id="…" route="…" status="…">` with the prompt and the fenced page data, and Claude claims it before working. Annotations that were waiting before the session started are counted in one `event="backlog"` event, not pushed. When the session starts before the app's dev server has created the store, an `event="error"` event says so, and pushing starts at the first pka call that finds the store. Pushing starts 2 seconds after connect, because Claude Code drops events that arrive before it is ready. To keep the channel working, `pka-mcp` turns down Claude Code's 2026-07-28 `server/discover` probe, and Claude Code connects with `initialize` instead. Without the flag, Claude Code ignores the events and the tools work as before.
+
 `set_status acknowledged` claims an annotation for one `pka-mcp` process, which `claim.json` records. When that process has exited, for example after a client reconnect or restart, `wait_for_annotation` offers the annotation again, and another session may take it over with `set_status acknowledged`. A claim made from another PID namespace, such as a container, is judged only by the 60-second rule in the CLI section, which applies while the annotation is still pending.
 
 ## CLI
@@ -103,4 +105,4 @@ With `--attach`, it checks the annotation and claimant before the runs.
 
 ## Resource budget
 
-Mount starts bounded capture and one resource-timing observer. Opening the hub's menu loads the UI; screenshots, drawings, recordings, and Send load snapdom when they capture; opening Perf starts its additional observers, and recording starts on request. `pka-mcp` holds no timers or watchers between calls. The dev-only integration excludes the package from production builds. [DESIGN.md](DESIGN.md#resource-budget) owns the detailed limits and lifecycle.
+Mount starts bounded capture and one resource-timing observer. Opening the hub's menu loads the UI; screenshots, drawings, recordings, and Send load snapdom when they capture; opening Perf starts its additional observers, and recording starts on request. `pka-mcp` holds no timers or watchers between calls, except one store watcher for a Claude Code session's channel. The dev-only integration excludes the package from production builds. [DESIGN.md](DESIGN.md#resource-budget) owns the detailed limits and lifecycle.
