@@ -3,7 +3,7 @@ export type Locale = "en" | "ko";
 export const SITE = "https://pk-annotator.paulbkim.dev";
 export const INSTALL_COMMAND = `curl -fsSL ${SITE}/install.sh | sh`;
 export const VERSION = "0.6.2";
-export const CLIPS = ["annotate", "capture", "record", "multi", "rapid"] as const;
+export const CLIPS = ["agent", "annotate", "capture", "record", "multi", "rapid"] as const;
 
 const en = {
   lang: "en",
@@ -25,15 +25,17 @@ const en = {
   demo: {
     label: "See how it works",
     play: "Play demo",
-    chapters: ["Annotate", "Capture", "Record", "Multi-add", "Rapid-fire"],
+    chapters: ["Claude Code", "Annotate", "Capture", "Record", "Multi-add", "Rapid-fire"],
     summaries: [
+      "Send a request. Claude Code receives it, makes the change, and replies in History.",
       "Draw right on the page. Send the mark with a clear request.",
       "Capture the area that matters. Crop it, add a note, send.",
       "Show the interaction, not just the result. Record a region as video or GIF.",
       "Save a few marks. Send them together as one request.",
       "Send one request, then the next. No need to wait for the first to be resolved.",
     ],
-    footage: "Real app footage. Demo requests; no agent connected.",
+    footage:
+      "Real recordings. Claude Code answers live in the first clip; the others show the overlay alone.",
     loading: "Loading demo…",
     error: "The video could not load. Try again or open the video.",
     retry: "Retry video",
@@ -83,15 +85,17 @@ const ko: Content = {
   demo: {
     label: "사용 방법 보기",
     play: "데모 재생",
-    chapters: ["화면에 표시", "캡처", "녹화", "모아서 보내기", "연달아 보내기"],
+    chapters: ["Claude Code", "화면에 표시", "캡처", "녹화", "모아서 보내기", "연달아 보내기"],
     summaries: [
+      "요청을 보내면 Claude Code가 받아서 바로 고치고, 기록에 답장을 남깁니다.",
       "페이지 위에 바로 그리세요. 표시와 함께 원하는 변경을 보내세요.",
       "필요한 부분을 캡처하고, 자르고, 한마디를 더해 보내세요.",
       "결과만으로 부족할 때. 동작하는 모습을 영상이나 GIF로 담으세요.",
       "여러 곳에 표시해 두세요. 하나의 요청으로 모아서 보내세요.",
       "하나 보내고, 다음 요청도 바로. 이전 요청이 해결될 때까지 기다릴 필요 없어요.",
     ],
-    footage: "실제 앱 녹화입니다. 예시 요청이며 에이전트는 연결되어 있지 않습니다.",
+    footage:
+      "실제 녹화입니다. 첫 영상은 Claude Code가 실시간으로 응답하고, 나머지는 오버레이만 보여 줍니다.",
     loading: "데모를 불러오는 중…",
     error: "영상을 불러오지 못했습니다. 다시 시도하거나 영상을 직접 열어 주세요.",
     retry: "영상 다시 불러오기",

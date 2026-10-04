@@ -61,10 +61,10 @@ export function renderPage(locale: Locale): string {
       <nav class="chapters" aria-label="${esc(t.demo.label)}">${CLIPS.map((clip, index) => `<a class="chapter" href="/demo/${clip}.mp4" data-clip="${clip}" data-caption="${esc(t.demo.summaries[index]!)}" aria-controls="demo-player"${index === 0 ? ' aria-current="true"' : ""}>${esc(t.demo.chapters[index]!)}</a>`).join("")}</nav>
       <figure>
         <div class="film">
-          <video id="demo-player" controls playsinline muted preload="metadata" poster="/demo/annotate.webp" src="/demo/annotate.mp4" aria-describedby="demo-caption">
+          <video id="demo-player" controls playsinline muted preload="metadata" poster="/demo/agent.webp" src="/demo/agent.mp4" aria-describedby="demo-caption">
             ${esc(t.demo.fallback)}
           </video>
-          <button class="play-cover" type="button" aria-controls="demo-player" hidden><img src="/demo/annotate.webp" alt="" width="1600" height="1000"><span class="glass ink"><svg ${ICON}><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/></svg>${esc(t.demo.play)}</span></button>
+          <button class="play-cover" type="button" aria-controls="demo-player" hidden><img src="/demo/agent.webp" alt="" width="1600" height="1000"><span class="glass ink"><svg ${ICON}><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/></svg>${esc(t.demo.play)}</span></button>
         </div>
         <figcaption id="demo-caption" aria-live="polite">${esc(t.demo.summaries[0]!)}</figcaption>
       </figure>
@@ -72,7 +72,7 @@ export function renderPage(locale: Locale): string {
       <div class="media-error" role="alert" data-media-error hidden>
         <p>${esc(t.demo.error)}</p>
         <button class="glass" type="button" data-retry>${esc(t.demo.retry)}</button>
-        <a data-video-link href="/demo/annotate.mp4">${esc(t.demo.download)}</a>
+        <a data-video-link href="/demo/agent.mp4">${esc(t.demo.download)}</a>
       </div>
       <div class="demo-meta">
         <p>${esc(t.demo.footage)}</p>

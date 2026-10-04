@@ -292,9 +292,9 @@ The language link uses the destination language and route; English and Korean sh
 
 ### Film and poster
 
-One bordered film frame shows five actual clips: `annotate`, `capture`, `record`, `multi`, and `rapid`.
+One bordered film frame shows six actual clips: `agent`, `annotate`, `capture`, `record`, `multi`, and `rapid`.
 Each uses `/demo/<clip>.mp4` and a matching WebP poster; the silent clips carry no subtitle tracks.
-The current first clip is Annotate.
+The current first clip is Claude Code: the browser on the left and a live Claude Code session on the right.
 An explicit poster button appears when script runs; successful playback hides it and exposes the native player controls.
 The cover image contains the full poster, and its Play pill sits 1.25rem from the lower-left corner (0.75rem at 640px and below).
 The pill is dark glass at 70% that blurs the footage beneath it and deepens to 88% on hover.
@@ -309,7 +309,7 @@ The cover retains a usable state if playback is blocked and transfers focus to t
 Loading feedback uses a polite status region.
 Failure reveals a retry button and direct video link.
 Without script, the native first video remains usable and chapters are direct MP4 links.
-The footage disclosure states that the requests are demonstrations with no connected agent.
+The footage disclosure states that only the first clip has a connected agent and the others show the overlay alone.
 
 ### Copy panels and disclosures
 
