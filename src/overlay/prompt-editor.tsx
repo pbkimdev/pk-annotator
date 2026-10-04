@@ -48,7 +48,8 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card.t
  * element or composer attachment (mark composer). `id` is `<kind>:<item id>`.
  */
 export type Badge =
-  | { id: string; kind: "mark"; n: number; title: string }
+  /** `route` names the page of a mark made on another route; null on the current route. */
+  | { id: string; kind: "mark"; n: number; title: string; route: string | null }
   | { id: string; kind: "element"; n: number; element: Element }
   | { id: string; kind: "attachment"; attachment: ComposerAttachment };
 export type Badges = {
@@ -174,6 +175,11 @@ function BadgeView({ node }: ReactNodeViewProps) {
         >
           #{item.n}
         </span>
+        {item.route !== null && (
+          <span className="pka-ref-label font-normal" data-testid="pka-mark-route">
+            {item.route}
+          </span>
+        )}
         <RemoveButton label={`${t("Remove mark")} ${item.n}`} remove={() => handlers.remove(id)} />
       </span>
     );

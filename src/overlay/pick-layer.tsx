@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, useState } from "react";
+import { useEffect, useReducer, useRef, useState, useSyncExternalStore } from "react";
 
 import {
   calibrateFromDocument,
@@ -8,14 +8,18 @@ import {
   type Location,
 } from "../select/source.ts";
 import { startPicking } from "../select/pick.ts";
+import { getCapture } from "./capture.ts";
 import { NOTE, elementKey, nextSelection, useOverlay } from "./context.tsx";
 import { useText } from "./language.ts";
 import { cn } from "./lib/utils.ts";
-import { MAX_ELEMENTS, remember } from "./send.ts";
+import { MAX_ELEMENTS, anchor, pickOf, remember } from "./send.ts";
 import { useStore } from "./store.ts";
 
-/** Re-renders on scroll and resize while `active`, so boxes follow their elements. */
-function useLayoutTicks(active: boolean): void {
+/**
+ * Re-renders on scroll and resize while `active`, so boxes follow their elements, and on DOM
+ * changes while `waiting`, so a mark finds its element when its route renders it again.
+ */
+function useLayoutTicks(active: boolean, waiting: boolean): void {
   const [, tick] = useReducer((count: number) => count + 1, 0);
   useEffect(() => {
     if (!active) return;
@@ -30,12 +34,17 @@ function useLayoutTicks(active: boolean): void {
     };
     window.addEventListener("scroll", schedule, { capture: true, passive: true });
     window.addEventListener("resize", schedule, { passive: true });
+    const observer = waiting ? new MutationObserver(schedule) : undefined;
+    observer?.observe(document.body, { childList: true, subtree: true });
+    // The element can render between the render that missed it and this effect.
+    if (waiting) schedule();
     return () => {
       window.removeEventListener("scroll", schedule, { capture: true });
       window.removeEventListener("resize", schedule);
+      observer?.disconnect();
       cancelAnimationFrame(frame);
     };
-  }, [active]);
+  }, [active, waiting]);
 }
 
 export function shortPath(location: string): string {
@@ -95,7 +104,6 @@ function HoverBox({ element }: { element: Element }) {
 const BADGE_HEIGHT = 16;
 
 function SelectionBox({ element, n }: { element: Element; n: number }) {
-  if (!element.isConnected) return null;
   const rect = element.getBoundingClientRect();
   return (
     <div
@@ -134,8 +142,34 @@ export function PickLayer() {
   const layer = useRef<HTMLDivElement>(null);
   const tip = useRef<HTMLDivElement>(null);
   const active = visible && !busy && picking !== null;
+  // Each pick is drawn only on the route it was made on; numbers count every pick, so a
+  // mark keeps its number on every route.
+  const route = useSyncExternalStore(getCapture().subscribe, () => location.pathname);
+  const boxes = [
+    ...marks
+      .filter((mark) => mark.id !== editing)
+      .flatMap((mark) =>
+        mark.elements.map((element, index) => ({ element, pick: mark.picks[index] })),
+      )
+      .map(({ element, pick }, index) => ({
+        element,
+        pick,
+        n: index + 1,
+        key: `saved-${elementKey(element)}-${index}`,
+      })),
+    ...selection.map((element, index) => ({
+      element,
+      pick: pickOf(element),
+      n: index + 1,
+      key: String(elementKey(element)),
+    })),
+  ].map((box) => {
+    if (box.pick === undefined) throw new Error(`Saved element ${box.n} has no pick`);
+    return { ...box, route: box.pick.route, target: anchor(box.element, box.pick) };
+  });
+  const waiting = boxes.some((box) => box.target === null && box.route === route);
 
-  useLayoutTicks(visible && (selection.length > 0 || marks.length > 0 || hover !== null));
+  useLayoutTicks(visible && (boxes.length > 0 || hover !== null), visible && waiting);
 
   useEffect(() => {
     if (!active || layer.current === null) return;
@@ -187,20 +221,11 @@ export function PickLayer() {
         aria-hidden="true"
         className={cn("fixed inset-0", active ? "pointer-events-auto cursor-crosshair" : "hidden")}
       />
-      {marks
-        .filter((mark) => mark.id !== editing)
-        .flatMap((mark) => mark.elements)
-        .map((element, index) => (
-          <SelectionBox
-            key={`saved-${elementKey(element)}-${index}`}
-            element={element}
-            n={index + 1}
-          />
-        ))}
-      {selection.map((element, index) => (
-        <SelectionBox key={elementKey(element)} element={element} n={index + 1} />
-      ))}
-      {active && hover !== null && marquee === null && <HoverBox element={hover} />}
+      {boxes.map(
+        (box) =>
+          box.target !== null && <SelectionBox key={box.key} element={box.target} n={box.n} />,
+      )}
+      {active && hover?.isConnected === true && marquee === null && <HoverBox element={hover} />}
       {active && picking === "pick" && selectTip && (
         // Hidden until the first pointer move places it; it then fades once and unmounts.
         <div

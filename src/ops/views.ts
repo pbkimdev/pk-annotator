@@ -40,6 +40,7 @@ export function jsonBytes(
   value:
     | AnnotationView
     | ElementView
+    | MarkView
     | AnnotationView["attachments"][number]
     | ListItem
     | { items: ListItem[]; nextCursor: string | undefined },
@@ -66,6 +67,7 @@ function optionalPageText(value: string | undefined, max: number): string | unde
 
 export const ElementView = z.strictObject({
   n: z.number(),
+  url: z.string().optional().describe("The page the element was picked on"),
   source: z.string().optional(),
   usedAt: z.string().optional(),
   owners: z.array(z.string()),
@@ -83,6 +85,13 @@ export const ElementView = z.strictObject({
 });
 export type ElementView = z.infer<typeof ElementView>;
 
+export const MarkView = z.strictObject({
+  n: z.number().describe('Matches the "## Mark n" section of the prompt'),
+  url: z.string(),
+  route: z.string(),
+});
+export type MarkView = z.infer<typeof MarkView>;
+
 export const AnnotationView = z.strictObject({
   id: Id,
   createdAt: Timestamp,
@@ -99,16 +108,18 @@ export const AnnotationView = z.strictObject({
   attachments: z.array(
     z.strictObject({ kind: AttachmentKind, path: z.string(), summary: z.string().optional() }),
   ),
+  marks: z.array(MarkView).optional().describe("The page each saved mark of a batch was made on"),
   threadCount: z.number(),
   omitted: z
     .strictObject({
       elements: z.number(),
       attachments: z.number(),
+      marks: z.number(),
       promptCharacters: z.number(),
       note: z.string(),
     })
     .optional()
-    .describe("Elements and attachments left out of a concise response"),
+    .describe("Elements, attachments, and mark pages left out of a concise response"),
   history: z.array(StatusEvent).optional(),
   thread: z.array(ThreadEntry).optional(),
 });
@@ -152,6 +163,7 @@ function elementView(element: ElementRef, detail: Detail): ElementView {
   const full = detail === "full";
   const view: ElementView = {
     n: element.n,
+    url: optionalPageText(element.url, CAP.label),
     source: optionalPageText(element.source, CAP.label),
     usedAt: optionalPageText(element.usedAt, CAP.label),
     owners: element.owners.slice(0, CAP.owners).map((owner) => pageText(owner, CAP.short)),
@@ -193,6 +205,12 @@ export function annotationView(record: AnnotationRecord, detail: Detail): Annota
     })),
     threadCount: record.thread.length,
   };
+  if (annotation.marks !== undefined)
+    view.marks = annotation.marks.map((mark) => ({
+      n: mark.n,
+      url: pageText(mark.url, CAP.label),
+      route: pageText(mark.route, CAP.label),
+    }));
   if (full) {
     view.viewport = annotation.viewport;
     view.history = state.history;
@@ -218,22 +236,34 @@ function promptPrefix(prompt: string): string {
 }
 
 /**
- * Caps the prompt, then keeps the leading elements and attachments that fit CONCISE_BYTES, so
- * `[element n]` and `[attachment n]` keep their numbers, and says how much was left out.
+ * Caps the prompt, then keeps the leading elements, attachments, and mark pages that fit
+ * CONCISE_BYTES, so `[element n]`, `[attachment n]`, and `## Mark n` keep their numbers, and
+ * says how much was left out.
  */
 function withinBudget(view: AnnotationView): AnnotationView {
   const { elements, attachments } = view;
+  const marks = view.marks ?? [];
   const prompt = promptPrefix(view.prompt);
   const promptCharacters = view.prompt.length - prompt.length;
-  const omitted = (keptElements: number, keptAttachments: number) => ({
+  const omitted = (keptElements: number, keptAttachments: number, keptMarks: number) => ({
     elements: elements.length - keptElements,
     attachments: attachments.length - keptAttachments,
+    marks: marks.length - keptMarks,
     promptCharacters,
     note: OMITTED_NOTE,
   });
   // Counts can only shrink, so this overestimates the final omitted record.
-  let used = jsonBytes({ ...view, prompt, elements: [], attachments: [], omitted: omitted(0, 0) });
-  const fit = <T extends ElementView | AnnotationView["attachments"][number]>(items: T[]): T[] => {
+  let used = jsonBytes({
+    ...view,
+    prompt,
+    elements: [],
+    attachments: [],
+    ...(view.marks !== undefined && { marks: [] }),
+    omitted: omitted(0, 0, 0),
+  });
+  const fit = <T extends ElementView | MarkView | AnnotationView["attachments"][number]>(
+    items: T[],
+  ): T[] => {
     const kept: T[] = [];
     for (const item of items) {
       const bytes = jsonBytes(item) + 1;
@@ -245,22 +275,25 @@ function withinBudget(view: AnnotationView): AnnotationView {
   };
   const keptElements = fit(elements);
   const keptAttachments = fit(attachments);
+  const keptMarks = fit(marks);
   const result =
     promptCharacters === 0 &&
     keptElements.length === elements.length &&
-    keptAttachments.length === attachments.length
+    keptAttachments.length === attachments.length &&
+    keptMarks.length === marks.length
       ? view
       : {
           ...view,
           prompt,
           elements: keptElements,
           attachments: keptAttachments,
-          omitted: omitted(keptElements.length, keptAttachments.length),
+          ...(view.marks !== undefined && { marks: keptMarks }),
+          omitted: omitted(keptElements.length, keptAttachments.length, keptMarks.length),
         };
   // Only the capped fields and the directory path remain, and they can still be too long.
   if (jsonBytes(result) > CONCISE_BYTES) {
     throw new PkaError(
-      `The concise view of annotation ${view.id} is over ${CONCISE_BYTES} bytes without its elements and attachments; request detail full.`,
+      `The concise view of annotation ${view.id} is over ${CONCISE_BYTES} bytes without its elements, attachments, and mark pages; request detail full.`,
     );
   }
   return result;

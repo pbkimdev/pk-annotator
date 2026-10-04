@@ -82,7 +82,7 @@ The consumer passes `import.meta.hot` because a pre-bundled dependency has no HM
   launcher.ts  the hub: plain DOM button with an error badge; draggable, snaps to a corner; no React until first open
   <PickLayer>  takes pointer events only while picking
     <HoverBox> component name + file:line
-    <SelectionBox n> numbered tab outside the element's box, so it never covers the element
+    <SelectionBox n> numbered tab outside the element's box, so it never covers the element; only on the route it was picked on
     <MarqueeRect> | <LassoPolygon>
   <MarkLayer>  screenshot area and crop, recording area, rectangle, circle, freehand; drawings kept on the page
   <Panel>  one open at a time, beside the hub
@@ -114,6 +114,8 @@ Text pasted or dropped from outside the prompt arrives as plain text, a copy or 
 While no agent is connected, as the latest `pka:agent` message reports, Send also copies the annotation to the clipboard: the Copy as Markdown text with references resolved, followed by `Annotation files: <dir>`. `<dir>` is the stored annotation's directory from `pka:created`, relative to the workspace root when the store is inside it. Safari and Firefox accept a clipboard write only during the user activation of the click or key press, so Send calls `navigator.clipboard.write` before its first await with a `ClipboardItem` whose text is a promise that resolves when `pka:created` arrives. A browser without `ClipboardItem` gets `writeText` after the send. A pop-up then opens where panels open beside the hub, titled "Copied to clipboard" with the one line "Connect an agent over MCP for live replies" and OK; OK or Escape closes it, and "Don't show again" hides it for the tab session in `sessionStorage`. When the write fails, the pop-up is titled "Couldn't copy to clipboard" and always shows. While an agent is connected, Send does not copy.
 
 Screenshot starts an area gesture: a drag selects an area, and a click without a drag or Enter takes the whole viewport. The capture then opens a crop dialog with the full viewport image and a crop box at the chosen area, with handles on its corners and edges; Enter or ✓ keeps the box, an unchanged full box is a full screenshot, and Escape discards the capture. Record's panel starts a recording of the full viewport, or of an area dragged the same way (a click or Enter records the full viewport). Rectangle, Circle, and Freehand drawings stay on the page in document coordinates, so they scroll with the content and show only on the route they were drawn on, until their mark is deleted or sent. Finishing a drawing saves a mark without opening any panel: its one attachment is a viewport screenshot with the stroke flattened in, its prompt is that attachment's badge, and it joins the Send stack under the same 50-mark and 256 MB limits as Save, so the hub count rises. snapdom's `toCanvas` leaves `scale(devicePixelRatio)` on the canvas context, so the flattening sets its transform absolutely; a relative `scale()` placed the stroke at devicePixelRatio² times its points. The image scale is the canvas width over the root's `clientWidth`, which is the width snapdom clips to.
+
+Every pick and every saved mark records the page it was made on: its URL, and its route, the `location.pathname` that drawings use as their page identity. A mark keeps the page of its first Save when it is edited elsewhere, and keeps a copy of each pick's page, so picking a shared layout's element again on another route does not move an earlier mark. A picked element's numbered box, in the current selection or a saved mark, shows only on the route it was picked on and keeps its number on every route. On another route the box is neither drawn nor matched against that page's elements, even when the element is still connected, as a shared layout's elements are. Back on its route, the box follows the picked element, or, when the route rendered its content again, the element that the CSS selector recorded at the pick now finds. The boxes redraw when the capture reports a navigation, and a pick whose element has not rendered yet waits for it as the resource budget describes. Send describes, locates, and crops an element on its route; an element from another route is sent with the description taken at its pick and without a crop. The Send panel keeps the marks of every route and shows the route on the badge of each mark from another route. This follows the saved-mark model above: the hub counts every saved mark, Send sends all of them as one annotation, and a drawing's mark joins the Send stack while its drawing shows only on its own route. Hiding other routes' marks would make Send's result depend on the route it runs on.
 
 The Dictate button in both editors uses the Web Speech API (`SpeechRecognition` or `webkitSpeechRecognition`) in the overlay language (en-US or ko-KR). Interim results show at the cursor as a decoration that is not part of the document, and each final result is inserted at the cursor. The button is absent when the browser has neither constructor. Chromium sends the audio to a speech service, so dictation needs the network and the browser's speech backend.
 
@@ -174,7 +176,7 @@ The UI and Perf observers load on use; production carries zero bytes.
 | Network | Request metadata only, same ring-buffer cap. Request URLs and failed resource URLs lose their credentials and secret query and hash parameters, and only then are cut to 2,000 characters, so a `data:` URL cannot hold megabytes in the ring. One PerformanceObserver for `resource` entries keeps the timings of up to 500 fetch and XHR requests, so Server-Timing and transfer sizes survive a full resource timing buffer (Chromium holds 250 entries, and a Vite dev page fills it with module scripts). Its callback runs only when a request completes, it never resizes or reads the page's buffer, and stopping the capture disconnects it. Bodies are captured only for allowlisted same-origin paths, 64 KB each, 8 MB total. Credential-like keys in any JSON object or array body are redacted regardless of its declared content type. A JSON response without Content-Length is read from a clone until it ends or passes 64 KB, when the clone is cancelled. Event streams, NDJSON, and other streaming types are never cloned; only open, close, and byte count are recorded. The overlay's own requests (source maps for symbolication, images and fonts snapdom inlines) use the unwrapped fetch and are never recorded | Same |
 | Performance | No active observers beyond the Network one. Closing Perf pauses its observers and unsubscribes render tracking; web-vitals listeners remain registered once per page | Opening Perf resumes its buffered observers. bippy tracks only fibers React rendered, without a whole-tree scan or a 5,000-fiber cutoff; component source lookups are cached |
 | Recording | Off | Keyframes only at actions, navigations, and errors (one per error group). GIF/video are opt-in; frame callbacks run only during recording. GIF encoding loads on demand, with at most 120 frames, a 480 px longest edge and 32 MB. WebM is capped at 256 MB, a 1920 px longest edge, and 5 minutes |
-| Saved marks | At most 50 marks and 256 MB of saved captures; no timers | Each Save freezes attachment data. A current mark holds at most 50 pasted and screenshot image captures |
+| Saved marks | At most 50 marks and 256 MB of saved captures; no timers. While a pick of the current route waits for its element to render again, one MutationObserver on the body redraws the boxes after DOM changes | Each Save freezes attachment data. A current mark holds at most 50 pasted and screenshot image captures |
 | Drawings | No listeners while no drawing is kept | One passive `scroll` listener moves the kept drawings; route changes come from the capture's own navigation notifications. Dictation holds one recognition session only while its button is on |
 | Automation | Nothing mounts when `navigator.webdriver` is true (Playwright, e2e runs) | n/a |
 | Vite plugin | One `fs.watch` on the store root, one on `live/agents/`, and one per open annotation's directory; source transform runs only under `serve`. Under Vitest (`process.env.VITEST`) `annotator()` returns no plugins | Writes on events only |
@@ -203,7 +205,7 @@ It uses tools and nothing else. Resources and prompts are not used. Roots, sampl
 | Tool | Returns | Annotations |
 |---|---|---|
 | `list_annotations(status?, limit, cursor, detail)` | pending by default; cursor pagination | readOnlyHint |
-| `get_annotation(id, detail)` | prompt, elements, attachments with file paths and summaries (recording, error groups, perf verdict) | readOnlyHint |
+| `get_annotation(id, detail)` | prompt, elements, attachments with file paths and summaries (recording, error groups, perf verdict), and the page of each mark | readOnlyHint |
 | `wait_for_annotation(timeoutSec = 50, max 1800)` | the oldest pending annotation without a claim, or open one with an orphaned claim (see Lifecycle), immediately if one exists, otherwise the first to arrive; `{ timedOut: true }` as a normal result | readOnlyHint |
 | `set_status(id, status, note?)` | `acknowledged` creates `claim.json` with `O_EXCL`; `resolved` and `dismissed` append a status event | destructiveHint false, idempotentHint true |
 | `reply(id, text)` | appended to `thread.jsonl`, shown in the overlay | destructiveHint false, idempotentHint false |
@@ -247,8 +249,8 @@ The tab's retained sent ids synchronize in sequential batches of at most 200 wit
 
 **Responses.** `detail: "concise"` is the default and stays well under Claude Code's 10k-token warning.
 A concise annotation view is at most 20,000 UTF-8 bytes of JSON, excluding the operation and MCP envelopes.
-Its prompt takes at most 10,000 of those bytes, and the leading elements and attachments that still fit are kept, so `[element n]` and `[attachment n]` keep their numbers.
-`omitted` then counts the elements, attachments, and prompt characters left out and tells the agent to request `detail: "full"`.
+Its prompt takes at most 10,000 of those bytes, and the leading elements, attachments, and mark pages that still fit are kept, so `[element n]`, `[attachment n]`, and `## Mark n` keep their numbers.
+`omitted` then counts the elements, attachments, mark pages, and prompt characters left out and tells the agent to request `detail: "full"`.
 The claimant, URL, and route are capped, but the directory path is not; when these fixed fields alone pass the budget, the call fails with an error that asks for `detail: "full"`.
 A concise `list_annotations` page ends before the item that would pass 20,000 bytes, keeps at least one item, and returns a `nextCursor` after the last item it kept.
 `detail: "full"` has no budget.
@@ -311,13 +313,15 @@ In React Bench, tools that sent `file:line` let the agent find the right file 95
 ```xml
 <annotation id="a-17" route="/projects/abc" viewport="1440x900@2">
 <prompt>Archive [element 1] should confirm first; the row below jumps when this one leaves, as in [attachment 1: Recording 0:07].</prompt>
-<element n="1" source="apps/web/src/ui/button.tsx:4:10" usedAt="apps/web/src/project-row.tsx:48:7" owners="ProjectRow > ProjectList"
+<element n="1" url="http://localhost:3000/projects/abc" source="apps/web/src/ui/button.tsx:4:10" usedAt="apps/web/src/project-row.tsx:48:7" owners="ProjectRow > ProjectList"
          role="button" name="Archive project" crop="capture/frames/sel-1.webp"/>
 <capture>_interim/annotations/a-17/capture/summary.md</capture>
 </annotation>
 ```
 
 The prompt names elements and captures where the user placed them: `[element n]` matches the element's `n`, and `[attachment n: label]` matches the files under `capture/attachments/<n>/`.
+
+Each element carries the `url` of the page it was picked on, which can differ from the annotation's `url` and `route`, the page Send ran on. A batch Send also stores `marks`, one `{ n, url, route }` per saved mark, where `n` matches the prompt's `## Mark n` section; the copied Markdown lists them as `<mark n url/>`. Both stay in fields apart from the prompt, because a URL is page-derived. Annotations stored before these fields have neither, and still read.
 
 Per element, in order of how much it changes agent results: call-site `file:line:col`, owner component chain, the comment, selector (role and accessible name, test id, CSS), trimmed `outerHTML`, bounding box with viewport and scroll, route, cropped screenshot path. Computed styles only for style requests.
 

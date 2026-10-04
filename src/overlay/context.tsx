@@ -6,6 +6,7 @@ import type { PickMode, SelectHow } from "../select/pick.ts";
 import type { Box } from "../shared/schema.ts";
 import type { Corner, ThemeSignal } from "./launcher.ts";
 import type { ComposerAttachment } from "./registry.ts";
+import type { Picked } from "./send.ts";
 import type { Store } from "./store.ts";
 import type { ThreadStore } from "./thread-store.ts";
 
@@ -18,8 +19,13 @@ export const MAX_DRAFT_BYTES = 256 * 1024 * 1024;
 
 export type SavedMark = {
   id: string;
+  /** The page the mark was made on; a drawing's or a pick's own route decides where it shows. */
+  url: string;
+  route: string;
   prompt: string;
   elements: readonly Element[];
+  /** `picks[i]` is the pick of `elements[i]`, with the page it was made on. */
+  picks: readonly Picked[];
   attachments: readonly ComposerAttachment[];
   bytes: number;
 };

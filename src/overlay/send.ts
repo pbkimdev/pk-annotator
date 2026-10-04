@@ -13,7 +13,7 @@ import {
   MAX_CHUNK_BYTES,
 } from "../shared/channel.ts";
 import { RECORDING, RecordingManifestDraft } from "../shared/recording.ts";
-import type { Attachment, Box, Viewport } from "../shared/schema.ts";
+import type { Attachment, Box, MarkPage, Viewport } from "../shared/schema.ts";
 import { listen, send } from "./channel-client.ts";
 import { HOST_TAG } from "./launcher.ts";
 import type { LocatedElement } from "./markdown.ts";
@@ -39,30 +39,66 @@ export function currentViewport(): Viewport {
   };
 }
 
-// Host UI can remove a picked element before Send (a dialog that closes when the composer
-// takes focus), so each element is also described when it is picked.
-const pickedDescriptions = new WeakMap<Element, Description>();
+/**
+ * What a pick recorded: the page it was made on, and its description, because host UI can
+ * remove a picked element before Send (a dialog that closes when the composer takes focus).
+ * A saved mark keeps its own copies, because a shared layout's element can be picked again
+ * on another route.
+ */
+export type Picked = { url: string; route: string; description: Description };
+// The picks of the current selection.
+const picked = new WeakMap<Element, Picked>();
 
 export function remember(elements: readonly Element[]): void {
-  for (const element of elements) pickedDescriptions.set(element, describe(element));
+  for (const element of elements)
+    picked.set(element, {
+      url: location.href,
+      route: location.pathname,
+      description: describe(element),
+    });
 }
 
-function currentDescription(element: Element, n: number): Description {
-  if (element.isConnected) return describe(element);
-  const remembered = pickedDescriptions.get(element);
-  if (remembered === undefined)
-    throw new Error(`Element ${n} left the page before it was described`);
-  return remembered;
+/** Makes a saved mark's picks the current selection's again, for editing it. */
+export function restore(elements: readonly Element[], picks: readonly Picked[]): void {
+  for (const [index, element] of elements.entries()) {
+    const pick = picks[index];
+    if (pick === undefined) throw new Error(`Element ${index + 1} of the mark has no pick`);
+    picked.set(element, pick);
+  }
 }
 
-/** Describes and locates each selected element; `n` follows selection order. */
-export async function locateElements(elements: readonly Element[]): Promise<LocatedElement[]> {
+export function pickOf(element: Element): Picked {
+  const entry = picked.get(element);
+  if (entry === undefined) throw new Error(`<${element.localName}> was selected without a pick`);
+  return entry;
+}
+
+/**
+ * The element to show and capture for a pick: null off the route it was picked on, else the
+ * element itself, or, after the route rendered it again, the element its selector now finds.
+ */
+export function anchor(element: Element, pick: Picked): Element | null {
+  if (pick.route !== location.pathname) return null;
+  if (element.isConnected) return element;
+  return document.querySelector(pick.description.selector.css);
+}
+
+/** Describes and locates each element with its pick; `n` follows their order. */
+export async function locateElements(
+  elements: readonly Element[],
+  picks: readonly Picked[],
+): Promise<LocatedElement[]> {
   return Promise.all(
     elements.map(async (element, index) => {
-      const description = currentDescription(element, index + 1);
-      const location = await locate(element);
+      const pick = picks[index];
+      if (pick === undefined) throw new Error(`Element ${index + 1} has no pick`);
+      const { url, description: remembered } = pick;
+      const live = anchor(element, pick);
+      const description = live === null ? remembered : describe(live);
+      const location = await locate(live ?? element);
       const located: LocatedElement = {
         n: index + 1,
+        url,
         owners: location.owners,
         selector: description.selector,
         html: description.html,
@@ -225,20 +261,24 @@ export async function sendAnnotation(
   hot: ViteHotContext,
   prompt: string,
   elements: readonly Element[],
+  picks: readonly Picked[],
   composerAttachments: readonly ComposerAttachment[],
+  marks: readonly MarkPage[],
   onPhase: (phase: SendPhase) => void,
 ): Promise<{ id: string; dir: string; createdAt: string }> {
   if (elements.length > MAX_ELEMENTS) {
     throw new Error(`Select at most ${MAX_ELEMENTS} elements; ${elements.length} are selected`);
   }
   onPhase({ phase: "locating" });
-  const located = await locateElements(elements);
+  const located = await locateElements(elements, picks);
   const viewport = currentViewport();
   onPhase({ phase: "capturing" });
-  // Elements no longer on the page keep their description but get no crop.
-  const { page, crops } = await capture(
-    located.filter((ref) => elements[ref.n - 1]?.isConnected === true),
-  );
+  // Elements off their route or no longer on the page keep their description but get no crop.
+  const live = elements.map((element, index) => {
+    const pick = picks[index];
+    return pick === undefined ? null : anchor(element, pick);
+  });
+  const { page, crops } = await capture(located.filter((_ref, index) => live[index] !== null));
 
   const files: AttachmentFile[] = [{ path: "capture/frames/page.webp", data: page }];
   const attachments: Attachment[] = [
@@ -268,6 +308,7 @@ export async function sendAnnotation(
       prompt,
       elements: refs,
       attachments,
+      ...(marks.length > 0 && { marks }),
     },
     files: files.map((file) => ({ path: file.path, bytes: file.data.size })),
   });

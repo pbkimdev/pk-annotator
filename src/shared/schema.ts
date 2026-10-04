@@ -41,6 +41,8 @@ export const Selector = z.strictObject({
 // prompt lives only on Annotation.prompt.
 export const ElementRef = z.strictObject({
   n: z.number().int().positive(),
+  // The page the element was picked on; older stored annotations lack it.
+  url: z.string().optional(),
   source: z
     .string()
     .regex(/^.+:\d+:\d+$/, "source must be file:line:col")
@@ -67,6 +69,13 @@ export const Attachment = z.strictObject({
   summary: z.string(),
 });
 
+// The page a saved mark of a batch Send was made on; `n` matches its "## Mark n" section.
+export const MarkPage = z.strictObject({
+  n: z.number().int().positive(),
+  url: z.string(),
+  route: z.string(),
+});
+
 export const Annotation = z.strictObject({
   id: Id,
   createdAt: Timestamp,
@@ -76,6 +85,7 @@ export const Annotation = z.strictObject({
   prompt: z.string(),
   elements: z.array(ElementRef),
   attachments: z.array(Attachment),
+  marks: z.array(MarkPage).optional(),
 });
 
 export const AnnotationDraft = Annotation.omit({ id: true, createdAt: true });
@@ -145,6 +155,7 @@ export type Viewport = z.infer<typeof Viewport>;
 export type Box = z.infer<typeof Box>;
 export type Selector = z.infer<typeof Selector>;
 export type ElementRef = z.infer<typeof ElementRef>;
+export type MarkPage = z.infer<typeof MarkPage>;
 export type AttachmentKind = z.infer<typeof AttachmentKind>;
 export type Attachment = z.infer<typeof Attachment>;
 export type Annotation = z.infer<typeof Annotation>;

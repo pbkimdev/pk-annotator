@@ -1,4 +1,4 @@
-import type { AnnotationDraft, ElementRef } from "../shared/schema.ts";
+import type { AnnotationDraft, ElementRef, MarkPage } from "../shared/schema.ts";
 
 export type LocatedElement = ElementRef & { locator: string };
 
@@ -22,7 +22,7 @@ function attributes(pairs: [string, string | undefined][]): string {
  * Page-derived values stay in attributes, apart from the human prompt.
  */
 export function annotationBlock(
-  draft: Pick<AnnotationDraft, "route" | "viewport" | "prompt">,
+  draft: Pick<AnnotationDraft, "route" | "viewport" | "prompt"> & { marks: readonly MarkPage[] },
   elements: readonly LocatedElement[],
 ): string {
   const { w, h, dpr } = draft.viewport;
@@ -32,10 +32,18 @@ export function annotationBlock(
       ["viewport", `${w}x${h}@${dpr}`],
     ])}>`,
     `<prompt>${escape(draft.prompt)}</prompt>`,
+    ...draft.marks.map(
+      (mark) =>
+        `<mark${attributes([
+          ["n", String(mark.n)],
+          ["url", mark.url],
+        ])}/>`,
+    ),
     ...elements.map(
       (ref) =>
         `<element${attributes([
           ["n", String(ref.n)],
+          ["url", ref.url],
           ["source", ref.source],
           ["usedAt", ref.usedAt],
           ["owners", ref.owners.join(" > ")],

@@ -207,6 +207,7 @@ function printAnnotation(view: AnnotationView): void {
       `  ${attachment.kind}: ${attachment.path}${attachment.summary ? `  ${attachment.summary}` : ""}`,
     );
   }
+  for (const mark of view.marks ?? []) line(`  mark ${mark.n}: ${mark.url}`);
   for (const entry of view.thread ?? []) line(`  ${entry.at} ${entry.from}: ${entry.text}`);
   if (view.omitted !== undefined) line(view.omitted.note);
 }

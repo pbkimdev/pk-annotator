@@ -82,6 +82,47 @@ async function checkDeletedDraft(page: Page): Promise<void> {
   assert.equal(await page.getByTestId("pka-saved-mark").count(), 1);
 }
 
+/**
+ * On /lab with one saved drawing and one saved element mark: both stay on their route and
+ * return with it, the element mark onto the element the route renders again.
+ */
+async function checkMarksStayOnRoute(page: Page): Promise<void> {
+  const drawing = page.getByTestId("pka-drawing");
+  const elementMark = page.getByTestId("pka-selection-badge");
+  assert.equal(await drawing.count(), 1);
+  assert.equal(await elementMark.count(), 1);
+  await page.getByTestId("nav-home").click();
+  await page.locator("#b-rest").waitFor();
+  await drawing.waitFor({ state: "detached" });
+  await elementMark.waitFor({ state: "detached", timeout: 5_000 });
+  // The Send panel keeps the other route's marks and names their route.
+  const hub = page.locator("pk-annotator .pka-launcher");
+  const send = page.getByRole("menuitemcheckbox", { name: "Send", exact: true });
+  await hub.click();
+  await send.click();
+  await page.getByTestId("pka-saved-mark").first().waitFor();
+  assert.deepEqual(await page.getByTestId("pka-mark-route").allInnerTexts(), [
+    "/lab",
+    "/lab",
+    "/lab",
+    "/lab",
+  ]);
+  await hub.click();
+  await send.click();
+  await page.getByTestId("pka-panel").waitFor({ state: "detached" });
+  await page.getByTestId("nav-lab").click();
+  await drawing.waitFor({ state: "attached" });
+  await elementMark.waitFor({ state: "attached", timeout: 5_000 });
+  const outline = await elementMark.locator("..").boundingBox();
+  const button = await page.getByTestId("lab-fetch-items").boundingBox();
+  assert.ok(outline && button);
+  assert.deepEqual(
+    [outline.x, outline.y],
+    [button.x, button.y],
+    "The returned mark must outline the element its route rendered again",
+  );
+}
+
 /** Connects a claude-code pka-mcp session, runs `whileConnected`, and disconnects it. */
 async function checkAgentTheme(
   t: TestContext,
@@ -451,13 +492,8 @@ test(
       .filter({ hasText: /^4$/ })
       .waitFor({ state: "attached" });
     assert.equal(await page.getByTestId("pka-panel").count(), 0);
-    // A drawing stays on its route and returns with it.
     const drawing = page.getByTestId("pka-drawing");
-    assert.equal(await drawing.count(), 1);
-    await page.getByTestId("nav-home").click();
-    await drawing.waitFor({ state: "detached" });
-    await page.getByTestId("nav-lab").click();
-    await drawing.waitFor({ state: "attached" });
+    await checkMarksStayOnRoute(page);
 
     for (const attempt of [1, 2]) {
       if (attempt === 1) await choose("capture", "Record", "menuitemcheckbox");
@@ -553,6 +589,16 @@ test(
     );
     assert.deepEqual(regions, [{ x: 20, y: 20, w: 240, h: 120 }, null, null]);
     assert.equal(batch.elements.length, 1);
+    // Each mark and pick carries the page it was made on.
+    const labUrl = new URL("/lab", url).href;
+    assert.deepEqual(
+      batch.elements.map((element) => element.url),
+      [labUrl],
+    );
+    assert.deepEqual(
+      batch.marks,
+      [1, 2, 3, 4, 5, 6].map((n) => ({ n, url: labUrl, route: "/lab" })),
+    );
     const recordings = batch.attachments.filter((attachment) => attachment.kind === "recording");
     assert.equal(recordings.length, 2);
     assert.notEqual(recordings[0]?.path, recordings[1]?.path);

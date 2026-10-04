@@ -1,5 +1,5 @@
 import { CopyIcon, SendIcon } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import {
   COMPOSE,
@@ -13,6 +13,7 @@ import {
   type UiState,
 } from "./context.tsx";
 import { AgentIcon } from "./agent-icon.tsx";
+import { getCapture } from "./capture.ts";
 import { copyLater } from "./clipboard.ts";
 import { isAgentConnected } from "./agent-presence.ts";
 import { annotationBlock } from "./markdown.ts";
@@ -23,7 +24,10 @@ import {
   currentViewport,
   locateElements,
   MAX_ELEMENTS,
+  pickOf,
+  restore,
   sendAnnotation,
+  type Picked,
   type SendPhase,
 } from "./send.ts";
 import { useList, useStore } from "./store.ts";
@@ -147,6 +151,7 @@ export function Composer({ batch = false }: { batch?: boolean }) {
   const tooMany = useStore(ui, (state) => state.tooMany);
   const extra = useList(attachmentList);
   const ready = useStore(ui, (state) => canSubmit(state, batch));
+  const route = useSyncExternalStore(getCapture().subscribe, () => location.pathname);
   const [phase, setPhase] = useState<SendPhase | null>(null);
   const [error, setError] = useState<string | null>(null);
   const hasCurrent = selection.length > 0 || extra.length > 0 || ui.get().prompt.trim() !== "";
@@ -171,10 +176,15 @@ export function Composer({ batch = false }: { batch?: boolean }) {
         }
         frozen.push({ ...fixed, collect: async () => collected });
       }
+      // An edited mark keeps the page it was made on.
+      const edited = current.marks.find((item) => item.id === current.editing);
       const mark: SavedMark = {
         id: current.editing ?? markId(),
+        url: edited?.url ?? location.href,
+        route: edited?.route ?? location.pathname,
         prompt: current.prompt,
         elements: current.selection,
+        picks: current.selection.map(pickOf),
         attachments: frozen,
         bytes,
       };
@@ -211,13 +221,26 @@ export function Composer({ batch = false }: { batch?: boolean }) {
       : [
           {
             id: current.editing ?? markId(),
+            url: location.href,
+            route: location.pathname,
             prompt: current.prompt,
             elements: selection,
+            picks: selection.map(pickOf),
             attachments: extra,
             bytes: 0,
           },
         ];
-    const elements = [...new Set(chosen.flatMap((mark) => [...mark.elements]))];
+    // An element in several marks is sent once, with the pick of the first mark.
+    const picked = new Map<Element, Picked>();
+    for (const mark of chosen) {
+      for (const [index, element] of mark.elements.entries()) {
+        const pick = mark.picks[index];
+        if (pick === undefined) throw new Error(`Element ${index + 1} of a mark has no pick`);
+        if (!picked.has(element)) picked.set(element, pick);
+      }
+    }
+    const elements = [...picked.keys()];
+    const picks = [...picked.values()];
     const text = batch
       ? batchText(current.globalPrompt, chosen, elements)
       : tidy(references(current.prompt, elements, extra, 0));
@@ -230,15 +253,23 @@ export function Composer({ batch = false }: { batch?: boolean }) {
           batch ? { ...attachment, label: `Mark ${index + 1}: ${attachment.label}` } : attachment,
         ),
       );
-      const sending = sendAnnotation(hot, text, elements, allAttachments, setPhase);
+      const pages = batch
+        ? chosen.map((mark, index) => ({ n: index + 1, url: mark.url, route: mark.route }))
+        : [];
+      const sending = sendAnnotation(hot, text, elements, picks, allAttachments, pages, setPhase);
       // Without an agent the annotation also goes to the clipboard, for pasting into one.
       const copied = isAgentConnected()
         ? null
         : copyLater(
-            Promise.all([locateElements(elements), sending]).then(
+            Promise.all([locateElements(elements, picks), sending]).then(
               ([located, sent]) =>
                 `${annotationBlock(
-                  { route: location.pathname, viewport: currentViewport(), prompt: text },
+                  {
+                    route: location.pathname,
+                    viewport: currentViewport(),
+                    prompt: text,
+                    marks: pages,
+                  },
                   located,
                 )}\nAnnotation files: ${sent.dir}\n`,
             ),
@@ -286,6 +317,7 @@ export function Composer({ batch = false }: { batch?: boolean }) {
       return;
     }
     for (const attachment of mark.attachments) attachmentList.add(attachment);
+    restore(mark.elements, mark.picks);
     ui.set({
       selection: mark.elements,
       prompt: mark.prompt,
@@ -300,13 +332,14 @@ export function Composer({ batch = false }: { batch?: boolean }) {
 
   const copy = async () => {
     try {
-      const elements = await locateElements(selection);
+      const elements = await locateElements(selection, selection.map(pickOf));
       await navigator.clipboard.writeText(
         annotationBlock(
           {
             route: location.pathname,
             viewport: currentViewport(),
             prompt: tidy(references(prompt, selection, extra, 0)),
+            marks: [],
           },
           elements,
         ),
@@ -349,6 +382,7 @@ export function Composer({ batch = false }: { batch?: boolean }) {
           kind: "mark",
           n: index + 1,
           title: promptTitle(mark.prompt) || mark.attachments[0]?.label || t("Selected elements"),
+          route: mark.route === route ? null : mark.route,
         }))
       : [
           ...selection.map((element, index): Badge => ({
@@ -387,7 +421,7 @@ export function Composer({ batch = false }: { batch?: boolean }) {
       },
     };
     // t is a new function each render; language is what changes its output.
-  }, [batch, marks, selection, extra, ui, language]);
+  }, [batch, marks, selection, extra, ui, language, route]);
 
   return (
     <div className="space-y-3 p-4">

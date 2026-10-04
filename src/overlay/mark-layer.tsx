@@ -495,8 +495,11 @@ export function MarkLayer() {
       // Its prompt is the capture's badge token, as the editor would write it.
       const mark: SavedMark = {
         id: randomId(),
+        url: location.href,
+        route: location.pathname,
         prompt: `[[attachment:${id}]]`,
         elements: [],
+        picks: [],
         attachments: [{ ...attachment, collect: async () => collected }],
         bytes,
       };

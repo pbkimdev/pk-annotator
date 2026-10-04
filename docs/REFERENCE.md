@@ -47,7 +47,7 @@ While a Claude Code or Codex session is connected, that agent's theme replaces t
 
 ## Marks and Send
 
-Each Pick, Capture, and Annotate group shows its last-used tool and runs it on click; hover it to choose another. Pick and Capture tools open a Tiptap prompt editor; a finished drawing becomes a screenshot mark stacked for Send, without an editor. Save keeps a mark in this tab until reload or Exit. The Send entry lets you edit saved marks, add a global comment, and send one combined annotation. Settings switches the overlay between English and Korean; captured content keeps its original language. Exit lasts for the tab session until Alt+Shift+A.
+Each Pick, Capture, and Annotate group shows its last-used tool and runs it on click; hover it to choose another. Pick and Capture tools open a Tiptap prompt editor; a finished drawing becomes a screenshot mark stacked for Send, without an editor. Save keeps a mark in this tab until reload or Exit. The Send entry lets you edit saved marks, add a global comment, and send one combined annotation. Picks and drawings show only on the page they were made on and return with it; the Send panel keeps marks from other pages and names their page. Settings switches the overlay between English and Korean; captured content keeps its original language. Exit lasts for the tab session until Alt+Shift+A.
 
 ## MCP server
 
