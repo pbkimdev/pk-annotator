@@ -15,6 +15,13 @@ import { GetResult, ListResult } from "../src/ops/ops.ts";
 import { NetworkLine, RecordingManifest } from "../src/shared/recording.ts";
 import { TimelineEntry } from "../src/shared/timeline.ts";
 
+declare global {
+  interface Window {
+    /** CSP and Trusted Types violations since the page loaded, recorded by the smoke. */
+    pkaViolations: string[];
+  }
+}
+
 const exec = promisify(execFile);
 /** Asserts each `[attachment n: label]` in `prompt` names the attachment stored under n. */
 function assertAttachmentRefs(
@@ -190,6 +197,12 @@ test(
     // Only this fixture context impersonates a manual browser; the guard above stays intact.
     await interactive.addInitScript(() => {
       Object.defineProperty(navigator, "webdriver", { get: () => false });
+      window.pkaViolations = [];
+      document.addEventListener("securitypolicyviolation", (event) => {
+        window.pkaViolations.push(
+          `${event.effectiveDirective} ${event.blockedURI} ${event.sample} at ${event.sourceFile}:${event.lineNumber}:${event.columnNumber}`,
+        );
+      });
     });
     const page = await interactive.newPage();
     page.setDefaultTimeout(30_000);
@@ -408,6 +421,9 @@ test(
     await checkDeletedDraft(page);
 
     // A drag takes an area and Enter keeps it; a click takes the viewport and ✓ keeps it.
+    // Since the reload, snapdom has taken the recording's keyframes and takes these screenshots
+    // of the Lab's checkbox, radio, and range under the fixture's nonce style-src and Trusted
+    // Types without a violation.
     await choose("capture", "Screenshot", "menuitemcheckbox");
     await page.mouse.move(20, 20);
     await page.mouse.down();
@@ -422,6 +438,7 @@ test(
     await page.getByTestId("pka-crop-confirm").click();
     await page.getByTestId("pka-prompt").fill("Full screenshot mark");
     await page.getByTestId("pka-save").click();
+    assert.deepEqual(await page.evaluate(() => window.pkaViolations), []);
 
     await choose("annotate", "Circle", "menuitemcheckbox");
     await page.mouse.move(25, 25);

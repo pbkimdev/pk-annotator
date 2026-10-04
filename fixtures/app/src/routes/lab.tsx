@@ -1,5 +1,6 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { Component, useRef, useState, type ReactNode } from "react";
+import { CSP_NONCE } from "../csp-nonce.ts";
 
 export const Route = createFileRoute("/lab")({ component: Lab });
 
@@ -61,7 +62,41 @@ function Lab() {
 
   return (
     <main id="lab">
+      {/* A viewport-tall html makes snapdom's reconcile pass measure in a shadow root, and the
+      swatches' repeated inline styles under a page rule make it normalize style strings; both
+      paths set inline styles that a nonce style-src refuses. */}
+      <style nonce={CSP_NONCE}>{"html{min-height:100%}.lab-swatch{display:inline-block}"}</style>
       <h1>Lab</h1>
+      <section>
+        <label>
+          <input
+            type="checkbox"
+            ref={(input) => {
+              // An indeterminate checkbox makes snapdom draw its SVG replacement in Chromium.
+              if (input) input.indeterminate = true;
+            }}
+          />{" "}
+          Mixed
+        </label>{" "}
+        <label>
+          <input type="radio" name="lab-choice" defaultChecked /> On
+        </label>{" "}
+        <label>
+          <input type="range" defaultValue={30} /> Level
+        </label>
+      </section>
+      <section>
+        {Array.from({ length: 32 }, (_, index) => (
+          <span
+            key={index}
+            className="lab-swatch"
+            ref={(swatch) => {
+              if (swatch)
+                swatch.style.cssText = "width:12px;height:12px;margin:1px;background:#8a8f98";
+            }}
+          />
+        ))}
+      </section>
       <section>
         <button
           type="button"

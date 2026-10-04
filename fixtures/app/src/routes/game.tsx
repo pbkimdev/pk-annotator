@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
+import { CSP_NONCE } from "../csp-nonce.ts";
 
 export const Route = createFileRoute("/game")({ component: Game });
 
@@ -233,7 +234,7 @@ function Game() {
 
   return (
     <main className="game" data-testid="game">
-      <style>{STYLES}</style>
+      <style nonce={CSP_NONCE}>{STYLES}</style>
       <header>
         <h1 data-testid="game-title">Breakout</h1>
         <dl>

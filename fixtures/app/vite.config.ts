@@ -5,6 +5,7 @@ import viteReact from "@vitejs/plugin-react";
 import { defineConfig, type Connect, type Plugin } from "vite";
 import { z } from "zod";
 import { annotator } from "../../src/vite/index.ts";
+import { CSP_NONCE } from "./src/csp-nonce.ts";
 
 function sendJson(response: ServerResponse, statusCode: number, json: string) {
   response.statusCode = statusCode;
@@ -149,7 +150,8 @@ function handleApi(request: IncomingMessage, response: ServerResponse, next: Con
 // The narrowest image policy the overlay works under: screenshots need data: (see
 // captureCanvas in src/overlay/send.ts), pasted images need blob:. Trusted Types is enforced
 // so an HTML string sink in the overlay fails the smoke; src/trusted-types.ts registers the
-// default policy, which accepts only scripts.
+// default policy, which accepts only scripts. Styles need the nonce, so an inline style
+// attribute or a `<style>` without it from the overlay or snapdom fails the smoke too.
 const csp: Plugin = {
   name: "pk-annotator-fixture:csp",
   apply: "serve",
@@ -157,7 +159,7 @@ const csp: Plugin = {
     server.middlewares.use((_request, response, next) => {
       response.setHeader(
         "content-security-policy",
-        "img-src 'self' blob: data:; require-trusted-types-for 'script'; trusted-types default",
+        `img-src 'self' blob: data:; style-src 'self' 'nonce-${CSP_NONCE}'; require-trusted-types-for 'script'; trusted-types default`,
       );
       next();
     });

@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { z } from "zod";
+import { CSP_NONCE } from "../csp-nonce.ts";
 
 export const Route = createFileRoute("/practice")({ component: Practice });
 
@@ -109,7 +110,7 @@ function Practice() {
 
   return (
     <main className="practice" data-theme={dark ? "dark" : "light"} data-testid="practice">
-      <style>{STYLES}</style>
+      <style nonce={CSP_NONCE}>{STYLES}</style>
       <section className="problem" aria-labelledby="problem-title">
         <header>
           <h1 id="problem-title" data-testid="practice-title">

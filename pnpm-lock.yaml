@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  '@zumer/snapdom@3.2.0': 0b8d829f3a5340e2195c27018b32da2ed01d1f9f3a40eb5a12db1a8640061fba
+
 importers:
 
   .:
@@ -71,7 +74,7 @@ importers:
         version: 19.3.0(@types/react@19.3.0)
       '@zumer/snapdom':
         specifier: 3.2.0
-        version: 3.2.0
+        version: 3.2.0(patch_hash=0b8d829f3a5340e2195c27018b32da2ed01d1f9f3a40eb5a12db1a8640061fba)
       ai:
         specifier: 7.0.127
         version: 7.0.127(zod@4.6.5)
@@ -6826,7 +6829,7 @@ snapshots:
 
   '@yuku-toolchain/types@0.10.2': {}
 
-  '@zumer/snapdom@3.2.0': {}
+  '@zumer/snapdom@3.2.0(patch_hash=0b8d829f3a5340e2195c27018b32da2ed01d1f9f3a40eb5a12db1a8640061fba)': {}
 
   accepts@2.0.0:
     dependencies:

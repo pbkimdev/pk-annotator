@@ -1,5 +1,6 @@
 import { HeadContent, Link, Outlet, Scripts, createRootRoute } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
+import { CSP_NONCE } from "../csp-nonce.ts";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -15,6 +16,7 @@ function RootDocument(properties: { children: ReactNode }) {
   return (
     <html lang="en">
       <head>
+        <meta property="csp-nonce" nonce={CSP_NONCE} />
         <HeadContent />
       </head>
       <body>
