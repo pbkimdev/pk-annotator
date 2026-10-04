@@ -181,9 +181,9 @@ The hierarchy is role-based, not a uniform modular scale.
 - **Display:** the fluid `display` role, balanced and centered; the emphasized ending retains regular weight.
 - **Headline:** `headline` for installation headings.
 - **Body:** `body` for prose and the centered film caption; lead text and disclosures use the narrow measure.
-- **Small:** `small` for secondary prose; the local-files aside is italic.
+- **Small:** `small` for secondary prose.
 - **Label:** `label` for controls and navigation; brand and current chapter use weight 500.
-- **Caption:** `caption` for notes, metadata, requirements, and footer.
+- **Caption:** `caption` for notes, metadata, and footer.
 - **Mono:** `mono` for copyable text; version text uses the mono family with tabular numerals.
 
 ### Font delivery and Korean
@@ -250,7 +250,7 @@ Buttons and the Play label use the small control radius from the frontmatter.
 The film border is 1px; the active chapter underline and focus outline are 2px.
 Focus outlines are offset by 0.25rem and apply to links, buttons, summaries, video, and focusable code.
 The hub identity is an inline SVG core with three moons on a quarter orbit.
-The setup arrow is also an inline SVG; neither requires an icon font.
+The setup arrow and the footer GitHub mark from simple-icons are also inline SVGs; none requires an icon font.
 
 ## Components
 
@@ -282,15 +282,15 @@ The cover image contains the full poster, and its text label sits 1.25rem from t
 Its fill changes from ink to red on hover.
 The cover uses a localized text-only Play label.
 
-Chapter selection changes the video, poster, caption, transcript, download link, and caption track together, then requests playback.
+Chapter selection changes the video, poster, caption, download link, and caption track together, then requests playback.
 There is no initial autoplay, automatic chapter advance, entrance animation, or decorative animation loop.
 The player is muted, inline, and metadata-preloaded; native pause, timeline, and captions remain available.
 Playback pauses when the document becomes hidden or the film leaves the viewport.
 The cover retains a usable state if playback is blocked and transfers focus to the video when it successfully starts from the focused button.
 
 Loading feedback uses a polite status region.
-Failure reveals a retry button and direct video link; written steps remain available in a native disclosure.
-Without script, the native first video remains usable, chapters are direct MP4 links, and the initial written steps remain readable.
+Failure reveals a retry button and direct video link.
+Without script, the native first video remains usable and chapters are direct MP4 links.
 The footage disclosure states that the requests are demonstrations with no connected agent.
 
 ### Copy panels and disclosures
@@ -300,7 +300,7 @@ The flat inset-paper panel stacks text and a button with a 1rem gap and 1.25rem 
 Buttons appear only with script.
 Success updates a polite status region; clipboard failure selects and focuses the code for manual copying.
 A reserved 1.5rem status height limits layout movement.
-Native details and summary elements expose the terminal option and written demo steps without adding a custom accordion system.
+Native details and summary elements expose the terminal option without adding a custom accordion system.
 
 ### Motion
 
@@ -315,7 +315,7 @@ User-requested video playback remains available under reduced motion; the page d
 
 - **Do** keep surrounding chrome quiet so actual product footage supplies the detail.
 - **Do** preserve the serif prose, sans-serif controls, and mono command roles in both locales.
-- **Do** retain explicit playback, native video controls, localized captions, and readable steps.
+- **Do** retain explicit playback, native video controls, and localized captions.
 - **Do** keep current chapter state visible with text weight and an underline, not color alone.
 - **Do** preserve keyboard focus, 44px control height, and selectable setup text without script.
 

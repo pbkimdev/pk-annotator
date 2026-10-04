@@ -36,7 +36,6 @@ if (!video || !caption || !loading || !error || !download || !retry) {
 }
 const player = video;
 const chapters = [...document.querySelectorAll<HTMLAnchorElement>("[data-clip]")];
-const summaries = [...document.querySelectorAll<HTMLElement>("[data-summary]")];
 const track = player.querySelector("track");
 if (!track) throw new Error("Missing demo captions");
 const captions = track;
@@ -63,15 +62,12 @@ for (const chapter of chapters) {
     if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
     const clip = chapter.dataset.clip!;
-    const summary = summaries.find((item) => item.dataset.summary === clip);
-    if (!summary) throw new Error(`Missing demo summary: ${clip}`);
     player.pause();
     for (const item of chapters) {
       if (item === chapter) item.setAttribute("aria-current", "true");
       else item.removeAttribute("aria-current");
     }
-    for (const item of summaries) item.hidden = item !== summary;
-    caption.textContent = summary.dataset.caption!;
+    caption.textContent = chapter.dataset.caption!;
     error.hidden = true;
     loading.hidden = true;
     player.poster = `/demo/${clip}.webp`;

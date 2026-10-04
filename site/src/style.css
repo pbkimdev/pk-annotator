@@ -44,7 +44,6 @@ nav,
 .brand,
 .hero-note,
 .demo-meta,
-.requirements,
 .footer,
 .media-status,
 .copy-status {
@@ -265,16 +264,6 @@ summary:hover {
   text-decoration: underline;
   text-underline-offset: var(--sp-1);
 }
-.demo-meta summary {
-  margin-inline: auto;
-  font-size: var(--t-caption);
-}
-.demo-meta details p {
-  max-width: var(--measure);
-  margin: var(--sp-2) auto 0;
-  font-size: var(--t-small);
-  text-align: start;
-}
 .media-status,
 .media-error {
   margin-top: var(--sp-4);
@@ -289,12 +278,6 @@ summary:hover {
   align-items: center;
   min-height: 44px;
   margin-inline-start: var(--sp-4);
-}
-.aside {
-  margin-top: var(--sp-5);
-  color: var(--mute);
-  font-size: var(--t-small);
-  font-style: italic;
 }
 .install {
   padding-block: var(--sp-20);
@@ -350,10 +333,6 @@ code {
   min-height: 44px;
   align-items: center;
 }
-.requirements {
-  margin-top: var(--sp-6);
-  font-size: var(--t-caption);
-}
 .footer {
   display: flex;
   justify-content: space-between;
@@ -368,6 +347,10 @@ code {
   display: inline-flex;
   align-items: center;
   gap: var(--sp-2);
+}
+.footer .github {
+  width: 1em;
+  height: 1em;
 }
 .footer > div {
   display: flex;
