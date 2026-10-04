@@ -246,6 +246,18 @@ const AGENT_CSS = `
 :host(:not([data-agent])) .pka-glyph [data-part="core"] {
   transition: transform 420ms ${SPRING} 140ms, fill 180ms;
 }
+/* Hovering the hub turns the mark on its own path, apart from the entrance, working, and reply
+   motion on the svg. Claude's rays turn and swell; the OpenAI mark turns one of its six links,
+   which lands on itself. */
+.pka-agent-logo path {
+  transform-origin: 12px 12px;
+  transition: transform 560ms ${SPRING};
+}
+.pka-agent-logo[data-kind="codex"] path { transition-duration: 720ms; transition-timing-function: ${SETTLE}; }
+@media (prefers-reduced-motion: no-preference) {
+  .pka-launcher:hover .pka-agent-logo[data-kind="claude"] path { transform: rotate(30deg) scale(1.08); }
+  .pka-launcher:hover .pka-agent-logo[data-kind="codex"] path { transform: rotate(60deg); }
+}
 /* Recording and the open menu keep their own hub states. */
 :host([data-agent]) .pka-launcher[data-mode="record"] .pka-glyph [data-part="core"] {
   transform: translate(-4.2px, -4.2px) scale(1.25);

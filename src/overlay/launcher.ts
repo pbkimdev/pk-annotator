@@ -194,7 +194,9 @@ const LAUNCHER_CSS = `
   transform: rotate(90deg) scale(0.4);
   transition: transform 300ms ${EASE_OUT}, opacity 160ms ${EASE_OUT};
 }
-.pka-launcher:hover .pka-glyph [data-part="orbit"] { transform: rotate(-16deg); }
+@media (prefers-reduced-motion: no-preference) {
+  .pka-launcher:hover .pka-glyph [data-part="orbit"] { transform: rotate(-16deg); }
+}
 .pka-launcher[aria-expanded="true"] .pka-glyph [data-part="orbit"] {
   transform: rotate(-90deg) scale(0.2);
   opacity: 0;
