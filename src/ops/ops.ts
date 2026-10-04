@@ -262,23 +262,35 @@ function isOffered(state: State, claim: Claim | undefined): boolean {
   return isOrphaned(state, claim, Date.now());
 }
 
+async function isOfferedId(store: string, id: string): Promise<boolean> {
+  const state = await readListedState(store, id);
+  // Closed annotations are skipped before their claim is read.
+  return (
+    state !== undefined && !isClosed(state.status) && isOffered(state, await readClaim(store, id))
+  );
+}
+
+export interface Backlog {
+  ids: string[];
+  /** How many of `ids` wait_for_annotation would offer now. */
+  offered: number;
+}
+
+/** The annotations in the store now, so a follower can tell them from ones that arrive later. */
+export async function backlog(store: string): Promise<Backlog> {
+  const ids = await listIds(store);
+  const offered = await firstMatching(ids, ids.length, (id) => isOfferedId(store, id));
+  return { ids, offered: offered.length };
+}
+
 async function oldestOffered(
   store: string,
   skip: ReadonlySet<string>,
 ): Promise<AnnotationRecord | undefined> {
   const ids = (await listIds(store)).filter((id) => !skip.has(id));
-  const offered = async (id: string): Promise<boolean> => {
-    const state = await readListedState(store, id);
-    // Closed annotations are skipped before their claim is read.
-    return (
-      state !== undefined && !isClosed(state.status) && isOffered(state, await readClaim(store, id))
-    );
-  };
   for (let start = 0; start < ids.length; start += SCAN_BATCH) {
-    for (const id of await firstMatching(
-      ids.slice(start, start + SCAN_BATCH),
-      SCAN_BATCH,
-      offered,
+    for (const id of await firstMatching(ids.slice(start, start + SCAN_BATCH), SCAN_BATCH, (id) =>
+      isOfferedId(store, id),
     )) {
       // Claimed or changed between the scan and this read.
       const record = await loadListed(store, id);
