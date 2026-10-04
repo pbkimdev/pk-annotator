@@ -44,7 +44,7 @@ pk-annotator/
 └── package.json       # exports ./vite and ./overlay; bins pka, pka-mcp
 ```
 
-Tests sit beside the code they exercise as `*.test.ts`. [DEVELOPING.md](DEVELOPING.md#task-map) links each task to its implementation, schema, and check. The agent skill that teaches `pka` lives in pkai, per Paul's rule that skills go there.
+Tests sit beside the code they exercise as `*.test.ts`. [DEVELOPING.md](DEVELOPING.md#task-map) links each task to its implementation, schema, and check. The agent skill that teaches `pka`, `browser-annotations`, lives in pkcc, per Paul's rule that skills go there.
 
 ## Public API
 

@@ -12,7 +12,7 @@ Start with [docs/DEVELOPING.md](docs/DEVELOPING.md) for the task map, fixture wo
 - The MCP server targets specification 2026-07-28 through `@modelcontextprotocol/server` 2.x with `serveStdio`. Tools only, plus Claude Code's experimental `claude/channel` capability as DESIGN.md's Channel section defines it: no resources, prompts, sampling, roots, logging, or tasks. stdout carries only JSON-RPC; diagnostics go to stderr.
 - `src/ops/` holds every store operation. The CLI and the MCP server are thin wrappers over it; neither touches the store directly.
 - The resource budget in DESIGN.md is a requirement: no polling, no idle timers, bounded buffers, lazy loading of UI and Perf observers (the bounded Network observer starts with capture), nothing mounted when `navigator.webdriver` is true, nothing from `overlay/` or `core/` in a production build of a consumer.
-- Lint with Oxlint and the pkai anti-slop plugin; format with oxfmt. Do not add ESLint, Prettier, or Biome.
+- Lint with Oxlint and the pkcc anti-slop plugin; format with oxfmt. Do not add ESLint, Prettier, or Biome.
 - Handle errors where recovery can be decided; otherwise propagate them with context. Fail loudly on impossible states. No silent defaults.
 - No speculative abstraction layers, options, or files. Inline by default.
 - Code comments are rare and explain why, never what.
