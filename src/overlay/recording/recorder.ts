@@ -16,6 +16,7 @@ import { startMedia, type VideoStatus } from "./media.ts";
 export const RECORDING_ATTACHMENT = "recording";
 const MAX_ENTRIES = 5000;
 const MAX_FRAMES = 200;
+export const MAX_VIDEO_MS = 5 * 60 * 1000;
 const FIELDS =
   'input:not([type="hidden"],[type="checkbox"],[type="radio"],[type="button"],[type="submit"],[type="reset"],[type="image"],[type="range"],[type="color"],[type="file"]),textarea,select,[contenteditable]:not([contenteditable="false"])';
 const MASK = "•••••";
@@ -64,6 +65,7 @@ type Session = {
   framing: Promise<void> | undefined;
   untap: () => void;
   media: ReturnType<typeof startMedia> | null;
+  limit: number | undefined;
   region: Box | null;
 };
 
@@ -285,6 +287,7 @@ export function createRecorder() {
       framing: undefined,
       untap: () => {},
       media: null,
+      limit: undefined,
       region,
     };
     session = current;
@@ -300,6 +303,10 @@ export function createRecorder() {
       current.media = startMedia(withVideo, withGif, region, (video) => {
         if (session === current) state.set({ video });
       });
+    if (withVideo)
+      current.limit = window.setTimeout(() => {
+        if (session === current) void stop();
+      }, MAX_VIDEO_MS);
   }
 
   async function stop(): Promise<void> {
@@ -307,6 +314,7 @@ export function createRecorder() {
     if (current === undefined) return;
     const stoppedGeneration = generation;
     session = undefined;
+    window.clearTimeout(current.limit);
     current.untap();
     state.set({ phase: "stopping" });
     try {
@@ -373,6 +381,7 @@ export function createRecorder() {
       const current = session;
       session = undefined;
       if (current === undefined) return;
+      window.clearTimeout(current.limit);
       current.untap();
       current.pendingFrame = undefined;
       current.media?.dispose();

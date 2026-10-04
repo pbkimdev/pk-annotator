@@ -6,7 +6,12 @@ import type { Box } from "../../shared/schema.ts";
 import { NOTE, useOverlay, type UiState } from "../context.tsx";
 import { cn } from "../lib/utils.ts";
 import { attachments, registerPanel, type PanelProps } from "../registry.ts";
-import { createRecorder, RECORDING_ATTACHMENT, videoUnavailable } from "../recording/recorder.ts";
+import {
+  createRecorder,
+  MAX_VIDEO_MS,
+  RECORDING_ATTACHMENT,
+  videoUnavailable,
+} from "../recording/recorder.ts";
 import { useList, useStore, type Store } from "../store.ts";
 import { Button } from "../ui/button.tsx";
 
@@ -43,6 +48,7 @@ function RecordIcon({ className }: { className?: string }) {
 function Running() {
   const t = useText();
   const startedAt = useStore(recorder.state, (state) => state.startedAt);
+  const withVideo = useStore(recorder.state, (state) => state.withVideo);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
@@ -60,6 +66,7 @@ function Running() {
           aria-label={t("Elapsed time")}
         >
           {clock(now - startedAt)}
+          {withVideo && ` / ${clock(MAX_VIDEO_MS)}`}
         </time>
         <Button
           variant="destructive"
