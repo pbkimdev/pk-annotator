@@ -492,6 +492,9 @@ test(
       await page.locator("pk-annotator .pka-launcher[data-count] .pka-count").innerText(),
       "6",
     );
+    await page
+      .locator('pk-annotator .pka-launcher[aria-label*="6 marks waiting to send"]')
+      .waitFor({ state: "attached" });
     const global = "Fix these marks together";
     await page.getByTestId("pka-prompt").focus();
     await page.keyboard.press("Control+Home");

@@ -37,7 +37,7 @@ export type UiContext = {
   /** Owned by the launcher, so a reload follows this tab's annotations without the UI. */
   thread: ThreadStore;
   exit(): void;
-  /** The number of saved, unsent marks; the hub shows it in place of its glyph. */
+  /** The number of saved, unsent marks; the hub shows it in place of its glyph, inside a dashed ring. */
   setMarkCount(count: number): void;
 };
 
@@ -94,6 +94,15 @@ const glyph = () =>
     ),
     svg("circle", { "data-part": "core", cx: 16.2, cy: 16.2, r: 3.25 }),
     svg("path", { "data-part": "close", d: "M7.5 7.5l9 9M16.5 7.5l-9 9" }),
+  );
+
+// A dashed ring inside the hub's edge marks saved marks that are not yet sent, as a dashed
+// outline marks a draft. Twelve dashes, so turning by one dash (30deg) lands on itself.
+const pendingRing = () =>
+  svg(
+    "svg",
+    { class: "pka-pending", viewBox: "0 0 44 44", "aria-hidden": "true" },
+    svg("circle", { cx: 22, cy: 22, r: 18.75, pathLength: 12 }),
   );
 
 const EASE_OUT = "cubic-bezier(0.22, 1, 0.36, 1)";
@@ -196,6 +205,7 @@ const LAUNCHER_CSS = `
 }
 @media (prefers-reduced-motion: no-preference) {
   .pka-launcher:hover .pka-glyph [data-part="orbit"] { transform: rotate(-16deg); }
+  .pka-launcher[data-count]:not([aria-expanded="true"]):hover .pka-pending { rotate: -30deg; }
 }
 .pka-launcher[aria-expanded="true"] .pka-glyph [data-part="orbit"] {
   transform: rotate(-90deg) scale(0.2);
@@ -244,6 +254,35 @@ const LAUNCHER_CSS = `
 }
 .pka-launcher[data-count]:not([aria-expanded="true"]) .pka-count { opacity: 1; scale: 1; }
 .pka-launcher[data-count]:not([aria-expanded="true"]) .pka-glyph { opacity: 0; scale: 0.5; }
+.pka-pending {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  color: var(--pka-hub-accent);
+  opacity: 0;
+  rotate: 90deg;
+  scale: 0.8;
+  transition:
+    opacity 160ms ${EASE_OUT},
+    rotate 480ms ${EASE_OUT},
+    scale 260ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.pka-pending circle {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 0.45 0.55;
+}
+.pka-launcher[data-count]:not([aria-expanded="true"]) .pka-pending { opacity: 1; rotate: 0deg; scale: 1; }
+/* Another mark saved: the number drops onto the stack and the ring ticks one dash. */
+.pka-launcher[data-stack] .pka-count { animation: pka-hub-stack 360ms cubic-bezier(0.3, 0.7, 0.4, 1); }
+.pka-launcher[data-stack] .pka-pending { animation: pka-hub-tick 480ms ${EASE_OUT}; }
+@keyframes pka-hub-stack { from { translate: 0 -6px; scale: 0.7; } }
+@keyframes pka-hub-tick { from { rotate: 30deg; } }
 .pka-badge {
   position: absolute;
   top: -3px;
@@ -344,7 +383,7 @@ export function createLauncher(
   const badge = document.createElement("span");
   badge.className = "pka-badge";
   badge.setAttribute("aria-hidden", "true");
-  button.append(glyph(), count, badge);
+  button.append(glyph(), pendingRing(), count, badge);
   shadow.append(button);
   // Outside body, so a recording video restricted to body by Element Capture leaves the
   // overlay out. React 19 hydrates a document from body's first child and resolves html,
@@ -357,7 +396,7 @@ export function createLauncher(
     const errors = getBadge();
     const parts = ["Annotator"];
     if (agentLabel !== null) parts.push(`${agentLabel} connected`);
-    if (marks > 0) parts.push(`${marks} unsent ${marks === 1 ? "mark" : "marks"}`);
+    if (marks > 0) parts.push(`${marks} ${marks === 1 ? "mark" : "marks"} waiting to send`);
     if (errors > 0) parts.push(`${errors} open errors`);
     button.setAttribute("aria-label", parts.join(", "));
   };
@@ -372,6 +411,12 @@ export function createLauncher(
   const setMarkCount = (next: number) => {
     if (!Number.isInteger(next) || next < 0) {
       throw new Error(`setMarkCount expects a non-negative integer, got ${next}`);
+    }
+    // Restarts the stack cue when another mark is saved before the last cue ends.
+    if (marks > 0 && next > marks) {
+      delete button.dataset.stack;
+      void button.offsetWidth;
+      button.dataset.stack = "";
     }
     marks = next;
     if (next === 0) delete button.dataset.count;
@@ -399,6 +444,9 @@ export function createLauncher(
   button.addEventListener("animationend", (event) => {
     if (event.target === button && event.animationName === "pka-hub-react") {
       delete button.dataset.react;
+    }
+    if (event.target === count && event.animationName === "pka-hub-stack") {
+      delete button.dataset.stack;
     }
   });
 
