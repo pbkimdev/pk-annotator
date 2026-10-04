@@ -301,6 +301,17 @@
   font-variant-numeric: tabular-nums;
   text-align: center;
 }
+/* The hub's update dot, repeated on the group that holds the update. */
+.pka-node-dot {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  width: 9px;
+  height: 9px;
+  border-radius: 9999px;
+  background: var(--pka-connect);
+  box-shadow: 0 0 0 2px var(--pka-surface);
+}
 .pka-readout {
   position: absolute;
   inset: 0 auto auto 0;

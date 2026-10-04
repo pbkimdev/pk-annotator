@@ -23,6 +23,7 @@ import {
   CreateMessage,
   ErrorsMessage,
   FileChunkMessage,
+  InstallUpdateMessage,
   PresenceMessage,
   SetupMessage,
   SymbolicateMessage,
@@ -32,6 +33,7 @@ import {
   type SetupInfoMessage,
   type SymbolicatedMessage,
   type SyncedMessage,
+  type UpdateResultMessage,
 } from "../shared/channel.ts";
 import {
   RecordingErrors,
@@ -51,6 +53,7 @@ import {
 } from "../store/store.ts";
 import { sourcePlugin } from "./source.ts";
 import { symbolicate } from "./symbolicate.ts";
+import { createUpdater } from "./update.ts";
 
 const AnnotatorOptions = z.strictObject({
   bodies: z.array(z.string().startsWith("/")).optional(),
@@ -490,6 +493,25 @@ async function serve(
     client.send(CHANNEL.setupInfo, reply);
   });
 
+  const updater = createUpdater(server.config.root, workspaceRoot, warn);
+
+  listen(CHANNEL.installUpdate, InstallUpdateMessage, async (message, client) => {
+    let result: UpdateResultMessage;
+    try {
+      const outcome = await updater.install(message.version);
+      result = { requestId: message.requestId, outcome };
+    } catch (cause) {
+      error(`update to ${message.version} failed: ${describeError(cause)}`);
+      result = { requestId: message.requestId, outcome: "failed", message: describeError(cause) };
+    }
+    client.send(CHANNEL.updateResult, result);
+    if (result.outcome === "restart-manually") {
+      warn(`updated to ${message.version}; restart the dev server to load it`);
+    }
+    // Restarting closes the HMR socket; Vite's client reloads each page once the server is back.
+    if (result.outcome === "restart") await server.restart();
+  });
+
   listen(CHANNEL.sync, SyncMessage, async (message, client) => {
     const synced: SyncedMessage = { annotations: [] };
     for (const id of message.ids) {
@@ -548,6 +570,12 @@ async function serve(
   // A page with no agent connected gets no answer, so it never loads the agent theme.
   // Reads share the watcher's queue, so an older read never broadcasts after a newer one.
   listen(CHANNEL.presence, PresenceMessage, async (_message, client) => {
+    void updater.check().then(
+      (offer) => {
+        if (offer !== null) client.send(CHANNEL.update, offer);
+      },
+      (cause: unknown) => error(`update check failed: ${describeError(cause)}`),
+    );
     const answered = agentQueue.then(async () => {
       const agent = await readAgent();
       pushAgent(agent);

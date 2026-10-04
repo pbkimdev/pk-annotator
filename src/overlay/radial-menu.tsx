@@ -4,14 +4,18 @@ import {
   CircleDotIcon,
   CircleIcon,
   CheckIcon,
+  CircleAlertIcon,
+  CircleArrowUpIcon,
   HistoryIcon,
   LanguagesIcon,
   LassoSelectIcon,
+  LoaderCircleIcon,
   MousePointerClickIcon,
   PencilIcon,
   PlugIcon,
   PowerIcon,
   RectangleHorizontalIcon,
+  RotateCwIcon,
   SendIcon,
   Settings2Icon,
   SquareDashedMousePointerIcon,
@@ -34,7 +38,7 @@ import type { ViteHotContext } from "vite/types/hot.d.ts";
 import type { PickMode } from "../select/pick.ts";
 import { AgentIcon } from "./agent-icon.tsx";
 import { isAgentConnected, subscribeAgentConnected } from "./agent-presence.ts";
-import type { SetupInfoMessage } from "../shared/channel.ts";
+import type { SetupInfoMessage, UpdateResultMessage } from "../shared/channel.ts";
 import { listen, send } from "./channel-client.ts";
 import { copyLater } from "./clipboard.ts";
 import { COMPOSE, THREAD, useOverlay, type UiState } from "./context.tsx";
@@ -42,6 +46,7 @@ import { useText } from "./language.ts";
 import { HUB_INSET, HUB_SIZE, SHORTCUT_LABEL, type Corner } from "./launcher.ts";
 import { panels } from "./registry.ts";
 import { useList, useStore } from "./store.ts";
+import { getUpdate, setUpdate, subscribeUpdate } from "./update-state.ts";
 
 const MENU_ID = "pka-menu";
 const ITEM = 40;
@@ -61,6 +66,8 @@ const CONNECT_ASIDE = { radius: 99, angle: 21 };
 // Crossing from one item to the next clears the readout briefly; the item waits it out.
 const CONNECT_RETURN_MS = 140;
 const SETUP_TIMEOUT_MS = 5000;
+// Longer than the plugin's 5-minute install timeout, so its own failure arrives first.
+const UPDATE_TIMEOUT_MS = 6 * 60 * 1000;
 /** Each corner's menu sweeps counterclockwise through the quadrant that faces the page. */
 const START = {
   "bottom-left": 0,
@@ -95,6 +102,8 @@ type Group = {
   label: string;
   icon: Icon;
   active: boolean;
+  /** Repeats the hub's update dot on the group that holds the update. */
+  dot?: boolean;
   children: Leaf[];
   /** A tool group shows, and on click runs, its remembered tool instead of opening. */
   tool?: Leaf;
@@ -159,6 +168,33 @@ async function requestSetup(hot: ViteHotContext): Promise<SetupInfoMessage> {
   });
 }
 
+/** Asks the dev server to install `version`; resolves when it is installed. */
+async function requestUpdate(
+  hot: ViteHotContext,
+  version: string,
+): Promise<Exclude<UpdateResultMessage["outcome"], "failed">> {
+  const { CHANNEL, UpdateResultMessage } = await import("../shared/channel.ts");
+  const requestId = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      stop();
+      reject(
+        new Error(`No reply from the dev server within 6 minutes for the update to ${version}`),
+      );
+    }, UPDATE_TIMEOUT_MS);
+    const stop = listen(hot, CHANNEL.updateResult, UpdateResultMessage, (message) => {
+      if (message.requestId !== requestId) return;
+      window.clearTimeout(timer);
+      stop();
+      if (message.outcome === "failed") reject(new Error(message.message));
+      else resolve(message.outcome);
+    });
+    send(hot, CHANNEL.installUpdate, { requestId, version });
+  });
+}
+
 function shellWord(word: string): string {
   return /^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replaceAll("'", `'\\''`)}'`;
 }
@@ -194,7 +230,8 @@ function readTools(): Tools {
 
 function useEntries(tools: Tools): Entry[] {
   const t = useText();
-  const { ui, thread, exit } = useOverlay();
+  const { ui, thread, exit, hot } = useOverlay();
+  const update = useSyncExternalStore(subscribeUpdate, getUpdate);
   const picking = useStore(ui, (state) => state.picking);
   const gesture = useStore(ui, (state) => state.gesture);
   const panel = useStore(ui, (state) => state.panel);
@@ -218,6 +255,56 @@ function useEntries(tools: Tools): Entry[] {
     if (tool === undefined) throw new Error(`Tool group ${id} has no tools`);
     return { id, label, icon: tool.icon, active, children, tool };
   };
+
+  // Restarting the dev server reloads the page, which discards unsent marks, so they block it.
+  function updateLeaf(offer: NonNullable<typeof update>): Leaf {
+    const leaf = { id: "update", stay: true };
+    if (offer.status === "installing") {
+      return {
+        ...leaf,
+        label: `${t("Updating to")} ${offer.latest}…`,
+        icon: LoaderCircleIcon,
+        run() {},
+      };
+    }
+    if (offer.status === "restart-manually") {
+      return {
+        ...leaf,
+        label: t("Restart the dev server to finish"),
+        icon: RotateCwIcon,
+        run() {},
+      };
+    }
+    if (pending > 0) {
+      return {
+        ...leaf,
+        label: t("Send or clear marks to update"),
+        icon: CircleArrowUpIcon,
+        run() {},
+      };
+    }
+    return {
+      ...leaf,
+      label:
+        offer.status === "failed"
+          ? `${t("Update failed. Retry")} ${offer.latest}`
+          : `${t("Update to")} ${offer.latest}`,
+      icon: offer.status === "failed" ? CircleAlertIcon : CircleArrowUpIcon,
+      run() {
+        setUpdate({ ...offer, status: "installing" });
+        // On "restart" the dev server restarts and Vite's client reloads the page.
+        requestUpdate(hot, offer.latest).then(
+          (outcome) => {
+            if (outcome === "restart-manually") setUpdate({ ...offer, status: outcome });
+          },
+          (cause: unknown) => {
+            console.error(`[pk-annotator] updating to ${offer.latest} failed`, cause);
+            setUpdate({ ...offer, status: "failed" });
+          },
+        );
+      },
+    };
+  }
 
   return [
     toolGroup("pick", t("Pick elements"), picking !== null, [
@@ -319,7 +406,9 @@ function useEntries(tools: Tools): Entry[] {
       label: t("Settings"),
       icon: Settings2Icon,
       active: panel === THREAD,
+      dot: update !== null,
       children: [
+        ...(update === null ? [] : [updateLeaf(update)]),
         {
           id: "history",
           label: t("History"),
@@ -401,6 +490,7 @@ function Node({
           style={{ left: ITEM / 2 + tick.x - 2, top: ITEM / 2 + tick.y - 2 }}
         />
       )}
+      {"dot" in entry && entry.dot === true && <span aria-hidden="true" className="pka-node-dot" />}
       {"badge" in entry && entry.badge !== undefined && entry.badge > 0 && (
         <span aria-hidden="true" className="pka-node-badge">
           {entry.badge > 99 ? "99+" : entry.badge}
@@ -491,6 +581,9 @@ export function RadialMenu() {
   const connected = useSyncExternalStore(subscribeAgentConnected, isAgentConnected);
   const [copied, setCopied] = useState<"ok" | "failed" | null>(null);
   const [aside, setAside] = useState(false);
+  const updateLabel = entries
+    .flatMap((entry) => ("children" in entry ? entry.children : []))
+    .find((child) => child.id === "update")?.label;
   const root = useRef<HTMLDivElement>(null);
   const intent = useRef<number | undefined>(undefined);
   const open = menu !== "closed";
@@ -514,6 +607,12 @@ export function RadialMenu() {
     target?.focus();
   }, [menu]);
   useEffect(() => () => window.clearTimeout(intent.current), []);
+  useEffect(() => {
+    if (updateLabel === undefined) return;
+    setHint((current) =>
+      current?.id === "settings/update" ? { ...current, label: updateLabel } : current,
+    );
+  }, [updateLabel]);
   useEffect(() => {
     // Its own readout keeps it in place, so it never slides out from under the pointer.
     if (hint?.id === "connect") return;

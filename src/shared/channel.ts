@@ -34,6 +34,13 @@ import { AnnotationDraft, ErrorGroup, Id, RelativePath, State, ThreadEntry } fro
 //   overlay  pka:setup       {requestId} when Connect agent is chosen
 //   plugin   pka:setup-info  {requestId, root, store, command} pka-mcp's --root, the store,
 //                            and the command that launches the installed pka-mcp, or null
+//
+// Updating the package:
+//   plugin   pka:update          {current, latest} in reply to pka:presence while npm has a newer release
+//   overlay  pka:install-update  {requestId, version} when Update is chosen
+//   plugin   pka:update-result   {requestId, outcome} "restart" just before the dev server restarts and
+//                                the page reloads, "restart-manually" when only a process restart loads
+//                                the plugin, or "failed" with a message
 export const CHANNEL = {
   create: "pka:create",
   file: "pka:file",
@@ -51,6 +58,9 @@ export const CHANNEL = {
   agent: "pka:agent",
   setup: "pka:setup",
   setupInfo: "pka:setup-info",
+  update: "pka:update",
+  installUpdate: "pka:install-update",
+  updateResult: "pka:update-result",
 } as const;
 
 export const MAX_CHUNK_BYTES = 512 * 1024;
@@ -99,6 +109,10 @@ export const SymbolicateMessage = z.strictObject({
 export const PresenceMessage = z.strictObject({});
 
 export const SetupMessage = z.strictObject({ requestId: Id });
+
+const Version = z.string().regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/);
+
+export const InstallUpdateMessage = z.strictObject({ requestId: Id, version: Version });
 
 // plugin -> overlay
 
@@ -162,6 +176,13 @@ export const AgentMessage = z.strictObject({
   cause: z.enum(["presence", "change"]),
 });
 
+export const UpdateMessage = z.strictObject({ current: Version, latest: Version });
+
+export const UpdateResultMessage = z.discriminatedUnion("outcome", [
+  z.strictObject({ requestId: Id, outcome: z.enum(["restart", "restart-manually"]) }),
+  z.strictObject({ requestId: Id, outcome: z.literal("failed"), message: z.string() }),
+]);
+
 export type CreateMessage = z.infer<typeof CreateMessage>;
 export type FileChunkMessage = z.infer<typeof FileChunkMessage>;
 export type ErrorsMessage = z.infer<typeof ErrorsMessage>;
@@ -178,6 +199,9 @@ export type PresenceMessage = z.infer<typeof PresenceMessage>;
 export type AgentMessage = z.infer<typeof AgentMessage>;
 export type SetupMessage = z.infer<typeof SetupMessage>;
 export type SetupInfoMessage = z.infer<typeof SetupInfoMessage>;
+export type UpdateMessage = z.infer<typeof UpdateMessage>;
+export type InstallUpdateMessage = z.infer<typeof InstallUpdateMessage>;
+export type UpdateResultMessage = z.infer<typeof UpdateResultMessage>;
 
 export interface ChannelEvents {
   [CHANNEL.create]: CreateMessage;
@@ -196,4 +220,7 @@ export interface ChannelEvents {
   [CHANNEL.agent]: AgentMessage;
   [CHANNEL.setup]: SetupMessage;
   [CHANNEL.setupInfo]: SetupInfoMessage;
+  [CHANNEL.update]: UpdateMessage;
+  [CHANNEL.installUpdate]: InstallUpdateMessage;
+  [CHANNEL.updateResult]: UpdateResultMessage;
 }

@@ -6,6 +6,7 @@ import { isAgentWorking, subscribeHubState } from "./hub-state.ts";
 import { agentIcons, getBadge, subscribeBadge } from "./registry.ts";
 import { svg } from "./svg.ts";
 import type { ThreadStore } from "./thread-store.ts";
+import { getUpdate, setUpdate, subscribeUpdate } from "./update-state.ts";
 
 export const HOST_TAG = "pk-annotator";
 export const SHORTCUT_LABEL = "Alt+Shift+A";
@@ -14,6 +15,7 @@ export const CORNER_KEY = "pka:corner";
 export const SENT_KEY = "pka:sent";
 const AGENT: typeof CHANNEL.agent = "pka:agent";
 const PRESENCE: typeof CHANNEL.presence = "pka:presence";
+const UPDATE: typeof CHANNEL.update = "pka:update";
 type Receive = Parameters<ViteHotContext["on"]>[1];
 
 export type Theme = "light" | "dark";
@@ -300,6 +302,18 @@ const LAUNCHER_CSS = `
   text-align: center;
 }
 .pka-badge[hidden] { display: none; }
+/* A newer release: Settings offers it. */
+.pka-update {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 9999px;
+  background: var(--pka-connect);
+  box-shadow: 0 0 0 2px var(--pka-surface);
+}
+.pka-update[hidden] { display: none; }
 @media (prefers-reduced-motion: reduce) {
   .pka-launcher, .pka-launcher *, .pka-launcher::before {
     transition: none !important;
@@ -383,7 +397,10 @@ export function createLauncher(
   const badge = document.createElement("span");
   badge.className = "pka-badge";
   badge.setAttribute("aria-hidden", "true");
-  button.append(glyph(), pendingRing(), count, badge);
+  const updateDot = document.createElement("span");
+  updateDot.className = "pka-update";
+  updateDot.setAttribute("aria-hidden", "true");
+  button.append(glyph(), pendingRing(), count, badge, updateDot);
   shadow.append(button);
   // Outside body, so a recording video restricted to body by Element Capture leaves the
   // overlay out. React 19 hydrates a document from body's first child and resolves html,
@@ -398,6 +415,8 @@ export function createLauncher(
     if (agentLabel !== null) parts.push(`${agentLabel} connected`);
     if (marks > 0) parts.push(`${marks} ${marks === 1 ? "mark" : "marks"} waiting to send`);
     if (errors > 0) parts.push(`${errors} open errors`);
+    const update = getUpdate();
+    if (update !== null) parts.push(`update ${update.latest} available`);
     button.setAttribute("aria-label", parts.join(", "));
   };
   const renderBadge = () => {
@@ -466,6 +485,25 @@ export function createLauncher(
     });
   };
   hot.on(AGENT, receiveAgent);
+  const renderUpdate = () => {
+    updateDot.hidden = getUpdate() === null;
+    renderLabel();
+  };
+  renderUpdate();
+  const stopUpdate = subscribeUpdate(renderUpdate);
+  // The plugin sends pka:update only while npm has a newer release, so the schema loads only then.
+  const receiveUpdate: Receive = (payload) => {
+    void import("../shared/channel.ts").then(({ UpdateMessage }) => {
+      const parsed = UpdateMessage.safeParse(payload);
+      if (!parsed.success) {
+        console.error(`[pk-annotator] dropped an invalid ${UPDATE} message`, parsed.error);
+        return;
+      }
+      if (getUpdate()?.status === "installing") return;
+      setUpdate({ ...parsed.data, status: "available" });
+    });
+  };
+  hot.on(UPDATE, receiveUpdate);
   send(hot, PRESENCE, {});
 
   // The thread store loads with the UI, or at mount when this tab has sent annotations, so
@@ -587,6 +625,9 @@ export function createLauncher(
     unmount() {
       window.removeEventListener("keydown", onKeyDown, { capture: true });
       hot.off(AGENT, receiveAgent);
+      hot.off(UPDATE, receiveUpdate);
+      stopUpdate();
+      setUpdate(null);
       stopBadge();
       stopHubState();
       themeSignal.stop();
