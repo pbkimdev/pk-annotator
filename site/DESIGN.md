@@ -1,308 +1,328 @@
 ---
 name: pk-annotator site
-description: The public site drawn as a cyanotype drawing set, where marking up the live page is a redline.
+description: A quiet paper-and-ink site for browser-based AI development, demonstrated through real app footage.
 colors:
-  prussian-ground: "#0d3580"
-  prussian-deep: "#0a2a68"
-  prussian-ink: "#071c46"
-  hairline-white: "#eef3ff"
-  hairline-soft: "#b9cdf5"
-  hairline-faint: "rgb(238 243 255 / 0.22)"
-  grid-minor: "rgb(238 243 255 / 0.055)"
-  grid-major: "rgb(238 243 255 / 0.1)"
-  redline-pencil: "#ff7a5c"
-  pick-highlighter: "#ffe14d"
+  paper: "#fafaf9"
+  paper-2: "#f3f3f2"
+  paper-3: "#efefee"
+  ink: "#282828"
+  ink-3: "#504945"
+  mute: "#6b6866"
+  rule-strong: "#cbcbcb"
+  accent: "#ad2111"
+  accent-tint: "rgba(173, 33, 17, 0.06)"
 typography:
   display:
-    fontFamily: "Barlow Condensed, Do Hyeon, Arial Narrow, sans-serif"
-    fontSize: "clamp(3rem, 5.5vw, 5.4rem)"
-    fontWeight: 600
-    lineHeight: 0.98
+    fontFamily: "Source Serif 4, Iowan Old Style, Georgia, serif"
+    fontSize: "clamp(2.4rem, 6vw, 3.4rem)"
+    fontWeight: 400
+    lineHeight: 1.2
     letterSpacing: "-0.01em"
   headline:
-    fontFamily: "Barlow Condensed, Do Hyeon, Arial Narrow, sans-serif"
-    fontSize: "clamp(2.3rem, 4.6vw, 4rem)"
-    fontWeight: 600
-    lineHeight: 0.98
-  title:
-    fontFamily: "Barlow Condensed, Do Hyeon, Arial Narrow, sans-serif"
-    fontSize: "clamp(1.5rem, 2.4vw, 2rem)"
-    fontWeight: 600
-    lineHeight: 0.98
+    fontFamily: "Source Serif 4, Iowan Old Style, Georgia, serif"
+    fontSize: "1.75rem"
+    fontWeight: 400
+    lineHeight: 1.4
+  display-ko:
+    fontFamily: "Archivo, Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif"
+    fontSize: "clamp(2.4rem, 6vw, 3.4rem)"
+    fontWeight: 400
+    lineHeight: 1.4
+    letterSpacing: "-0.01em"
+  headline-ko:
+    fontFamily: "Archivo, Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif"
+    fontSize: "1.75rem"
+    fontWeight: 400
+    lineHeight: 1.4
   body:
-    fontFamily: "Barlow, Apple SD Gothic Neo, Malgun Gothic, Noto Sans KR, system-ui, sans-serif"
-    fontSize: "1.0625rem"
+    fontFamily: "Source Serif 4, Iowan Old Style, Georgia, serif"
+    fontSize: "17px"
     fontWeight: 400
     lineHeight: 1.6
-  prose:
-    fontFamily: "Barlow, Apple SD Gothic Neo, Malgun Gothic, Noto Sans KR, system-ui, sans-serif"
-    fontSize: "1.125rem"
+  small:
+    fontFamily: "Source Serif 4, Iowan Old Style, Georgia, serif"
+    fontSize: "15px"
     fontWeight: 400
     lineHeight: 1.6
   label:
-    fontFamily: "Barlow Condensed, Do Hyeon, Arial Narrow, sans-serif"
-    fontSize: "0.75rem"
-    fontWeight: 500
-    letterSpacing: "0.1em"
-  field-value:
-    fontFamily: "Barlow Condensed, Do Hyeon, Arial Narrow, sans-serif"
-    fontSize: "1.05rem"
-    fontWeight: 600
-    letterSpacing: "0.04em"
-  hand:
-    fontFamily: "Architects Daughter, Nanum Pen Script, cursive"
-    fontSize: "18px"
+    fontFamily: "Archivo, Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif"
+    fontSize: "15px"
     fontWeight: 400
+  caption:
+    fontFamily: "Archivo, Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif"
+    fontSize: "13px"
+    fontWeight: 400
+    lineHeight: 1.6
   mono:
-    fontFamily: "JetBrains Mono, ui-monospace, monospace"
-    fontSize: "0.8rem"
+    fontFamily: "Geist Mono, ui-monospace, SFMono-Regular, Menlo, monospace"
+    fontSize: "13px"
     fontWeight: 400
-    lineHeight: 1.65
+    lineHeight: 1.6
 rounded:
-  none: "0"
-  tab: "2px"
-  pill: "22px"
-  balloon: "50%"
+  radius: "0"
+  radius-soft: "2px"
 spacing:
-  xs: "8px"
-  sm: "12px"
-  md: "16px"
-  sheet-gap: "clamp(20px, 3vw, 40px)"
-  sheet-pad-x: "clamp(20px, 4vw, 64px)"
-  frame: "min(1400px, 100% - 2 * clamp(12px, 2.4vw, 32px))"
+  sp-1: "0.25rem"
+  sp-2: "0.5rem"
+  sp-3: "0.75rem"
+  sp-4: "1rem"
+  sp-5: "1.25rem"
+  sp-6: "1.5rem"
+  sp-8: "2rem"
+  sp-10: "2.5rem"
+  sp-12: "3rem"
+  sp-15: "3.75rem"
+  sp-20: "5rem"
 components:
-  launcher:
-    backgroundColor: "{colors.hairline-white}"
-    textColor: "{colors.prussian-ink}"
+  button-primary:
+    backgroundColor: "{colors.ink}"
+    textColor: "{colors.paper}"
     typography: "{typography.label}"
-    rounded: "{rounded.tab}"
-    height: "44px"
-    padding: "0 16px 0 10px"
-  launcher-hover:
-    backgroundColor: "{colors.hairline-soft}"
-  launcher-pressed:
-    backgroundColor: "{colors.pick-highlighter}"
-    rounded: "{rounded.pill}"
-  copy-field:
-    backgroundColor: "{colors.prussian-ink}"
-    textColor: "{colors.hairline-white}"
-    typography: "{typography.mono}"
-    rounded: "{rounded.none}"
-    padding: "11px 14px"
-  copy-button:
-    backgroundColor: "{colors.hairline-white}"
-    textColor: "{colors.prussian-ink}"
-    rounded: "{rounded.none}"
-    padding: "0 16px"
-  copy-button-hover:
-    backgroundColor: "{colors.hairline-soft}"
-  ghost-tab:
-    textColor: "{colors.hairline-white}"
-    rounded: "{rounded.tab}"
-    padding: "4px 10px"
-  panel:
-    backgroundColor: "{colors.prussian-ink}"
-    textColor: "{colors.hairline-white}"
-    rounded: "{rounded.none}"
-  balloon:
-    textColor: "{colors.hairline-white}"
-    rounded: "{rounded.balloon}"
-    size: "20px"
-  balloon-lit:
-    backgroundColor: "{colors.hairline-white}"
-    textColor: "{colors.prussian-ink}"
-  delta-mark:
-    backgroundColor: "{colors.redline-pencil}"
-    textColor: "{colors.prussian-ink}"
-    width: "22px"
-    height: "19px"
+    rounded: "{rounded.radius-soft}"
+    padding: "0.75rem 1.25rem"
+  button-primary-hover:
+    backgroundColor: "{colors.ink-3}"
+  button-copy:
+    backgroundColor: "{colors.ink}"
+    textColor: "{colors.paper}"
+    typography: "{typography.label}"
+    rounded: "{rounded.radius-soft}"
+    padding: "0.75rem 1rem"
+  button-copy-hover:
+    backgroundColor: "{colors.ink-3}"
+  button-secondary:
+    backgroundColor: "{colors.paper}"
+    textColor: "{colors.ink}"
+    typography: "{typography.label}"
+    rounded: "{rounded.radius-soft}"
+    padding: "0.75rem 1rem"
+  button-secondary-hover:
+    backgroundColor: "{colors.paper-3}"
+  chapter:
+    textColor: "{colors.mute}"
+    typography: "{typography.label}"
+  chapter-current:
+    textColor: "{colors.ink}"
+  copy-panel:
+    backgroundColor: "{colors.paper-2}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.radius}"
+    padding: "1.25rem"
+  film:
+    backgroundColor: "{colors.paper-2}"
+    rounded: "{rounded.radius}"
+    width: "100%"
 ---
 
 # Design System: pk-annotator site
 
 ## Overview
 
-**Creative North Star: "The Redline Drawing Set"**
+**Creative North Star: "The Film Review Sheet"**
 
-The site is a cyanotype drawing set.
-Each section is one sheet: a solid Prussian-blue ground drawn in white hairlines,
-framed by a heavy border with a faint offset outer rule,
-lettered A to H across the top and numbered on both side edges.
-The graph-paper grid shows only in the gutters between sheets.
-Everything a drawing set natively carries is the component vocabulary:
-title blocks, revision tables, parts schedules, numbered balloons,
-dimension lines, general notes, and status stamps.
+The site uses quiet paper, near-black ink, editorial text, and a single screening surface.
+Real app footage supplies the visual detail; the surrounding interface stays sparse and direct.
+This replaces the rejected blueprint world, including its sheet furniture, tracked labels, grids, and drawing animations.
 
-Two inks break the white linework, and each has one job.
-Red pencil marks a requested change; highlighter yellow marks what is picked right now.
-Lettering is condensed and uppercase in English;
-hand notes are the only place a handwriting face appears.
-Density is that of a working drawing: many small labels, generous sheet margins, hairline dividers in place of boxes.
+This system applies to the public site, not to the overlay shown inside the recordings.
+The product name and inline SVG hub mark remain the identity commitments from the root `../PRODUCT.md`.
+The current composition and copy belong to `.impeccable/surfaces/site-src-page-ts.md` and `src/content.ts`, not to every future surface.
+Implementation evidence is `src/tokens.css`, `src/style.css`, `src/page.ts`, `src/main.ts`, and `src/content.ts`.
+Only values consumed by this site are promoted from the larger token inventory.
 
 **Key Characteristics:**
 
-- Solid blue sheets in a gridded gutter, white hairline linework, no fills beyond the darker ink panel.
-- Red is markup, yellow is the live pick, everything else is white or soft white.
-- Condensed, tracked, uppercase labels for every caption, header, and field name.
-- Drawing-set furniture (zones, title block, revisions, balloons, stamps) carries the information.
-- Motion draws lines in; it never slides or bounces content.
+- Paper surfaces, ink actions, and restrained red feedback.
+- Serif prose, sans-serif controls, and monospaced commands.
+- Flat rectangular containers with slightly softened controls.
+- Real footage with explicit playback and plain chapter navigation.
+- Shared English and Korean structure with deliberate Hangul typography.
 
 ## Colors
 
-A monochrome cyanotype: three blues for ground and recess, three whites for line weight, and two single-purpose marking inks.
+The palette is neutral paper and dark ink, with a small red interaction accent.
 
 ### Primary
 
-- **Hairline White** (`hairline-white`): primary linework, sheet borders, headings, filled buttons, the lit balloon, and the resolved stamp.
-
-### Secondary
-
-- **Redline Pencil** (`redline-pencil`): revision clouds, delta triangles, hand-lettered notes, demo marks drawn on the page, and the dashed note editor. Nothing else.
-
-### Tertiary
-
-- **Pick Highlighter** (`pick-highlighter`): the live pick box and its tag, the picker hover outline and hint, the pressed launcher, the mark count, text selection, and the orbiting moons of the hub glyph. Nothing else.
+- **Ink** (`ink`): headings, body text, selected chapters, focus outlines, the brand mark, and filled actions.
+- **Deep warm gray** (`ink-3`): hover fill for setup and copy actions.
+- **Red accent** (`accent`): the Play label's hover fill.
+- **Red tap tint** (`accent-tint`): touch feedback on links, buttons, and disclosures.
 
 ### Neutral
 
-- **Prussian Ground** (`prussian-ground`): the page and every sheet face.
-- **Prussian Deep** (`prussian-deep`): scrollbar track; the recess under the ground.
-- **Prussian Ink** (`prussian-ink`): recessed panels (terminal, code, copy fields, flow nodes, picker) and text on white or colored fills.
-- **Soft Hairline** (`hairline-soft`): body prose, secondary labels, link underlines, dimension lines, the dashed reply wire.
-- **Faint Hairline** (`hairline-faint`): dividers inside a sheet, zone ticks, the outer sheet rule, table rules.
-- **Grid Minor / Grid Major** (`grid-minor`, `grid-major`): the 24px and 120px graph grid on the body, visible only in gutters.
+- **Paper** (`paper`): page ground and reversed text on filled actions.
+- **Inset paper** (`paper-2`): film background and copyable prompt or command containers.
+- **Hover paper** (`paper-3`): secondary button hover background.
+- **Muted ink** (`mute`): supporting copy, unselected navigation, metadata, and footer text.
+- **Strong rule** (`rule-strong`): media frame, button borders, resting link underlines, and scrollbar thumb.
 
 ### Named Rules
 
-**The Two Inks Rule.** Red appears only on markup and yellow only on the live pick (plus selection and the hub moons). If a red or yellow element is neither a requested change nor the current pick, it is wrong.
+**The Ink Actions Rule.** Primary actions use ink on paper in reverse; red is reserved for the existing Play hover and tap feedback, not generalized page chrome.
 
-**The Line Weight Rule.** Emphasis is carried by switching between white, soft, and faint hairline, never by adding a new hue.
+**The Footage Color Rule.** Preserve the product's native colors inside recordings rather than recoloring them to the site's palette.
+
+The imported token file also declares a dark opt-in palette and unused block colors.
+The shipped page has no theme switch; those declarations do not establish additional site palettes.
 
 ## Typography
 
-**Display Font:** Barlow Condensed 500/600 (Do Hyeon for Hangul, then Arial Narrow)
-**Body Font:** Barlow 400/500 (Apple SD Gothic Neo, Malgun Gothic, Noto Sans KR for Hangul)
-**Hand Font:** Architects Daughter (Nanum Pen Script for Hangul)
-**Mono Font:** JetBrains Mono 400, tabular numerals
+**Display and Body Font:** Source Serif 4, with Iowan Old Style, Georgia, and generic serif fallbacks.
+**Control Font:** Archivo, with the sans-serif fallback stack recorded in the frontmatter.
+**Command Font:** Geist Mono, with UI monospace, SFMono-Regular, Menlo, and generic monospace fallbacks.
 
-**Character:** Engineering lettering over a plain humanist body; the hand face is the drafter's pencil.
+English display text uses regular serif lettering with an italic ending.
+Controls remain sentence case without tracked uppercase decoration.
+The hierarchy is role-based, not a uniform modular scale.
 
 ### Hierarchy
 
-- **Display** (600, `clamp(3rem, 5.5vw, 5.4rem)`, 0.98): the hero headline only, uppercase in English.
-- **Headline** (600, `clamp(2.3rem, 4.6vw, 4rem)`, 0.98, max 16ch): one per sheet.
-- **Title** (600, `clamp(1.5rem, 2.4vw, 2rem)`): install step titles.
-- **Field value** (600, 1.05rem, 0.02 to 0.04em): title block values, schedule part names, legend terms.
-- **Body** (400, 1.0625rem, 1.6) and **Prose** (400, 1.125rem, 58 to 70ch, soft hairline): running text.
-- **Label** (500, 0.68 to 0.85rem, 0.08 to 0.12em, uppercase): zones, sheet heads, table heads, panel heads, field names, nav.
-- **Mono** (400, 0.8rem, 1.55 to 1.85): commands, transcripts, XML, file names, the pick tag (11px).
-- **Hand** (400, 18px; 23px in Korean): red notes in drawings and the note editor input.
-- **Outline numeral** (600, `clamp(4rem, 8vw, 6rem)`, 0.8, transparent fill with a 1.5px white stroke): install step numbers.
+- **Display:** the fluid `display` role, balanced and centered; the emphasized ending retains regular weight.
+- **Headline:** `headline` for installation headings.
+- **Body:** `body` for prose and the centered film caption; lead text and disclosures use the narrow measure.
+- **Small:** `small` for secondary prose; the local-files aside is italic.
+- **Label:** `label` for controls and navigation; brand and current chapter use weight 500.
+- **Caption:** `caption` for notes, metadata, requirements, and footer.
+- **Mono:** `mono` for copyable text; version text uses the mono family with tabular numerals.
+
+### Font delivery and Korean
+
+`src/main.ts` self-hosts Fontsource Latin subsets through the Vite bundle:
+`@fontsource/source-serif-4/latin-400.css`, `latin-400-italic.css`,
+`@fontsource/archivo/latin-400.css`, `latin-500.css`, and
+`@fontsource/geist-mono/latin-400.css`.
+
+`public/fonts/noto-sans-kr.woff2` supplies Hangul for the Archivo logical family.
+The normal-weight 400 face uses `font-display: swap` and
+`unicode-range: U+1100-11FF, U+3130-318F, U+AC00-D7AF` in `src/style.css`.
+The supplied font provenance identifies a fonttools subset of the installed
+`noto-fonts-cjk` file `NotoSansCJK-Regular.ttc`, face 1, using those same Unicode ranges.
+Upstream source: https://github.com/notofonts/noto-cjk.
+License: SIL Open Font License 1.1, shipped as `public/fonts/OFL.txt`.
+This is a glyph-range alias, not a fourth visual type role.
+
+Korean headings use `display-ko` and `headline-ko` rather than platform display fonts.
+The hero ending is upright and muted, not italic.
+Korean prose retains the native Hangul serif fallback; it is not covered by the Archivo alias.
+All Korean text uses `word-break: keep-all` and `overflow-wrap: break-word`.
+Only a regular Hangul face is supplied; there is no separately hosted weight-500 Hangul face.
 
 ### Named Rules
 
-**The Korean Label Rule.** On `lang="ko"` pages, small labels switch to the body face, all tracking is zero, headings drop to weight 400 at line height 1.12, uppercase transforms are off, and body text uses `word-break: keep-all` at 1.75.
-
-**The Lettering Rule.** Every caption, header, and field name is set in the label style. Body prose never carries a label's tracking.
+**The Korean Roles Rule.** Use the self-hosted Archivo Hangul alias for Korean headings and controls while retaining the serif prose role.
 
 ## Layout
 
-Sheets are centered on a frame of `min(1400px, 100% - gutters)` and separated by `sheet-gap` so the body grid shows between them.
-Each sheet pads `clamp(28px, 5vw, 72px)` on top and `sheet-pad-x` on the sides, and closes with a full-bleed bottom strip
-(a title block on sheet 1, a sheet head with sheet number and name on the others) ruled with a 1.5px white line.
-Interiors use a 5:7 split (`minmax(0, 5fr) minmax(0, 7fr)`), reversed on alternate sheets.
-The hero figure is a 1.9:1 grid of drawing and terminal over a full-width revision table.
-The top bar is a 56px sticky strip aligned to the same frame.
+The site is a centered single-column flow.
+The wide frame is `min(980px, calc(100% - 2rem))`; the prose and installation measure is `min(660px, calc(100% - 2rem))`.
+The header is an in-flow flex row with a minimum height of 3.75rem, not sticky chrome.
+The hero has 1.5rem block padding; the lead separates title and action with 1.25rem above and 1.5rem below.
+Chapter links wrap in a centered row with 1.5rem column gaps and a 1rem gap before the film.
+The film preserves an 8:5 aspect ratio and contains its media without cropping.
+Installation uses 5rem block padding; the footer returns to the wide frame.
 
-At 1080px every split folds to one column, the flow chain stacks vertically with vertical wires, and the title block wraps to three columns.
-At 720px the nav, zone letters, and row numbers hide, the hero figure stacks, tables reflow into two-column cards, copy buttons become icon-only, and the title block wraps to two columns.
+Spacing follows the quarter-rem steps recorded in the frontmatter, with larger section gaps from the same inventory.
+Interactive links, buttons, and disclosure summaries provide a minimum 44px height.
+Copyable code wraps and breaks long strings rather than forcing horizontal page overflow.
 
-Small spacing follows an 8, 12, 16px rhythm for panel heads and cells; section-level spacing is clamped between roughly 28 and 72px.
+At a maximum viewport width of 640px, navigation and chapter gaps reduce to 1rem,
+chapters use the caption size, the hero gains 2rem top padding, installation padding becomes 3rem,
+and the footer stacks with no row gap.
+Korean display text reduces to the headline size at this breakpoint.
+The frame remains fluid; chapter links remain visible and wrap instead of being hidden.
 
 ## Elevation & Depth
 
-The system is flat. Depth is drawn: a heavy 1.5px border, a faint 1px outline offset 6px, and the darker ink panel for recesses.
-Shadows exist only on elements that float over the page while marking.
-
-### Shadow Vocabulary
-
-- **Floating launcher** (`box-shadow: 0 8px 24px rgb(4 16 44 / 0.45)`): the launcher while it is fixed in the corner during marking.
-- **Picker panel** (`box-shadow: 0 12px 32px rgb(4 16 44 / 0.5)`): the demo picker panel.
+The site has no applied shadows, translucent layers, or backdrop blur.
+Depth comes from the inset paper fill and a single hairline media border.
+The poster cover occupies the film bounds without introducing an elevated card.
+Unused shadow declarations in `src/tokens.css` are not part of this site's vocabulary.
 
 ### Named Rules
 
-**The Drawn Depth Rule.** Sheets and in-flow panels never cast shadows; a soft shadow means the element floats above the drawing during marking.
+**The Flat Surface Rule.** Separate in-flow surfaces with tone, whitespace, and the existing hairline border rather than shadows.
 
 ## Shapes
 
-Corners are square.
-Small ghost controls (language switch, replay) take a 2px radius, and the launcher becomes a 22px pill only while it floats.
-Circles are reserved for balloons, general-note numbers, callouts, and the hub disc.
-Triangles (clip-path) are reserved for red delta marks.
-Revision clouds are generated scalloped paths with round joins at 2.2px.
-Wires are 1.5px lines with an 8px solid arrowhead; the reply wire is dashed (5px on, 4px off) in soft white.
-Dashed borders mean "not yet": the acknowledged stamp, the last lifecycle state, the unsaved button in the hero drawing, and the note editor.
+Film and copy containers have square corners.
+Buttons and the Play label use the small control radius from the frontmatter.
+The film border is 1px; the active chapter underline and focus outline are 2px.
+Focus outlines are offset by 0.25rem and apply to links, buttons, summaries, video, and focusable code.
+The hub identity is an inline SVG core with three moons on a quarter orbit.
+The setup arrow is also an inline SVG; neither requires an icon font.
 
 ## Components
 
 ### Buttons
 
-- **Launcher:** filled white, ink text, 44px tall, hub glyph left, uppercase label (none in Korean). Hover goes soft white and rotates the glyph's moons 16 degrees; pressed goes yellow and rotates them 90 degrees. It sits in sheet 1's title block and floats bottom right only while marking; under 720px the floating launcher is a 44px icon.
-- **Copy button:** a filled white cell attached to the right of a copy field, divided by a 1.5px white rule, 16px stroke icon. Hover, done, and failed states go soft white.
-- **Ghost tab:** 1px faint border, 2px radius, inherits label type; hover brings the border or text to full white. Used for the language switch and Replay.
-- **Text actions:** picker and note editor buttons are bare label text divided by a faint left rule; hover turns them yellow.
-
-### Status stamp
-
-A 1.5px bordered label rotated -2 degrees. Pending is soft white, acknowledged is white and dashed, resolved is a filled white stamp with ink text.
-
-### Cards / Containers
-
-- **Sheet:** see Layout and Elevation; solid ground, no radius.
-- **Ink panel:** terminal, XML figure, code blocks, copy fields, flow nodes, and picker share a 1.5px white border on Prussian Ink with a label-style head row over a faint rule.
-- **Title block:** a full-bleed grid of field cells divided by faint rules, each a label-style name over a field value.
-
-### Inputs / Fields
-
-- **Copy field:** mono text on ink inside a 1.5px white border, scrolling horizontally.
-- **Note editor:** 1.5px dashed red border on ink; the input is red hand lettering with a red caret and no focus outline (the editor itself is the focus).
-- **Focus (global):** 2px white outline offset 3px.
+Filled actions use paper text on ink with the small control radius.
+The setup anchor uses the primary padding and a 20px stroked SVG arrow; its hover changes the fill to deep warm gray.
+Copy buttons use the slightly narrower button padding and an ink border.
+The retry button is paper with an ink label and strong-rule border; hover changes to hover paper with an ink border.
+All retain the shared visible focus outline.
+No custom pressed-state animation is implemented.
 
 ### Navigation
 
-The top bar is a translucent ground strip (92% opacity, 6px blur) with a faint bottom rule. Brand is the hub glyph with mixed-case wordmark; nav links are soft white uppercase labels that turn white on hover.
+The brand and two text links share the in-flow header.
+Header links change from muted ink to ink on hover; their hit areas remain at least 44px tall.
+The chapter rail is plain text navigation, not a pill group or ARIA tab widget.
+The current link uses ink, weight 500, a 2px bottom border, and `aria-current`.
+Other chapters gain ink text and a strong-rule underline on hover.
+The language link uses the destination language and route; English and Korean share the same structure.
 
-### Drawing furniture (signature)
+### Film and poster
 
-- **Zones and rows:** A to H letters above each sheet on faint ticks, and the sheet number centered on both side edges, in soft label type.
-- **Balloon:** 20px white-ringed circle with a numeral; lit (filled white) when its matching schedule row is active. General notes use a 28px version.
-- **Delta mark:** a red triangle with an ink numeral, keyed to a revision.
-- **Schedule and legend:** tables with label-style heads, field-value row names, soft prose, mono file names, faint rules, and a 6% white row hover.
-- **Pick box:** 2px yellow outline over 10% yellow fill with a yellow mono tag naming the element and its zone.
+One bordered film frame shows five actual clips: `annotate`, `capture`, `record`, `multi`, and `rapid`.
+Each uses `/demo/<clip>.mp4`, a matching WebP poster, and locale-specific `.en.vtt` or `.ko.vtt` captions.
+The current first clip is Annotate.
+An explicit poster button appears when script runs; successful playback hides it and exposes the native player controls.
+The cover image contains the full poster, and its text label sits 1.25rem from the lower-left corner.
+Its fill changes from ink to red on hover.
+The cover uses a localized text-only Play label.
+
+Chapter selection changes the video, poster, caption, transcript, download link, and caption track together, then requests playback.
+There is no initial autoplay, automatic chapter advance, entrance animation, or decorative animation loop.
+The player is muted, inline, and metadata-preloaded; native pause, timeline, and captions remain available.
+Playback pauses when the document becomes hidden or the film leaves the viewport.
+The cover retains a usable state if playback is blocked and transfers focus to the video when it successfully starts from the focused button.
+
+Loading feedback uses a polite status region.
+Failure reveals a retry button and direct video link; written steps remain available in a native disclosure.
+Without script, the native first video remains usable, chapters are direct MP4 links, and the initial written steps remain readable.
+The footage disclosure states that the requests are demonstrations with no connected agent.
+
+### Copy panels and disclosures
+
+Copyable prompts and commands are selectable code, not text inputs.
+The flat inset-paper panel stacks text and a button with a 1rem gap and 1.25rem padding.
+Buttons appear only with script.
+Success updates a polite status region; clipboard failure selects and focuses the code for manual copying.
+A reserved 1.5rem status height limits layout movement.
+Native details and summary elements expose the terminal option and written demo steps without adding a custom accordion system.
 
 ### Motion
 
-Two easings: `cubic-bezier(0.22, 1, 0.36, 1)` for state changes and `cubic-bezier(0.65, 0, 0.35, 1)` for drawing strokes.
-Lines draw in by `stroke-dashoffset` on normalized path length (700 to 1100ms); notes reveal by clip-path wipe; transcript lines type by stepped clip.
-The hero sequence plays once and holds; plan drawings draw when their sheet first enters view.
-Under reduced motion or without script, the final drawn state shows immediately.
+Setup hover and chapter state changes use `200ms ease-in-out` transitions.
+Under `prefers-reduced-motion: reduce`, the token duration becomes `0ms`.
+The imported slow duration is unused by this surface.
+User-requested video playback remains available under reduced motion; the page does not start it on entry.
 
 ## Do's and Don'ts
 
 ### Do:
 
-- **Do** draw every sheet as solid ground with zones on top, its number on both side edges, and a ruled bottom strip.
-- **Do** use red only for markup and yellow only for the live pick, selection, and hub moons.
-- **Do** express hierarchy with white, soft, and faint hairline weights.
-- **Do** set captions, headers, and field names in the tracked uppercase label style, and switch them to the body face with zero tracking on Korean pages.
-- **Do** reuse drawing-set furniture (title block, revisions, schedule, balloons, stamps, dimension lines) before inventing a new container.
-- **Do** show the final drawn state when motion is reduced or script is unavailable.
+- **Do** keep surrounding chrome quiet so actual product footage supplies the detail.
+- **Do** preserve the serif prose, sans-serif controls, and mono command roles in both locales.
+- **Do** retain explicit playback, native video controls, localized captions, and readable steps.
+- **Do** keep current chapter state visible with text weight and an underline, not color alone.
+- **Do** preserve keyboard focus, 44px control height, and selectable setup text without script.
 
 ### Don't:
 
-- **Don't** show the graph grid inside a sheet; it belongs to the gutters.
-- **Don't** add a third accent hue or use red or yellow for emphasis, links, or decoration.
-- **Don't** put shadows on sheets or in-flow panels; only marking-time floating elements cast one.
-- **Don't** round sheet or panel corners; radius is limited to 2px ghost controls, the floating launcher pill, and circular balloons.
-- **Don't** use the hand face for anything but red markup notes.
-- **Don't** put a label above a heading or figure as a decorative tag line; a label must name a field, a column, or a panel.
+- **Don't** restore blueprint grids, sheet furniture, architectural diagrams, or decorative feature-card grids.
+- **Don't** add shadows to the site's flat containers or promote unused shadow tokens into new components.
+- **Don't** autoplay on entry, advance chapters automatically, or add entrance animation.
+- **Don't** turn unused palette or eyebrow declarations into new site styles.
+- **Don't** replace real footage with invented product or agent-success evidence.

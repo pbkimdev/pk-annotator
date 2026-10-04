@@ -1,0 +1,269 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-04T06:51:27Z",
+  "title": "Design System: pk-annotator site",
+  "extensions": {
+    "colorMeta": {
+      "paper": {
+        "role": "neutral",
+        "displayName": "Paper",
+        "tonalRamp": [
+          "oklch(15.000% 0.00132 106.423)",
+          "oklch(26.429% 0.00132 106.423)",
+          "oklch(37.857% 0.00132 106.423)",
+          "oklch(49.286% 0.00132 106.423)",
+          "oklch(60.714% 0.00132 106.423)",
+          "oklch(72.143% 0.00132 106.423)",
+          "oklch(83.571% 0.00132 106.423)",
+          "oklch(95.000% 0.00132 106.423)"
+        ]
+      },
+      "paper-2": {
+        "role": "neutral",
+        "displayName": "Inset paper",
+        "tonalRamp": [
+          "oklch(15.000% 0.00133 106.424)",
+          "oklch(26.429% 0.00133 106.424)",
+          "oklch(37.857% 0.00133 106.424)",
+          "oklch(49.286% 0.00133 106.424)",
+          "oklch(60.714% 0.00133 106.424)",
+          "oklch(72.143% 0.00133 106.424)",
+          "oklch(83.571% 0.00133 106.424)",
+          "oklch(95.000% 0.00133 106.424)"
+        ]
+      },
+      "paper-3": {
+        "role": "neutral",
+        "displayName": "Hover paper",
+        "tonalRamp": [
+          "oklch(15.000% 0.00133 106.424)",
+          "oklch(26.429% 0.00133 106.424)",
+          "oklch(37.857% 0.00133 106.424)",
+          "oklch(49.286% 0.00133 106.424)",
+          "oklch(60.714% 0.00133 106.424)",
+          "oklch(72.143% 0.00133 106.424)",
+          "oklch(83.571% 0.00133 106.424)",
+          "oklch(95.000% 0.00133 106.424)"
+        ]
+      },
+      "ink": {
+        "role": "primary",
+        "displayName": "Ink",
+        "tonalRamp": [
+          "oklch(15.000% 0.00000 0.000)",
+          "oklch(26.429% 0.00000 0.000)",
+          "oklch(37.857% 0.00000 0.000)",
+          "oklch(49.286% 0.00000 0.000)",
+          "oklch(60.714% 0.00000 0.000)",
+          "oklch(72.143% 0.00000 0.000)",
+          "oklch(83.571% 0.00000 0.000)",
+          "oklch(95.000% 0.00000 0.000)"
+        ]
+      },
+      "ink-3": {
+        "role": "primary",
+        "displayName": "Deep warm gray",
+        "tonalRamp": [
+          "oklch(15.000% 0.01153 51.866)",
+          "oklch(26.429% 0.01153 51.866)",
+          "oklch(37.857% 0.01153 51.866)",
+          "oklch(49.286% 0.01153 51.866)",
+          "oklch(60.714% 0.01153 51.866)",
+          "oklch(72.143% 0.01153 51.866)",
+          "oklch(83.571% 0.01153 51.866)",
+          "oklch(95.000% 0.01153 51.866)"
+        ]
+      },
+      "mute": {
+        "role": "neutral",
+        "displayName": "Muted ink",
+        "tonalRamp": [
+          "oklch(15.000% 0.00490 56.303)",
+          "oklch(26.429% 0.00490 56.303)",
+          "oklch(37.857% 0.00490 56.303)",
+          "oklch(49.286% 0.00490 56.303)",
+          "oklch(60.714% 0.00490 56.303)",
+          "oklch(72.143% 0.00490 56.303)",
+          "oklch(83.571% 0.00490 56.303)",
+          "oklch(95.000% 0.00490 56.303)"
+        ]
+      },
+      "rule-strong": {
+        "role": "neutral",
+        "displayName": "Strong rule",
+        "tonalRamp": [
+          "oklch(15.000% 0.00000 0.000)",
+          "oklch(26.429% 0.00000 0.000)",
+          "oklch(37.857% 0.00000 0.000)",
+          "oklch(49.286% 0.00000 0.000)",
+          "oklch(60.714% 0.00000 0.000)",
+          "oklch(72.143% 0.00000 0.000)",
+          "oklch(83.571% 0.00000 0.000)",
+          "oklch(95.000% 0.00000 0.000)"
+        ]
+      },
+      "accent": {
+        "role": "primary",
+        "displayName": "Red accent",
+        "tonalRamp": [
+          "oklch(15.000% 0.17753 30.591)",
+          "oklch(26.429% 0.17753 30.591)",
+          "oklch(37.857% 0.17753 30.591)",
+          "oklch(49.286% 0.17753 30.591)",
+          "oklch(60.714% 0.17753 30.591)",
+          "oklch(72.143% 0.17753 30.591)",
+          "oklch(83.571% 0.17753 30.591)",
+          "oklch(95.000% 0.17753 30.591)"
+        ]
+      },
+      "accent-tint": {
+        "role": "primary",
+        "displayName": "Red tap tint",
+        "tonalRamp": [
+          "oklch(15.000% 0.17753 30.591 / 0.06)",
+          "oklch(26.429% 0.17753 30.591 / 0.06)",
+          "oklch(37.857% 0.17753 30.591 / 0.06)",
+          "oklch(49.286% 0.17753 30.591 / 0.06)",
+          "oklch(60.714% 0.17753 30.591 / 0.06)",
+          "oklch(72.143% 0.17753 30.591 / 0.06)",
+          "oklch(83.571% 0.17753 30.591 / 0.06)",
+          "oklch(95.000% 0.17753 30.591 / 0.06)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "English display",
+        "purpose": "Fluid serif hero with a regular italic ending."
+      },
+      "display-ko": {
+        "displayName": "Korean display",
+        "purpose": "Self-hosted Hangul through the Archivo alias; reduces to 1.75rem at 640px."
+      },
+      "mono": {
+        "displayName": "Commands",
+        "purpose": "Selectable setup prompts and commands."
+      }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "dur",
+        "value": "200ms",
+        "purpose": "Setup background and chapter color/border transitions."
+      },
+      {
+        "name": "ease",
+        "value": "ease-in-out",
+        "purpose": "Easing for the applied CSS transitions."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "0ms",
+        "purpose": "CSS transitions become immediate under prefers-reduced-motion: reduce; video still requires a user action."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "mobile",
+        "value": "640px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Setup action",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Ink-filled setup anchor with inline SVG arrow.",
+      "html": "<a class=\"ds-primary\" href=\"#install\">Set up with your agent<svg viewBox=\"0 0 20 20\" aria-hidden=\"true\"><path d=\"M4 10h12m-5-5 5 5-5 5\"/></svg></a>",
+      "css": ".ds-primary{min-height:44px;display:inline-flex;align-items:center;justify-content:center;gap:var(--sp-3);padding:var(--sp-3) var(--sp-5);border-radius:var(--radius-soft);font-family:var(--font-sans);font-size:var(--t-small);line-height:var(--lh-body);text-decoration:none;color:var(--paper);background:var(--ink);transition:background var(--dur) var(--ease)}.ds-primary:hover{background:var(--ink-3)}.ds-primary:focus-visible{outline:var(--bar) solid var(--ink);outline-offset:var(--sp-1);}.ds-primary svg{width:var(--sp-5);height:var(--sp-5);fill:none;stroke:currentColor;stroke-width:var(--stroke-strong)}"
+    },
+    {
+      "name": "Copy action",
+      "kind": "button",
+      "refersTo": "button-copy",
+      "description": "Compact filled action for copying selectable text; preview does not implement clipboard behavior.",
+      "html": "<button class=\"ds-copy-button\" type=\"button\">Copy setup prompt</button>",
+      "css": ".ds-copy-button{font-family:var(--font-sans);font-size:var(--t-small);color:var(--ink);background:var(--paper);border:var(--hair) solid var(--rule-strong);border-radius:var(--radius-soft);padding:var(--sp-3) var(--sp-4);min-height:44px;cursor:pointer;background:var(--ink);color:var(--paper);border-color:var(--ink)}.ds-copy-button:hover{background:var(--ink-3);border-color:var(--ink)}.ds-copy-button:focus-visible{outline:var(--bar) solid var(--ink);outline-offset:var(--sp-1);}"
+    },
+    {
+      "name": "Retry action",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Outlined secondary action for video recovery.",
+      "html": "<button class=\"ds-secondary\" type=\"button\">Retry video</button>",
+      "css": ".ds-secondary{font-family:var(--font-sans);font-size:var(--t-small);color:var(--ink);background:var(--paper);border:var(--hair) solid var(--rule-strong);border-radius:var(--radius-soft);padding:var(--sp-3) var(--sp-4);min-height:44px;cursor:pointer;}.ds-secondary:hover{background:var(--paper-3);border-color:var(--ink)}.ds-secondary:focus-visible{outline:var(--bar) solid var(--ink);outline-offset:var(--sp-1);}"
+    },
+    {
+      "name": "Chapter navigation",
+      "kind": "nav",
+      "refersTo": "chapter",
+      "description": "Wrapping text links with current chapter weight and underline; direct video destinations work without script.",
+      "html": "<nav class=\"ds-chapters\" aria-label=\"See how it works\"><a class=\"ds-chapter\" href=\"/demo/annotate.mp4\" aria-current=\"true\">Annotate</a><a class=\"ds-chapter\" href=\"/demo/capture.mp4\">Capture</a><a class=\"ds-chapter\" href=\"/demo/record.mp4\">Record</a><a class=\"ds-chapter\" href=\"/demo/multi.mp4\">Multi-add</a><a class=\"ds-chapter\" href=\"/demo/rapid.mp4\">Rapid-fire</a></nav>",
+      "css": ".ds-chapters{display:flex;justify-content:center;flex-wrap:wrap;column-gap:var(--sp-6);font-family:var(--font-sans);line-height:var(--lh-body);margin-bottom:var(--sp-4)}.ds-chapter{display:inline-flex;align-items:center;min-height:44px;border-bottom:var(--bar) solid transparent;font-size:var(--t-small);color:var(--mute);text-decoration:none;transition:color var(--dur) var(--ease),border-color var(--dur) var(--ease)}.ds-chapter:hover{color:var(--ink);border-color:var(--rule-strong)}.ds-chapter[aria-current]{color:var(--ink);border-color:var(--ink);font-weight:500}.ds-chapter:focus-visible{outline:var(--bar) solid var(--ink);outline-offset:var(--sp-1);}@media(max-width:640px){.ds-chapters{column-gap:var(--sp-4)}.ds-chapter{font-size:var(--t-caption)}}"
+    },
+    {
+      "name": "Copy panel",
+      "kind": "card",
+      "refersTo": "copy-panel",
+      "description": "Flat, wrapping command container; code is selectable rather than editable.",
+      "html": "<div class=\"ds-copy\"><code class=\"ds-code\" tabindex=\"0\">Set up pk-annotator in this project by following https://pk-annotator.paulbkim.dev/agents.md</code><button class=\"ds-copy-button\" type=\"button\">Copy setup prompt</button></div>",
+      "css": ".ds-copy{margin-top:var(--sp-5);padding:var(--sp-5);background:var(--paper-2);color:var(--ink);display:flex;flex-direction:column;align-items:flex-start;gap:var(--sp-4)}.ds-code{font-family:var(--font-mono);font-size:var(--t-code);line-height:var(--lh-body);white-space:pre-wrap;overflow-wrap:anywhere}.ds-code:focus-visible{outline:var(--bar) solid var(--ink);outline-offset:var(--sp-1);}.ds-copy-button{font-family:var(--font-sans);font-size:var(--t-small);color:var(--ink);background:var(--paper);border:var(--hair) solid var(--rule-strong);border-radius:var(--radius-soft);padding:var(--sp-3) var(--sp-4);min-height:44px;cursor:pointer;background:var(--ink);color:var(--paper);border-color:var(--ink)}.ds-copy-button:hover{background:var(--ink-3);border-color:var(--ink)}.ds-copy-button:focus-visible{outline:var(--bar) solid var(--ink);outline-offset:var(--sp-1);}"
+    },
+    {
+      "name": "Native disclosure",
+      "kind": "custom",
+      "description": "Written steps remain accessible in a native details element.",
+      "html": "<details class=\"ds-details\"><summary class=\"ds-summary\">Read the steps</summary><p class=\"ds-steps\">Open Annotate, choose a drawing tool, and draw on the app. The drawing becomes a saved screenshot mark. Open Send, add a comment, and send it.</p></details>",
+      "css": ".ds-details{font-family:var(--font-sans);font-size:var(--t-caption);line-height:var(--lh-body);color:var(--mute);text-align:center}.ds-summary{cursor:pointer;min-height:44px;align-content:center;width:fit-content;margin-inline:auto}.ds-summary:hover{color:var(--ink);text-decoration:underline;text-underline-offset:var(--sp-1)}.ds-summary:focus-visible{outline:var(--bar) solid var(--ink);outline-offset:var(--sp-1);}.ds-steps{max-width:var(--measure);margin:var(--sp-2) auto 0;font-size:var(--t-small);text-align:start}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Film Review Sheet",
+    "overview": "The site uses quiet paper, near-black ink, editorial text, and a single screening surface.\nReal app footage supplies the visual detail; the surrounding interface stays sparse and direct.\nThis replaces the rejected blueprint world, including its sheet furniture, tracked labels, grids, and drawing animations.\n\nThis system applies to the public site, not to the overlay shown inside the recordings.\nThe product name and inline SVG hub mark remain the identity commitments from the root `../PRODUCT.md`.\nThe current composition and copy belong to `.impeccable/surfaces/site-src-page-ts.md` and `src/content.ts`, not to every future surface.\nImplementation evidence is `src/tokens.css`, `src/style.css`, `src/page.ts`, `src/main.ts`, and `src/content.ts`.\nOnly values consumed by this site are promoted from the larger token inventory.",
+    "keyCharacteristics": [
+      "Paper surfaces, ink actions, and restrained red feedback.",
+      "Serif prose, sans-serif controls, and monospaced commands.",
+      "Flat rectangular containers with slightly softened controls.",
+      "Real footage with explicit playback and plain chapter navigation.",
+      "Shared English and Korean structure with deliberate Hangul typography."
+    ],
+    "rules": [
+      {
+        "name": "The Ink Actions Rule",
+        "body": "Primary actions use ink on paper in reverse; red is reserved for the existing Play hover and tap feedback, not generalized page chrome.",
+        "section": "colors"
+      },
+      {
+        "name": "The Footage Color Rule",
+        "body": "Preserve the product's native colors inside recordings rather than recoloring them to the site's palette.",
+        "section": "colors"
+      },
+      {
+        "name": "The Korean Roles Rule",
+        "body": "Use the self-hosted Archivo Hangul alias for Korean headings and controls while retaining the serif prose role.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat Surface Rule",
+        "body": "Separate in-flow surfaces with tone, whitespace, and the existing hairline border rather than shadows.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do keep surrounding chrome quiet so actual product footage supplies the detail.",
+      "Do preserve the serif prose, sans-serif controls, and mono command roles in both locales.",
+      "Do retain explicit playback, native video controls, localized captions, and readable steps.",
+      "Do keep current chapter state visible with text weight and an underline, not color alone.",
+      "Do preserve keyboard focus, 44px control height, and selectable setup text without script."
+    ],
+    "donts": [
+      "Don't restore blueprint grids, sheet furniture, architectural diagrams, or decorative feature-card grids.",
+      "Don't add shadows to the site's flat containers or promote unused shadow tokens into new components.",
+      "Don't autoplay on entry, advance chapters automatically, or add entrance animation.",
+      "Don't turn unused palette or eyebrow declarations into new site styles.",
+      "Don't replace real footage with invented product or agent-success evidence."
+    ]
+  }
+}

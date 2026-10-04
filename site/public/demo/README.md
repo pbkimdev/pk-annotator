@@ -25,6 +25,7 @@ The product's automation guard was not changed.
 
 Each MP4 carries `title`, `comment`, and `date` tags that state this provenance and the steps.
 Each WebP poster carries the same text in an XMP chunk.
+Its `.webp.json` sidecar also records the source for the design provenance checker.
 
 ## What the clips do not show
 

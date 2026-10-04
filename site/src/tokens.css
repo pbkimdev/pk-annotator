@@ -1,0 +1,135 @@
+/* pk-design tokens v2.0
+   Palette derived from what thinkingmachines.ai ACTUALLY renders, not from the
+   variables it declares. Their neutral is cool grey; --bg2/--bg3/--bg4 (the gruvbox
+   tans) are declared and never painted. Verified 2026-08-24 by usage count. */
+
+:root {
+  /* --- surfaces + ink (light) --- */
+  --paper: #fafaf9;
+  --paper-2: #f3f3f2; /* code blocks, table headers */
+  --paper-3: #efefee; /* inset panel. neutral, NOT warm */
+  --ink: #282828;
+  --ink-2: #3c3836;
+  --ink-3: #504945;
+  --mute: #6b6866; /* secondary text */
+  --mute-2: #676767; /* TM's workhorse: 98 uses. captions, arrows, icons */
+  --soft: #9c9c9c; /* decorative only, no text */
+
+  /* --- rules: fg4 mixed toward paper, exactly as TM does it --- */
+  --rule: #eaeaea; /* = #676767 @ 14%  — the default hairline */
+  --rule-2: #e4e4e4; /* = @ 18% */
+  --rule-strong: #cbcbcb; /* = @ 34%  — baselines, emphasis borders */
+
+  /* --- accent: a spark or an error. never chrome. --- */
+  --accent: #ad2111;
+  --accent-tint: rgba(173, 33, 17, 0.06);
+  --link: #2e5aa8; /* diagram arrows only; body links are ink */
+
+  /* --- flat block palette (identity marks, chips) --- */
+  --block-yellow: #ffe237;
+  --block-orange: #eb521e;
+  --block-green: #3f7d31;
+  --block-blue: #0834bc;
+  --block-stone: #999489;
+
+  /* --- type families --- */
+  --font-serif: "Source Serif 4", "Iowan Old Style", Georgia, serif;
+  --font-sans: Archivo, Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* --- type scale --- */
+  --t-display: clamp(2.4rem, 6vw, 3.4rem);
+  --t-h1: 1.75rem;
+  --t-h2: 1.45rem;
+  --t-h3: 1.35rem;
+  --t-h4: 0.97rem;
+  --t-h5: 0.76rem;
+  --t-h6: 0.6rem;
+  --t-body: 17px;
+  --t-small: 15px;
+  --t-caption: 13px;
+  --t-eyebrow: 11px;
+  --t-code: 13px;
+
+  --lh-tight: 1.2;
+  --lh-head: 1.4;
+  --lh-body: 1.6;
+
+  --track-eyebrow: 0.14em;
+  --track-tight: -0.01em;
+
+  /* --- geometry --- */
+  --radius: 0;
+  --radius-soft: 2px;
+  --radius-code: 4px;
+  --radius-dot: 50%;
+  --hair: 1px;
+  --bar: 2px;
+  --stroke-strong: 1.5px;
+
+  --shadow: none;
+  --shadow-press: 3px 3px 0 var(--ink);
+  --shadow-lift: 0 8px 24px rgb(0 0 0 / 0.12), 0 2px 6px rgb(0 0 0 / 0.06);
+
+  /* --- space --- */
+  --flow: 1.333rem;
+  --sp-1: 0.25rem;
+  --sp-2: 0.5rem;
+  --sp-3: 0.75rem;
+  --sp-4: 1rem;
+  --sp-5: 1.25rem;
+  --sp-6: 1.5rem;
+  --sp-8: 2rem;
+  --sp-10: 2.5rem;
+  --sp-12: 3rem;
+  --sp-15: 3.75rem;
+  --sp-20: 5rem;
+  --sp-25: 6.25rem;
+  --sp-30: 7.5rem;
+  --sp-40: 10rem;
+
+  /* --- measure --- */
+  --pad: 1.3rem;
+  --measure: 660px;
+  --measure-wide: 980px;
+  --container: calc(660px + 2 * 1.3rem);
+
+  /* --- motion --- */
+  --dur: 200ms;
+  --dur-slow: 300ms;
+  --ease: ease-in-out;
+
+  color-scheme: light;
+}
+
+/* Dark is OPT-IN ONLY. There is deliberately no prefers-color-scheme block:
+   a page defaults to light even when the viewer's OS is dark, and goes dark only when
+   something explicitly stamps data-theme="dark" (the author, or a viewer who chose it).
+   thinkingmachines.ai ships no dark mode at all, so light-by-default is also the
+   faithful reading of the house style. */
+:root[data-theme="dark"] {
+  --paper: #1a1a19;
+  --paper-2: #232322;
+  --paper-3: #2c2c2b;
+  --ink: #ededeb;
+  --ink-2: #d4d4d2;
+  --ink-3: #b8b8b5;
+  --mute: #9a9a97;
+  --mute-2: #8a8a87;
+  --soft: #6e6e6b;
+  --rule: #2c2c2b;
+  --rule-2: #343433;
+  --rule-strong: #444443;
+  --accent: #e0563c;
+  --accent-tint: rgba(224, 86, 60, 0.1);
+  --link: #6a95d8;
+  --shadow-lift: 0 8px 24px rgb(0 0 0 / 0.45), 0 2px 6px rgb(0 0 0 / 0.3);
+  color-scheme: dark;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur: 0ms;
+    --dur-slow: 0ms;
+  }
+}
