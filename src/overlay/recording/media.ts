@@ -165,7 +165,7 @@ export function startMedia(
           return;
         }
         const area = region ?? { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight };
-        const scale = Math.min(1, 1920 / Math.max(area.w, area.h));
+        const scale = Math.min(1, (withVideo ? 1920 : 480) / Math.max(area.w, area.h));
         const { canvas, context } = captureCanvas(area.w * scale, area.h * scale, false);
         output = canvas.captureStream(0);
         const [outputTrack] = output.getVideoTracks();
@@ -216,6 +216,7 @@ export function startMedia(
           if (media.bytes + event.data.size > MAX_VIDEO_BYTES) {
             media.truncated = true;
             if (recorder.state !== "inactive") recorder.stop();
+            if (media.gif === null || media.gif.truncated) release(media);
           } else {
             media.chunks.push(event.data);
             media.bytes += event.data.size;
@@ -265,6 +266,13 @@ export function startMedia(
                 gif.durationMs += delay;
                 lastGif = now;
               }
+            }
+            if (
+              (recorder === null || recorder.state === "inactive") &&
+              (gif === null || gif.truncated)
+            ) {
+              release(media);
+              return;
             }
             media.frame = player.requestVideoFrameCallback(draw);
           } catch (cause) {
