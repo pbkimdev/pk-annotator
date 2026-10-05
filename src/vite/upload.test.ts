@@ -14,6 +14,8 @@ import {
   type ChannelEvents,
 } from "../shared/channel.ts";
 import * as ops from "../ops/ops.ts";
+import { buildRecording } from "../overlay/recording/files.ts";
+import * as symbolication from "./symbolicate.ts";
 import { annotator } from "./index.ts";
 
 const Message = z.strictObject({ type: z.literal("custom"), event: z.string(), data: z.unknown() });
@@ -213,6 +215,111 @@ it("keeps the committed result when cancellation arrives during the store commit
     expect(CreateFailedMessage.parse((await receive(CHANNEL.createFailed)).data).requestId).toBe(
       "upload-after-commit",
     );
+  } finally {
+    resume();
+  }
+});
+
+it("cancels recording finalization before it can commit an annotation", async () => {
+  const at = "2026-10-05T00:00:00.000Z";
+  const viewport = { w: 800, h: 600, dpr: 1, scrollX: 0, scrollY: 0 };
+  const recording = buildRecording({
+    url: "http://example.test/",
+    endUrl: "http://example.test/",
+    viewport,
+    startedAt: at,
+    endedAt: at,
+    entries: [
+      {
+        kind: "error",
+        seq: 1,
+        at,
+        source: "window",
+        fingerprint: "fault",
+        type: "Error",
+        message: "Synthetic fault",
+        stack: "Error: Synthetic fault",
+      },
+    ],
+    groups: [
+      {
+        fingerprint: "fault",
+        type: "Error",
+        message: "Synthetic fault",
+        count: 1,
+        firstSeen: at,
+        lastSeen: at,
+        lastSeq: 1,
+        stack: "Error: Synthetic fault",
+        status: "open",
+      },
+    ],
+    entryLimit: 10,
+    entriesDropped: 0,
+    frames: [],
+    frameLimit: 10,
+    framesDropped: 0,
+    framesFailed: 0,
+    bodyLimit: 1024,
+    bodiesDropped: 0,
+    bodies: [],
+    video: { data: undefined, meta: { path: null, reason: "Video not chosen" } },
+  });
+  let finalizing = () => {};
+  let resume = () => {};
+  const started = new Promise<void>((resolve) => {
+    finalizing = resolve;
+  });
+  const released = new Promise<void>((resolve) => {
+    resume = resolve;
+  });
+  vi.spyOn(symbolication, "symbolicate").mockImplementation(async (_environment, _root, stack) => {
+    finalizing();
+    await released;
+    return { stack, topFrame: undefined };
+  });
+  const commit = vi.spyOn(ops, "create");
+  const requestId = "upload-finalize-cancel";
+  try {
+    send(CHANNEL.create, {
+      requestId,
+      draft: {
+        url: "http://example.test/",
+        route: "/",
+        prompt: "Recording",
+        viewport,
+        elements: [],
+        attachments: [{ kind: "recording", path: recording.path, summary: recording.summary }],
+      },
+      files: recording.files.map((file) => ({ path: file.path, bytes: file.data.size })),
+    });
+    await receive(CHANNEL.uploadReady);
+    for (const file of recording.files) {
+      if (file.data.size === 0) continue;
+      send(CHANNEL.file, {
+        requestId,
+        path: file.path,
+        offset: 0,
+        data: Buffer.from(await file.data.arrayBuffer()).toString("base64"),
+      });
+      await receive(CHANNEL.fileWritten);
+    }
+    await started;
+    send(CHANNEL.cancelUpload, { requestId });
+    create("upload-while-finalizing");
+    expect(CreateFailedMessage.parse((await receive(CHANNEL.createFailed)).data).requestId).toBe(
+      "upload-while-finalizing",
+    );
+    resume();
+    expect(CreateFailedMessage.parse((await receive(CHANNEL.createFailed)).data).requestId).toBe(
+      requestId,
+    );
+    expect(commit).not.toHaveBeenCalled();
+    expect(
+      (await readdir(path.join(root, "_interim/annotations"))).filter(
+        (name) => !name.startsWith(".") && name !== "live",
+      ),
+    ).toEqual([]);
   } finally {
     resume();
   }

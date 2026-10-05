@@ -187,6 +187,7 @@ At most eight uploads run per dev server and one per page connection; a sender t
 Each active acknowledgement wait has a 30-second deadline; failure cancels the staging upload, and disconnect also cleans it up after pending writes finish.
 Cancellation stops finalization before the store commit starts.
 Once the atomic store commit has begun, its result wins over cancellation; a completed save never receives a later cancellation failure.
+A page that disconnects or times out during that commit may miss the success reply; cancellation cannot undo the saved annotation.
 This bounds queued chunk memory without polling or idle timers.
 
 ## Resource budget
