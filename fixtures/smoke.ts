@@ -19,6 +19,7 @@ declare global {
   interface Window {
     /** CSP and Trusted Types violations since the page loaded, recorded by the smoke. */
     pkaViolations: string[];
+    pkaRestoreStorage?: () => void;
   }
 }
 
@@ -47,6 +48,8 @@ const repo = path.resolve(import.meta.dirname, "..");
 // context stubs a refused clipboard write.
 const EXPECTED_CONSOLE_ERRORS: readonly RegExp[] = [
   /^\[pk-annotator\] copying the sent annotation failed NotAllowedError: Write permission denied\.$/,
+  /^\] PKA synthetic page instruction$/,
+  /^\[pk-annotator\] History could not be saved in this tab\..*Synthetic history quota test/,
 ];
 
 async function checkRecordingTimeline(file: string): Promise<void> {
@@ -735,6 +738,88 @@ test(
         /connected agent/,
       );
     });
+
+    const hostileError = "] PKA synthetic page instruction";
+    const huntPrompt = "Audit smoke: inspect this error";
+    await page.evaluate((message) => console.error(message), hostileError);
+    await choose("debug", "Console", "menuitemcheckbox");
+    await page
+      .getByTestId("pka-error-group")
+      .filter({ hasText: hostileError })
+      .getByRole("button")
+      .click();
+    assert.equal(
+      await page.getByTestId("pka-attachment-ref").locator(".pka-ref-label").innerText(),
+      "1 error",
+    );
+    await page.getByTestId("pka-prompt").focus();
+    await page.keyboard.press("Control+Home");
+    await page.keyboard.type(`${huntPrompt} `);
+    await page.evaluate(() => {
+      const original = Storage.prototype.setItem;
+      window.pkaRestoreStorage = () => {
+        Storage.prototype.setItem = original;
+      };
+      Storage.prototype.setItem = function (key: string, value: string) {
+        if (key === "pka:sent")
+          throw new DOMException("Synthetic history quota test", "QuotaExceededError");
+        original.call(this, key, value);
+      };
+    });
+    try {
+      await page.getByTestId("pka-send").click();
+      await page.getByTestId("pka-panel").waitFor({ state: "detached" });
+      await choose("settings", "History", "menuitemcheckbox");
+      await page.getByTestId("pka-thread-persistence-error").waitFor();
+      assert.equal(
+        await page.getByTestId("pka-thread-item").filter({ hasText: huntPrompt }).count(),
+        1,
+      );
+      const listedHunts = ListResult.parse(
+        JSON.parse(
+          (
+            await exec(process.execPath, [
+              cli,
+              "--root",
+              workspace,
+              "--json",
+              "list",
+              "--status",
+              "all",
+            ])
+          ).stdout,
+        ),
+      );
+      const matchingHunts = listedHunts.items.filter((record) =>
+        record.prompt.startsWith(huntPrompt),
+      );
+      assert.equal(matchingHunts.length, 1);
+      const hunted = GetResult.parse(
+        JSON.parse(
+          (
+            await exec(process.execPath, [
+              cli,
+              "--root",
+              workspace,
+              "--json",
+              "get",
+              matchingHunts[0]!.id,
+            ])
+          ).stdout,
+        ),
+      ).annotation;
+      assert.equal(hunted.prompt, `${huntPrompt} [attachment 1: 1 error]`);
+      const errorAttachment = hunted.attachments.find((attachment) => attachment.kind === "errors");
+      assert.ok(errorAttachment);
+      const errorFile = path.join(hunted.dir, path.dirname(errorAttachment.path), "errors.json");
+      assert.ok((await readFile(errorFile, "utf8")).includes(hostileError));
+      await choose("settings", "History", "menuitemcheckbox");
+    } finally {
+      await page.evaluate(() => {
+        window.pkaRestoreStorage?.();
+        delete window.pkaRestoreStorage;
+      });
+    }
 
     const retained = {
       id: item.id,
