@@ -45,6 +45,25 @@ afterEach(() => {
 });
 
 describe("connectThread", () => {
+  it("keeps sent annotations and sync working when History persistence exceeds quota", () => {
+    const { hot, reply } = fakeHot();
+    const store = connectThread(hot);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const write = vi.spyOn(sessionStorage, "setItem").mockImplementation(() => {
+      throw new DOMException("Quota exceeded", "QuotaExceededError");
+    });
+    expect(() => store.added(record("sent-0001"))).not.toThrow();
+    expect(store.get().sent.map(({ id }) => id)).toEqual(["sent-0001"]);
+    expect(store.get().states.get("sent-0001")?.status).toBe("pending");
+    expect(store.get().persistenceError).toContain("Annotations are saved on the server");
+    expect(() => reply(["sent-0001"])).not.toThrow();
+    expect(store.get().entries.has("sent-0001")).toBe(true);
+    write.mockRestore();
+    store.added(record("sent-0002"));
+    expect(store.get().persistenceError).toBeNull();
+    expect(JSON.parse(sessionStorage.getItem("pka:sent") ?? "")).toHaveLength(2);
+    store.disconnect();
+  });
   it("reports unreadable History entries, keeps readable ones, and still connects", () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const cases: [string, number][] = [

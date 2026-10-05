@@ -27,6 +27,7 @@ export type ThreadState = {
   unread: boolean;
   /** Why unreadable History entries in sessionStorage were discarded at load, for History. */
   discarded: string | null;
+  persistenceError: string | null;
 };
 
 export type ThreadStore = Store<ThreadState> & {
@@ -34,13 +35,24 @@ export type ThreadStore = Store<ThreadState> & {
   disconnect(): void;
 };
 
+function persistSent(sent: readonly SentRecord[]): string | null {
+  try {
+    sessionStorage.setItem(SENT_KEY, JSON.stringify(sent));
+    return null;
+  } catch (cause) {
+    const message = `History could not be saved in this tab. Annotations are saved on the server; new History entries will be lost on reload. ${cause instanceof Error ? cause.message : String(cause)}`;
+    console.error(`[pk-annotator] ${message}`);
+    return message;
+  }
+}
+
 /**
  * Reads this tab's sent annotations. Unreadable entries are dropped from sessionStorage and
  * reported, so one bad entry neither hides the readable ones nor stops the overlay.
  */
-function readSent(): Pick<ThreadState, "sent" | "discarded"> {
+function readSent(): Pick<ThreadState, "sent" | "discarded" | "persistenceError"> {
   const raw = sessionStorage.getItem(SENT_KEY);
-  if (raw === null) return { sent: [], discarded: null };
+  if (raw === null) return { sent: [], discarded: null, persistenceError: null };
   const sent: SentRecord[] = [];
   let problem: string | null = null;
   let stored: unknown;
@@ -57,11 +69,10 @@ function readSent(): Pick<ThreadState, "sent" | "discarded"> {
       else problem ??= `entry ${index + 1}: ${z.prettifyError(parsed.error)}`;
     }
   }
-  if (problem === null) return { sent, discarded: null };
+  if (problem === null) return { sent, discarded: null, persistenceError: null };
   const discarded = `Discarded unreadable History entries in sessionStorage ${SENT_KEY}; ${problem}`;
   console.error(`[pk-annotator] ${discarded}`);
-  sessionStorage.setItem(SENT_KEY, JSON.stringify(sent));
-  return { sent, discarded };
+  return { sent, discarded, persistenceError: persistSent(sent) };
 }
 
 /** Tracks annotations sent from this tab and follows their status and replies over HMR. */
@@ -111,8 +122,7 @@ export function connectThread(hot: ViteHotContext): ThreadStore {
       const sent = store
         .get()
         .sent.filter((record) => !batch.has(record.id) || known.has(record.id));
-      sessionStorage.setItem(SENT_KEY, JSON.stringify(sent));
-      store.set({ sent, states, entries });
+      store.set({ sent, states, entries, persistenceError: persistSent(sent) });
       syncNext();
     }),
   ];
@@ -127,9 +137,9 @@ export function connectThread(hot: ViteHotContext): ThreadStore {
     ...store,
     added(record) {
       const sent = [record, ...store.get().sent.filter((existing) => existing.id !== record.id)];
-      sessionStorage.setItem(SENT_KEY, JSON.stringify(sent));
       store.set({
         sent,
+        persistenceError: persistSent(sent),
         states: new Map(store.get().states).set(record.id, {
           status: "pending",
           history: [{ status: "pending", at: record.createdAt }],

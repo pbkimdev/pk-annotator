@@ -96,6 +96,7 @@ export function Thread() {
   const { thread } = useOverlay();
   const sent = useStore(thread, (state) => state.sent);
   const discarded = useStore(thread, (state) => state.discarded);
+  const persistenceError = useStore(thread, (state) => state.persistenceError);
   return (
     <>
       {discarded !== null && (
@@ -105,6 +106,15 @@ export function Thread() {
           className="px-3 py-2.5 text-xs text-destructive"
         >
           {discarded}
+        </p>
+      )}
+      {persistenceError !== null && (
+        <p
+          role="alert"
+          data-testid="pka-thread-persistence-error"
+          className="px-3 py-2.5 text-xs text-destructive"
+        >
+          {persistenceError}
         </p>
       )}
       <ol className="divide-y" data-testid="pka-thread">
