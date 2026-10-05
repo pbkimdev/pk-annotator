@@ -92,16 +92,18 @@ function toWebp(canvas: HTMLCanvasElement): Promise<Blob> {
 
 // Replaces every field value in snapdom's detached clone, so the mask follows the layout
 // snapdom renders rather than the live layout.
-function maskFields(clone: Element): void {
+export function maskFields(clone: Element): void {
   for (const field of clone.querySelectorAll(FIELDS)) {
-    if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
-      field.value = MASK;
+    if (field.localName === "input" || field.localName === "textarea") {
+      // SAFETY: the HTML field selector and tag identify its interface across iframe realms.
+      (field as HTMLInputElement | HTMLTextAreaElement).value = MASK;
       field.setAttribute("value", MASK);
-      if (field instanceof HTMLTextAreaElement) field.textContent = MASK;
-    } else if (field instanceof HTMLSelectElement) {
-      for (const option of field.options) option.textContent = MASK;
+      if (field.localName === "textarea") field.textContent = MASK;
+    } else if (field.localName === "select") {
+      // SAFETY: the selected HTML select has options even when its constructor is in an iframe.
+      for (const option of (field as HTMLSelectElement).options) option.textContent = MASK;
     } else {
-      const walker = document.createTreeWalker(field, NodeFilter.SHOW_TEXT);
+      const walker = clone.ownerDocument.createTreeWalker(field, NodeFilter.SHOW_TEXT);
       while (walker.nextNode() !== null) {
         walker.currentNode.nodeValue = (walker.currentNode.nodeValue ?? "").replace(/\S/g, "•");
       }
