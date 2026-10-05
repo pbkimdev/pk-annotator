@@ -20,6 +20,7 @@ import { checkCaptureFiles, create, loadAnnotationUpdates, upsertErrorGroups } f
 import { agentsDir, liveAgents } from "../ops/presence.ts";
 import {
   CHANNEL,
+  CancelUploadMessage,
   CreateMessage,
   ErrorsMessage,
   FileChunkMessage,
@@ -71,6 +72,7 @@ export const BODIES_GLOBAL = "__PKA_BODIES__";
 const STAGING_DIR = ".staging";
 const MB = 1024 * 1024;
 const MAX_RECORDING_JSON_BYTES = 4 * MB;
+const MAX_UPLOADS = 8;
 const execFileAsync = promisify(execFile);
 
 interface UploadFile {
@@ -86,6 +88,7 @@ interface Upload {
   files: Map<string, UploadFile>;
   remaining: number;
   done: boolean;
+  busy: boolean;
   queue: Promise<void>;
 }
 
@@ -268,12 +271,20 @@ async function serve(
         try {
           await step();
         } catch (thrown) {
-          await abort(upload, thrown);
+          if (!upload.done) await abort(upload, thrown);
         }
       })
       .catch((cause: unknown) =>
         error(`cleaning up ${upload.requestId} failed: ${describeError(cause)}`),
       );
+  }
+
+  function cancel(upload: Upload, reason: PkaError): void {
+    if (upload.done) return;
+    upload.done = true;
+    upload.queue = upload.queue
+      .then(() => abort(upload, reason))
+      .catch((cause: unknown) => error(`upload cleanup failed: ${describeError(cause)}`));
   }
 
   /** Replaces the page's raw stack and top frame with source positions. */
@@ -401,6 +412,13 @@ async function serve(
       refuse(`Request ${requestId} is already in progress`);
       return;
     }
+    if (
+      uploads.size >= MAX_UPLOADS ||
+      [...uploads.values()].some((upload) => upload.client === client)
+    ) {
+      refuse("Another upload is in progress; wait for it to finish and retry");
+      return;
+    }
     try {
       checkCaptureFiles(
         message.draft,
@@ -420,11 +438,19 @@ async function serve(
       files: new Map(message.files.map((file) => [file.path, { bytes: file.bytes, received: 0 }])),
       remaining: declaredBytes,
       done: false,
+      busy: true,
       queue: Promise.resolve(),
     };
     uploads.set(requestId, upload);
-    enqueue(upload, () => prepare(upload, declaredBytes));
-    if (declaredBytes === 0) enqueue(upload, () => finish(upload));
+    enqueue(upload, async () => {
+      await prepare(upload, declaredBytes);
+      if (upload.done) return;
+      if (declaredBytes === 0) await finish(upload);
+      else {
+        upload.busy = false;
+        client.send(CHANNEL.uploadReady, { requestId });
+      }
+    });
   });
 
   listen(CHANNEL.file, FileChunkMessage, async (message, client) => {
@@ -433,10 +459,21 @@ async function serve(
       warn(`dropped ${CHANNEL.file}: no upload ${message.requestId} in progress for this page`);
       return;
     }
+    if (upload.done) return;
+    if (upload.busy) {
+      cancel(
+        upload,
+        new PkaError(
+          "Wait for the upload acknowledgement before sending another chunk; reload the page and retry",
+        ),
+      );
+      return;
+    }
     const file = upload.files.get(message.path);
     const data = Buffer.from(message.data, "base64");
     if (
       file === undefined ||
+      data.length === 0 ||
       message.offset !== file.received ||
       file.received + data.length > file.bytes
     ) {
@@ -445,14 +482,29 @@ async function serve(
           ? `Chunk for ${message.path}, which the request did not declare`
           : `Chunk for ${message.path} at offset ${message.offset} does not continue the ${file.received} of ${file.bytes} bytes received`,
       );
-      enqueue(upload, () => Promise.reject(reason));
+      cancel(upload, reason);
       return;
     }
     file.received += data.length;
     upload.remaining -= data.length;
+    upload.busy = true;
     const target = resolveInside(upload.dir, message.path);
-    enqueue(upload, () => writeChunk(target, message.offset, data));
-    if (upload.remaining === 0) enqueue(upload, () => finish(upload));
+    enqueue(upload, async () => {
+      await writeChunk(target, message.offset, data);
+      if (upload.done) return;
+      if (upload.remaining !== 0) upload.busy = false;
+      client.send(CHANNEL.fileWritten, {
+        requestId: upload.requestId,
+        path: message.path,
+        offset: file.received,
+      });
+      if (upload.remaining === 0) await finish(upload);
+    });
+  });
+
+  listen(CHANNEL.cancelUpload, CancelUploadMessage, async (message, client) => {
+    const upload = uploads.get(message.requestId);
+    if (upload?.client === client) cancel(upload, new PkaError("The page cancelled the upload"));
   });
 
   listen(CHANNEL.errors, ErrorsMessage, async (message, client) => {
@@ -528,9 +580,7 @@ async function serve(
   const onDisconnect: ChannelListener = (_data, client) => {
     for (const upload of uploads.values()) {
       if (upload.client === client) {
-        enqueue(upload, () =>
-          Promise.reject(new PkaError("The page disconnected before the upload finished")),
-        );
+        cancel(upload, new PkaError("The page disconnected before the upload finished"));
       }
     }
   };
@@ -686,6 +736,7 @@ async function serve(
     annotationWatchers.clear();
     for (const [event, listener] of listeners) hot.off(event, listener);
     for (const upload of uploads.values()) upload.done = true;
+    await Promise.all([...uploads.values()].map((upload) => upload.queue));
     uploads.clear();
     await rm(serverStaging, { recursive: true, force: true });
   };

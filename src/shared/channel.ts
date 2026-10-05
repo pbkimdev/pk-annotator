@@ -10,7 +10,10 @@ import { AnnotationDraft, ErrorGroup, Id, RelativePath, State, ThreadEntry } fro
 // Creating an annotation:
 //   overlay  pka:create   {requestId, draft, files[{path, bytes}]}
 //   plugin   pka:create-failed  when it refuses up front (bad paths, video over the store cap)
-//   overlay  pka:file     one or more chunks per declared file, in offset order
+//   plugin   pka:upload-ready  after staging files are ready
+//   overlay  pka:file     one chunk, then wait for pka:file-written before sending another
+//   plugin   pka:file-written  after the chunk reaches disk
+//   overlay  pka:cancel-upload when a send fails before completion
 //   plugin   pka:created  after every declared byte has arrived and the annotation is written
 // The plugin stages chunks on disk under the store's .staging/<server>/<requestId>/ and
 // moves the finished annotation directory into place in one rename, so readers
@@ -44,6 +47,9 @@ import { AnnotationDraft, ErrorGroup, Id, RelativePath, State, ThreadEntry } fro
 export const CHANNEL = {
   create: "pka:create",
   file: "pka:file",
+  uploadReady: "pka:upload-ready",
+  fileWritten: "pka:file-written",
+  cancelUpload: "pka:cancel-upload",
   errors: "pka:errors",
   created: "pka:created",
   createFailed: "pka:create-failed",
@@ -88,6 +94,8 @@ export const FileChunkMessage = z.strictObject({
   data: z.base64().max(Math.ceil(MAX_CHUNK_BYTES / 3) * 4),
 });
 
+export const CancelUploadMessage = z.strictObject({ requestId: Id });
+
 // New or changed groups only; the plugin merges them by fingerprint into
 // live/errors.json. `stack` is the raw browser stack; the plugin symbolicates it.
 export const ErrorsMessage = z.strictObject({
@@ -115,6 +123,14 @@ const Version = z.string().regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Z
 export const InstallUpdateMessage = z.strictObject({ requestId: Id, version: Version });
 
 // plugin -> overlay
+
+export const UploadReadyMessage = z.strictObject({ requestId: Id });
+
+export const FileWrittenMessage = z.strictObject({
+  requestId: Id,
+  path: RelativePath,
+  offset: z.number().int().nonnegative(),
+});
 
 export const CreatedMessage = z.strictObject({
   requestId: Id,
@@ -185,6 +201,9 @@ export const UpdateResultMessage = z.discriminatedUnion("outcome", [
 
 export type CreateMessage = z.infer<typeof CreateMessage>;
 export type FileChunkMessage = z.infer<typeof FileChunkMessage>;
+export type UploadReadyMessage = z.infer<typeof UploadReadyMessage>;
+export type FileWrittenMessage = z.infer<typeof FileWrittenMessage>;
+export type CancelUploadMessage = z.infer<typeof CancelUploadMessage>;
 export type ErrorsMessage = z.infer<typeof ErrorsMessage>;
 export type CreatedMessage = z.infer<typeof CreatedMessage>;
 export type CreateFailedMessage = z.infer<typeof CreateFailedMessage>;
@@ -206,6 +225,9 @@ export type UpdateResultMessage = z.infer<typeof UpdateResultMessage>;
 export interface ChannelEvents {
   [CHANNEL.create]: CreateMessage;
   [CHANNEL.file]: FileChunkMessage;
+  [CHANNEL.uploadReady]: UploadReadyMessage;
+  [CHANNEL.fileWritten]: FileWrittenMessage;
+  [CHANNEL.cancelUpload]: CancelUploadMessage;
   [CHANNEL.errors]: ErrorsMessage;
   [CHANNEL.created]: CreatedMessage;
   [CHANNEL.createFailed]: CreateFailedMessage;

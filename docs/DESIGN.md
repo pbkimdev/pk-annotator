@@ -179,6 +179,12 @@ flowchart LR
 
 The store is the only shared state. The plugin writes annotations and the live error snapshot; `pka-mcp` and `pka` write status changes and replies through the same `ops/` code; the plugin watches the store and pushes changes to the overlay. Each `pka-mcp` session also writes a presence file naming its client, which the plugin turns into the overlay's agent theme (see [MCP server](#mcp-server)).
 
+Uploads wait for the plugin to prepare the staging files, then send one chunk of at most 512 KB at a time.
+The plugin acknowledges each chunk only after writing it to disk, and the overlay waits for that acknowledgement before reading the next chunk.
+At most eight uploads run per dev server and one per page connection; a sender that sends another chunk before acknowledgement is refused with instructions to reload and retry.
+Each active acknowledgement wait has a 30-second deadline; failure cancels the staging upload, and disconnect also cleans it up after pending writes finish.
+This bounds queued chunk memory without polling or idle timers.
+
 ## Resource budget
 
 Capture uses bounded buffers and event callbacks.

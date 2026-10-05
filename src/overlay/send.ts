@@ -10,7 +10,9 @@ import {
   CreatedMessage,
   CreateMessage,
   FileChunkMessage,
+  FileWrittenMessage,
   MAX_CHUNK_BYTES,
+  UploadReadyMessage,
 } from "../shared/channel.ts";
 import { RECORDING, RecordingManifestDraft } from "../shared/recording.ts";
 import type { Attachment, Box, MarkPage, Viewport } from "../shared/schema.ts";
@@ -254,8 +256,7 @@ export async function collectAttachments(
 }
 
 /**
- * Sends one annotation: pka:create with the draft and declared files, then pka:file
- * chunks in offset order, then waits for pka:created or pka:create-failed.
+ * Sends the next chunk only after the plugin has written the previous one to disk.
  */
 export async function sendAnnotation(
   hot: ViteHotContext,
@@ -314,30 +315,62 @@ export async function sendAnnotation(
   });
 
   let reply: { id: string; dir: string } | { failure: string } | undefined;
-  let settle = () => {};
-  const replied = new Promise<void>((resolve) => {
-    settle = resolve;
-  });
+  let ready = false;
+  let written: { path: string; offset: number } | undefined;
+  let wake = () => {};
+  async function waitFor(expected: () => boolean): Promise<void> {
+    if (expected() || reply !== undefined) return;
+    let timer = 0;
+    try {
+      await new Promise<void>((resolve, reject) => {
+        wake = () => {
+          if (expected() || reply !== undefined) resolve();
+        };
+        timer = window.setTimeout(
+          () =>
+            reject(
+              new Error(
+                "No upload acknowledgement from the dev server within 30 s. Reload the page and retry.",
+              ),
+            ),
+          REPLY_TIMEOUT_MS,
+        );
+      });
+    } finally {
+      window.clearTimeout(timer);
+      wake = () => {};
+    }
+  }
   const stops = [
     listen(hot, CHANNEL.created, CreatedMessage, (message) => {
       if (message.requestId !== requestId) return;
       reply = { id: message.id, dir: message.dir };
-      settle();
+      wake();
     }),
     listen(hot, CHANNEL.createFailed, CreateFailedMessage, (message) => {
       if (message.requestId !== requestId) return;
       reply = { failure: message.message };
-      settle();
+      wake();
+    }),
+    listen(hot, CHANNEL.uploadReady, UploadReadyMessage, (message) => {
+      if (message.requestId !== requestId) return;
+      ready = true;
+      wake();
+    }),
+    listen(hot, CHANNEL.fileWritten, FileWrittenMessage, (message) => {
+      if (message.requestId !== requestId) return;
+      written = { path: message.path, offset: message.offset };
+      wake();
     }),
   ];
-  let timer = 0;
   try {
     send(hot, CHANNEL.create, create);
+    await waitFor(() => ready);
     const total = files.reduce((sum, file) => sum + file.data.size, 0);
     let sent = 0;
     onPhase({ phase: "uploading", sent, total });
     upload: for (const file of files) {
-      for (let offset = 0; offset === 0 || offset < file.data.size; offset += MAX_CHUNK_BYTES) {
+      for (let offset = 0; offset < file.data.size; offset += MAX_CHUNK_BYTES) {
         // The plugin refused the annotation; the remaining chunks would be dropped.
         if (reply !== undefined) break upload;
         const chunk = file.data.slice(offset, offset + MAX_CHUNK_BYTES);
@@ -348,20 +381,17 @@ export async function sendAnnotation(
           data: await base64(chunk),
         });
         send(hot, CHANNEL.file, message);
+        await waitFor(() => written?.path === file.path && written.offset === offset + chunk.size);
         sent += chunk.size;
         onPhase({ phase: "uploading", sent, total });
-        if (file.data.size === 0) break;
       }
     }
 
     onPhase({ phase: "waiting" });
-    const timedOut = new Promise<void>((resolve) => {
-      timer = window.setTimeout(resolve, REPLY_TIMEOUT_MS);
-    });
-    await Promise.race([replied, timedOut]);
+    await waitFor(() => reply !== undefined);
   } finally {
-    window.clearTimeout(timer);
     for (const stop of stops) stop();
+    if (reply === undefined) send(hot, CHANNEL.cancelUpload, { requestId });
   }
   if (reply === undefined) {
     throw new Error("No reply from the dev server within 30 s. Is annotator() in the Vite config?");
