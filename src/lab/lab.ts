@@ -366,6 +366,7 @@ async function locate(page: Page, target: ActionTarget, step: number): Promise<L
   let notes: string[] = [];
   for (;;) {
     notes = [];
+    let ambiguous = false;
     for (const [strategy, locator] of strategies) {
       let count: number;
       try {
@@ -378,7 +379,45 @@ async function locate(page: Page, target: ActionTarget, step: number): Promise<L
         continue;
       }
       if (count === 1) return locator;
-      if (count > 1) notes.push(`${strategy} matched ${count}`);
+      if (count > 1) {
+        ambiguous = true;
+        notes.push(`${strategy} matched ${count}`);
+      }
+    }
+    // Recordings also put an unlabeled field's name or placeholder in target.label.
+    if (!ambiguous && target.label !== undefined) {
+      const fields = page.locator(target.tag);
+      const matches = await fields.evaluateAll(
+        (elements, { label, cap }) =>
+          elements.flatMap((element, index) => {
+            if (
+              !(element instanceof HTMLInputElement) &&
+              !(element instanceof HTMLTextAreaElement) &&
+              !(element instanceof HTMLSelectElement) &&
+              !(element instanceof HTMLFormElement) &&
+              !(element instanceof HTMLElement && element.isContentEditable)
+            )
+              return [];
+            const labels =
+              element instanceof HTMLInputElement ||
+              element instanceof HTMLTextAreaElement ||
+              element instanceof HTMLSelectElement
+                ? element.labels
+                : null;
+            if (
+              element.hasAttribute("aria-label") ||
+              element.hasAttribute("aria-labelledby") ||
+              (labels !== null && labels.length > 0)
+            )
+              return [];
+            const name = element.getAttribute("name") ?? element.getAttribute("placeholder");
+            return name?.replace(/\s+/g, " ").trim().slice(0, cap) === label ? [index] : [];
+          }),
+        { label: target.label, cap: TEXT_CAP },
+      );
+      const index = matches[0];
+      if (matches.length === 1 && index !== undefined) return fields.nth(index);
+      if (matches.length > 1) notes.push(`name or placeholder matched ${matches.length}`);
     }
     if (Date.now() >= deadline) break;
     await sleep(100);
