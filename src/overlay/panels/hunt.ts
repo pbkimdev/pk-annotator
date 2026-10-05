@@ -201,19 +201,11 @@ function huntAttachment(
   live: readonly string[],
 ): ComposerAttachment {
   const all = [...kept.map(({ group }) => group.fingerprint), ...live];
-  const only =
-    kept.length === 1 && live.length === 0
-      ? kept[0]?.group
-      : kept.length === 0 && live.length === 1
-        ? getCapture()
-            .snapshot()
-            .groups.find((group) => group.fingerprint === live[0])
-        : undefined;
   const resolve = async () => [...kept, ...(await huntGroups(hot, live))];
   return {
     id: ATTACHMENT_ID,
     kind: "errors",
-    label: only === undefined ? `${all.length} errors` : oneLine(only.message, 60),
+    label: `${all.length} ${all.length === 1 ? "error" : "errors"}`,
     fingerprints: live,
     keptGroups: kept,
     freeze: async () => huntAttachment(hot, structuredClone(await resolve()), []),
