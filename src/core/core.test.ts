@@ -113,6 +113,28 @@ describe("console capture", () => {
 });
 
 describe("error groups", () => {
+  it("sends only retained groups and queues a recurrent evicted group after older retained changes", () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const current = start();
+    const raise = (index: number): void => {
+      const error = new Error(`failure ${index}`);
+      error.stack = `Error: failure\n    at raise (http://localhost:3000/src/issue-${index}.tsx:1:1)`;
+      console.error(error);
+    };
+    for (let index = 0; index <= 200; index += 1) raise(index);
+    raise(0);
+    expect(current.snapshot().groups).toHaveLength(200);
+    vi.advanceTimersByTime(0);
+    expect(sent[0]?.groups[0]?.message).toBe("failure 2");
+    vi.advanceTimersByTime(3000);
+    const messages = sent.flatMap((message) => message.groups.map((group) => group.message));
+    expect(messages).toHaveLength(200);
+    expect(messages).not.toContain("failure 1");
+    expect(messages.at(-1)).toBe("failure 0");
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("groups by in-app frames, clears with a watermark, and reopens on recurrence", () => {
     vi.useFakeTimers();
     vi.spyOn(console, "error").mockImplementation(() => {});

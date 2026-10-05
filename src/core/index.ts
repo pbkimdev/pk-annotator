@@ -313,7 +313,10 @@ export function createCapture(options: CaptureOptions): Capture {
     for (const state of groups.values()) {
       if (oldest === undefined || state.group.lastSeq < oldest.group.lastSeq) oldest = state;
     }
-    if (oldest !== undefined) groups.delete(oldest.group.fingerprint);
+    if (oldest !== undefined) {
+      groups.delete(oldest.group.fingerprint);
+      pendingSend.delete(oldest.group.fingerprint);
+    }
   }
 
   function recordError(entry: ErrorEntry, topFrame: string | undefined): void {
