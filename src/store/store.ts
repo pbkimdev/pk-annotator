@@ -567,6 +567,12 @@ export async function withAnnotationLock<T>(
   );
 }
 
+export async function withLiveErrorsLock<T>(store: string, act: () => Promise<T>): Promise<T> {
+  const lock = resolveInside(store, "live", "errors.lock");
+  await refuseSymlinks(store, lock);
+  return withLock(store, lock, Date.now() + LOCK_WAIT_MS, act);
+}
+
 /** Removes the claim so an agent can take the annotation again. */
 export async function removeClaim(store: string, id: string): Promise<void> {
   const files = await requireAnnotation(store, id);

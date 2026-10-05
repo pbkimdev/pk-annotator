@@ -37,6 +37,7 @@ import {
   readJsonLines,
   requireAnnotation,
   withAnnotationLock,
+  withLiveErrorsLock,
   writeAnnotationDir,
   writeClaim,
   writeJsonAtomic,
@@ -505,18 +506,20 @@ export async function upsertErrorGroups(
   store: string,
   groups: ErrorGroup[],
 ): Promise<LiveErrorsSnapshot> {
-  const merged = new Map(
-    ((await readErrors(store))?.groups ?? []).map((group) => [group.fingerprint, group]),
-  );
-  for (const group of groups) merged.set(group.fingerprint, group);
-  const snapshot: LiveErrorsSnapshot = {
-    updatedAt: new Date().toISOString(),
-    groups: [...merged.values()]
-      .sort((a, b) => Date.parse(b.lastSeen) - Date.parse(a.lastSeen))
-      .slice(0, MAX_ERROR_GROUPS),
-  };
-  await writeJsonAtomic(store, liveErrorsFile(store), snapshot);
-  return snapshot;
+  return withLiveErrorsLock(store, async () => {
+    const merged = new Map(
+      ((await readErrors(store))?.groups ?? []).map((group) => [group.fingerprint, group]),
+    );
+    for (const group of groups) merged.set(group.fingerprint, group);
+    const snapshot: LiveErrorsSnapshot = {
+      updatedAt: new Date().toISOString(),
+      groups: [...merged.values()]
+        .sort((a, b) => Date.parse(b.lastSeen) - Date.parse(a.lastSeen))
+        .slice(0, MAX_ERROR_GROUPS),
+    };
+    await writeJsonAtomic(store, liveErrorsFile(store), snapshot);
+    return snapshot;
+  });
 }
 
 /**

@@ -10,11 +10,12 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
-import type { AnnotationDraft, ClaimProcess } from "../shared/schema.ts";
+import type { AnnotationDraft, ClaimProcess, ErrorGroup } from "../shared/schema.ts";
 import { PkaError, createClaim, createStore, listIds, removeClaim } from "../store/store.ts";
 import {
   attach,
   create,
+  errors,
   get,
   list,
   loadAnnotation,
@@ -25,6 +26,7 @@ import {
   validateAttachTarget,
   setStatus,
   wait,
+  upsertErrorGroups,
   type WaitOptions,
 } from "./ops.ts";
 import { thisProcess } from "./presence.ts";
@@ -76,6 +78,10 @@ for await (const line of createInterface({ input: process.stdin })) {
       release();
       continue;
     }
+    if (command.op === "errors") {
+      say({ ok: await ops.upsertErrorGroups(command.store, command.groups) });
+      continue;
+    }
     say({ ok: await ops.setStatus(command.store, command.input, command.by) });
   } catch (error) {
     say({ error: error.message });
@@ -88,6 +94,7 @@ const WorkerReply = z.strictObject({ ok: z.unknown().optional(), error: z.string
 type WorkerCommand =
   | { op: "hold"; store: string; id: string }
   | { op: "release" }
+  | { op: "errors"; store: string; groups: ErrorGroup[] }
   | { op?: undefined; store: string; input: SetStatusInput; by: string };
 
 interface Worker {
@@ -514,6 +521,44 @@ describe("status changes", () => {
       expect((await readdir(path.join(store, id))).sort()).toEqual(clean);
     } finally {
       await stopWorker(holder);
+    }
+  });
+});
+
+describe("live errors", () => {
+  it("preserves existing and distinct error groups written concurrently by separate processes", async () => {
+    const group: ErrorGroup = {
+      fingerprint: "existing",
+      message: "Existing error",
+      type: "Error",
+      count: 1,
+      firstSeen: "2026-10-05T00:00:00.000Z",
+      lastSeen: "2026-10-05T00:00:00.000Z",
+      lastSeq: 1,
+      stack: "Error: Existing error",
+      status: "open",
+    };
+    await upsertErrorGroups(store, [group]);
+    const workers = [startWorker(), startWorker()];
+    try {
+      for (let index = 0; index < 8; index += 1) {
+        const written = await Promise.all(
+          workers.map((worker, side) =>
+            worker.call({
+              op: "errors",
+              store,
+              groups: [{ ...group, fingerprint: `concurrent-${index}-${side}` }],
+            }),
+          ),
+        );
+        for (const result of written) expect(result.error).toBeUndefined();
+      }
+      const snapshot = await errors(store, { limit: 100, detail: "concise" });
+      expect(snapshot.total).toBe(17);
+      expect(snapshot.groups.map((item) => item.fingerprint)).toContain("existing");
+      expect(new Set(snapshot.groups.map((item) => item.fingerprint)).size).toBe(17);
+    } finally {
+      await Promise.all(workers.map(stopWorker));
     }
   });
 });
