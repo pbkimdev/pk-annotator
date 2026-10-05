@@ -1,6 +1,6 @@
 {
   "name": "pk-annotator",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Dev-only browser annotation overlay for Vite apps that sends picked elements, captures, and prompts to Claude Code and Codex through an MCP server.",
   "keywords": [
     "annotation",

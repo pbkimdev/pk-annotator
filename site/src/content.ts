@@ -2,7 +2,7 @@ export type Locale = "en" | "ko";
 
 export const SITE = "https://pk-annotator.paulbkim.dev";
 export const INSTALL_COMMAND = `curl -fsSL ${SITE}/install.sh | sh`;
-export const VERSION = "0.7.0";
+export const VERSION = "0.8.0";
 export const CLIPS = ["agent", "annotate", "capture", "record", "multi", "rapid"] as const;
 
 const en = {
