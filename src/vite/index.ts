@@ -283,7 +283,9 @@ async function serve(
     if (upload.done) return;
     upload.done = true;
     upload.queue = upload.queue
-      .then(() => abort(upload, reason))
+      .then(async () => {
+        if (uploads.get(upload.requestId) === upload) await abort(upload, reason);
+      })
       .catch((cause: unknown) => error(`upload cleanup failed: ${describeError(cause)}`));
   }
 
@@ -347,7 +349,11 @@ async function serve(
         .filter((attachment) => attachment.kind === "recording")
         .map((attachment) => path.posix.dirname(attachment.path)),
     );
-    for (const directory of recordingDirectories) await completeRecording(upload, directory);
+    for (const directory of recordingDirectories) {
+      await completeRecording(upload, directory);
+      if (upload.done) return;
+    }
+    if (upload.done) return;
     const { id } = await create(store, upload.draft, {
       dir: upload.dir,
       paths: [...upload.files.keys()],

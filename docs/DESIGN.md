@@ -185,6 +185,8 @@ Uploads wait for the plugin to prepare the staging files, then send one chunk of
 The plugin acknowledges each chunk only after writing it to disk, and the overlay waits for that acknowledgement before reading the next chunk.
 At most eight uploads run per dev server and one per page connection; a sender that sends another chunk before acknowledgement is refused with instructions to reload and retry.
 Each active acknowledgement wait has a 30-second deadline; failure cancels the staging upload, and disconnect also cleans it up after pending writes finish.
+Cancellation stops finalization before the store commit starts.
+Once the atomic store commit has begun, its result wins over cancellation; a completed save never receives a later cancellation failure.
 This bounds queued chunk memory without polling or idle timers.
 
 ## Resource budget

@@ -13,6 +13,7 @@ import {
   UploadReadyMessage,
   type ChannelEvents,
 } from "../shared/channel.ts";
+import * as ops from "../ops/ops.ts";
 import { annotator } from "./index.ts";
 
 const Message = z.strictObject({ type: z.literal("custom"), event: z.string(), data: z.unknown() });
@@ -64,6 +65,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   socket?.close();
   await server?.close();
   await rm(root, { recursive: true, force: true });
@@ -174,4 +176,44 @@ it("rejects a sender that outruns disk acknowledgement and frees its upload slot
   expect(CreateFailedMessage.parse((await receive(CHANNEL.createFailed)).data).message).toContain(
     "cancelled",
   );
+});
+
+it("keeps the committed result when cancellation arrives during the store commit", async () => {
+  const original = ops.create;
+  let committing = () => {};
+  let resume = () => {};
+  const started = new Promise<void>((resolve) => {
+    committing = resolve;
+  });
+  const released = new Promise<void>((resolve) => {
+    resume = resolve;
+  });
+  vi.spyOn(ops, "create").mockImplementation(async (...args) => {
+    committing();
+    await released;
+    return original(...args);
+  });
+  const requestId = "upload-commit-cancel";
+  try {
+    create(requestId);
+    await receive(CHANNEL.uploadReady);
+    send(CHANNEL.file, { requestId, path: "capture/frame.webp", offset: 0, data: "YWJjZA==" });
+    await receive(CHANNEL.fileWritten);
+    await started;
+    send(CHANNEL.cancelUpload, { requestId });
+    create("upload-while-committing");
+    expect(CreateFailedMessage.parse((await receive(CHANNEL.createFailed)).data).requestId).toBe(
+      "upload-while-committing",
+    );
+    resume();
+    expect(CreatedMessage.parse((await receive(CHANNEL.created)).data).requestId).toBe(requestId);
+    create("upload-after-commit");
+    await receive(CHANNEL.uploadReady);
+    send(CHANNEL.cancelUpload, { requestId: "upload-after-commit" });
+    expect(CreateFailedMessage.parse((await receive(CHANNEL.createFailed)).data).requestId).toBe(
+      "upload-after-commit",
+    );
+  } finally {
+    resume();
+  }
 });
