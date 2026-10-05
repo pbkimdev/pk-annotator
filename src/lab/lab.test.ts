@@ -10,6 +10,21 @@ function step(type: NavigationEntry["type"], to: string): NavigationEntry {
 }
 
 describe("producedByReplay", () => {
+  it("keeps distinct hash destinations even when replay entered substitute values", () => {
+    for (const entered of [false, true]) {
+      const state = {
+        changes: [{ type: "push" as const, url: `${origin}/#/a?q=pka%20lab`, entered }],
+        entered,
+      };
+      expect(
+        producedByReplay(step("push", "/#/b?q=recorded"), `${origin}/#/b?q=recorded`, state),
+      ).toBe(false);
+      expect(
+        producedByReplay(step("push", "/#/a?q=pka%20lab"), `${origin}/#/a?q=pka%20lab`, state),
+      ).toBe(true);
+    }
+  });
+
   it("skips only a recorded history change the replayed step made to the same destination", () => {
     const typed = {
       changes: [{ type: "replace" as const, url: `${origin}/?q=pka%20lab`, entered: true }],

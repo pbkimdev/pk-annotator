@@ -436,7 +436,9 @@ async function settle(page: Page, tracker: Tracker): Promise<void> {
 function samePage(current: string, target: string): boolean {
   const a = new URL(current);
   const b = new URL(target);
-  return a.origin === b.origin && a.pathname === b.pathname && a.search === b.search;
+  return (
+    a.origin === b.origin && a.pathname === b.pathname && a.search === b.search && a.hash === b.hash
+  );
 }
 
 // A recorded push or replace is the consequence of the last performed step
@@ -456,7 +458,8 @@ export function producedByReplay(
   return state.changes.some(({ type, url, entered }) => {
     if (type === "reload" || (type === "traverse") !== (step.type === "traverse")) return false;
     const got = new URL(url);
-    if (got.origin !== want.origin || got.pathname !== want.pathname) return false;
+    if (got.origin !== want.origin || got.pathname !== want.pathname || got.hash !== want.hash)
+      return false;
     return entered || got.search === want.search;
   });
 }
