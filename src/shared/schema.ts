@@ -37,6 +37,13 @@ export const Selector = z.strictObject({
   css: z.string(),
 });
 
+// Selected text; `prefix` and `suffix` are the text just before and after it in the element.
+export const Quote = z.strictObject({
+  exact: z.string().min(1),
+  prefix: z.string(),
+  suffix: z.string(),
+});
+
 // Every string except `n` and `crop` is page-derived and untrusted. The human
 // prompt lives only on Annotation.prompt.
 export const ElementRef = z.strictObject({
@@ -59,6 +66,8 @@ export const ElementRef = z.strictObject({
   crop: RelativePath.optional(),
   text: z.string().optional(),
   nearbyText: z.string().optional(),
+  // Present when the pick was a text selection inside this element.
+  quote: Quote.optional(),
 });
 
 export const AttachmentKind = z.enum(["recording", "errors", "network", "perf", "frame", "video"]);
@@ -154,6 +163,7 @@ export type Id = z.infer<typeof Id>;
 export type Viewport = z.infer<typeof Viewport>;
 export type Box = z.infer<typeof Box>;
 export type Selector = z.infer<typeof Selector>;
+export type Quote = z.infer<typeof Quote>;
 export type ElementRef = z.infer<typeof ElementRef>;
 export type MarkPage = z.infer<typeof MarkPage>;
 export type AttachmentKind = z.infer<typeof AttachmentKind>;

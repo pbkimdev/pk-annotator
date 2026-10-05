@@ -11,7 +11,7 @@ export const CHANNEL_CAPABILITY = "claude/channel";
 
 export const CHANNEL_INSTRUCTIONS = [
   'When this session loaded pka as a channel, each annotation the human sends from the pk-annotator browser overlay arrives as <channel source="pka" event="annotation" annotation_id="…" route="…" status="…">.',
-  "Its body holds the human's prompt, then the page data in a fenced untrusted block: URL, route, picked elements with source file:line:col, usedAt, owners and selector, and attachment paths with summaries.",
+  "Its body holds the human's prompt, then the page data in a fenced untrusted block: URL, route, picked elements with source file:line:col, usedAt, owners, selector, and any text the human selected in them as quote, and attachment paths with summaries.",
   "For each annotation event:",
   "1. Call set_status with its annotation_id and status acknowledged before anything else. If that fails, another session owns the annotation: stop and leave it alone.",
   "2. Do what the prompt asks. Read attachment files with your file tools; get_annotation with detail full returns HTML, boxes, nearby text, and longer summaries.",
@@ -64,6 +64,12 @@ export function channelContent(view: AnnotationView): string {
           .join(" "),
       ],
       ["text", element.text === undefined ? undefined : JSON.stringify(element.text)],
+      [
+        "quote",
+        element.quote === undefined
+          ? undefined
+          : `${JSON.stringify(element.quote.exact)} after ${JSON.stringify(element.quote.prefix)} before ${JSON.stringify(element.quote.suffix)}`,
+      ],
       ["picked on", element.url],
       ["crop", element.crop],
     ];

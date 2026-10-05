@@ -50,6 +50,7 @@ export function annotationBlock(
           ["role", ref.selector.role],
           ["name", ref.selector.name],
           ["selector", ref.locator],
+          ["quote", ref.quote?.exact],
         ])}/>`,
     ),
     "</annotation>",

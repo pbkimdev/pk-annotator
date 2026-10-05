@@ -8,11 +8,12 @@ import {
   type Location,
 } from "../select/source.ts";
 import { startPicking } from "../select/pick.ts";
+import { findQuote, startTextPicking } from "../select/quote.ts";
 import { getCapture } from "./capture.ts";
 import { NOTE, elementKey, nextSelection, useOverlay } from "./context.tsx";
 import { useText } from "./language.ts";
 import { cn } from "./lib/utils.ts";
-import { MAX_ELEMENTS, anchor, pickOf, remember } from "./send.ts";
+import { MAX_ELEMENTS, anchor, pickOf, remember, rememberQuote, type Picked } from "./send.ts";
 import { useStore } from "./store.ts";
 
 /**
@@ -103,11 +104,10 @@ function HoverBox({ element }: { element: Element }) {
 // never covers the selected element's own text.
 const BADGE_HEIGHT = 16;
 
-function SelectionBox({ element, n }: { element: Element; n: number }) {
-  const rect = element.getBoundingClientRect();
+function SelectionBox({ rect, n, outline }: { rect: DOMRect; n: number; outline: boolean }) {
   return (
     <div
-      className="pointer-events-none fixed rounded-[3px] outline-2 outline-pick"
+      className={cn("pointer-events-none fixed rounded-[3px]", outline && "outline-2 outline-pick")}
       style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height }}
     >
       <span
@@ -122,6 +122,69 @@ function SelectionBox({ element, n }: { element: Element; n: number }) {
         {n}
       </span>
     </div>
+  );
+}
+
+const HIGHLIGHT = "pka-quote";
+// ::highlight() styles text in the page, so its rule lives in a document sheet, not the shadow root.
+const highlightSheet = new CSSStyleSheet();
+
+// A quote's range, found again when a render replaced the text nodes it was in.
+const ranges = new WeakMap<Picked, Range>();
+
+function quoteRange(target: Element, pick: Picked): Range | null {
+  if (pick.quote === undefined) return null;
+  const cached = ranges.get(pick);
+  if (
+    cached !== undefined &&
+    cached.startContainer.isConnected &&
+    target.contains(cached.commonAncestorContainer) &&
+    cached.toString() === pick.quote.exact
+  ) {
+    return cached;
+  }
+  const range = findQuote(target, pick.quote);
+  if (range !== null) ranges.set(pick, range);
+  return range;
+}
+
+/** Paints the quotes on the page in the pick color, or removes the highlight when there are none. */
+function useQuoteHighlight(host: HTMLElement, quotes: readonly Range[]): void {
+  // Scrolling re-renders every frame; the highlight changes only with its ranges or color.
+  const painted = useRef<{ quotes: readonly Range[]; color: string }>({ quotes: [], color: "" });
+  useEffect(() => {
+    if (!("highlights" in CSS)) return;
+    const color = getComputedStyle(host).getPropertyValue("--pka-pick").trim();
+    const previous = painted.current;
+    if (
+      previous.color === color &&
+      previous.quotes.length === quotes.length &&
+      previous.quotes.every((range, index) => range === quotes[index])
+    ) {
+      return;
+    }
+    painted.current = { quotes, color };
+    if (quotes.length === 0) {
+      CSS.highlights.delete(HIGHLIGHT);
+      return;
+    }
+    highlightSheet.replaceSync(
+      `::highlight(${HIGHLIGHT}) { background-color: color-mix(in oklch, ${color} 28%, transparent); text-decoration: underline 2px ${color}; }`,
+    );
+    if (!document.adoptedStyleSheets.includes(highlightSheet)) {
+      document.adoptedStyleSheets = [...document.adoptedStyleSheets, highlightSheet];
+    }
+    CSS.highlights.set(HIGHLIGHT, new Highlight(...quotes));
+  });
+  useEffect(
+    () => () => {
+      painted.current = { quotes: [], color: "" };
+      if ("highlights" in CSS) CSS.highlights.delete(HIGHLIGHT);
+      document.adoptedStyleSheets = document.adoptedStyleSheets.filter(
+        (sheet) => sheet !== highlightSheet,
+      );
+    },
+    [],
   );
 }
 
@@ -165,9 +228,20 @@ export function PickLayer() {
     })),
   ].map((box) => {
     if (box.pick === undefined) throw new Error(`Saved element ${box.n} has no pick`);
-    return { ...box, route: box.pick.route, target: anchor(box.element, box.pick) };
+    const target = anchor(box.element, box.pick);
+    const quote = target === null ? null : quoteRange(target, box.pick);
+    return { ...box, pick: box.pick, route: box.pick.route, target, quote };
   });
-  const waiting = boxes.some((box) => box.target === null && box.route === route);
+  // A quote whose text is not on the page now waits for it like a pick whose element is not.
+  const waiting = boxes.some(
+    (box) =>
+      box.route === route &&
+      (box.target === null || (box.pick.quote !== undefined && box.quote === null)),
+  );
+  useQuoteHighlight(
+    host,
+    boxes.flatMap((box) => (box.quote === null ? [] : [box.quote])),
+  );
 
   useLayoutTicks(visible && (boxes.length > 0 || hover !== null), visible && waiting);
 
@@ -178,6 +252,26 @@ export function PickLayer() {
     prewarm(
       [center, document.querySelector("[data-pka-src]")].filter((element) => element !== null),
     );
+    if (picking === "text") {
+      return startTextPicking(host, {
+        select: (element, quote, range) => {
+          const { selection } = ui.get();
+          const next = selection.includes(element) ? selection : [...selection, element];
+          if (next.length > MAX_ELEMENTS) {
+            ui.set({ tooMany: next.length, panel: NOTE });
+            return;
+          }
+          // One pick per element: a second quote in an element replaces its first.
+          rememberQuote(element, quote, range);
+          ui.set({ selection: next, tooMany: null, panel: NOTE });
+        },
+        escape: () => {
+          if (ui.get().selection.length > 0) ui.set({ selection: [], tooMany: null });
+          else ui.set({ picking: null, tooMany: null });
+        },
+        enter: () => ui.set({ picking: null, panel: NOTE }),
+      });
+    }
     // Picking swallows pointermove at window capture, so the tip's listener goes first.
     const follow = (event: PointerEvent) => {
       if (tip.current === null) return;
@@ -219,12 +313,31 @@ export function PickLayer() {
         ref={layer}
         data-testid="pka-pick-layer"
         aria-hidden="true"
-        className={cn("fixed inset-0", active ? "pointer-events-auto cursor-crosshair" : "hidden")}
+        className={cn(
+          "fixed inset-0",
+          active && picking !== "text" ? "pointer-events-auto cursor-crosshair" : "hidden",
+        )}
       />
-      {boxes.map(
-        (box) =>
-          box.target !== null && <SelectionBox key={box.key} element={box.target} n={box.n} />,
-      )}
+      {boxes.map((box) => {
+        if (box.target === null) return null;
+        if (box.pick.quote === undefined) {
+          return (
+            <SelectionBox
+              key={box.key}
+              rect={box.target.getBoundingClientRect()}
+              n={box.n}
+              outline
+            />
+          );
+        }
+        // The highlight marks a quote; the number sits at its first line.
+        const first = box.quote?.getClientRects()[0];
+        return (
+          first !== undefined && (
+            <SelectionBox key={box.key} rect={first} n={box.n} outline={false} />
+          )
+        );
+      })}
       {active && hover?.isConnected === true && marquee === null && <HoverBox element={hover} />}
       {active && picking === "pick" && selectTip && (
         // Hidden until the first pointer move places it; it then fades once and unmounts.

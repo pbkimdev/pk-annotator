@@ -8,7 +8,8 @@ import {
 } from "./marquee.ts";
 import { isComponentRoot } from "./source.ts";
 
-export type PickMode = "pick" | "box" | "lasso";
+/** "text" takes text selections (quote.ts); the others pick elements here. */
+export type PickMode = "pick" | "box" | "lasso" | "text";
 export type SelectHow = "replace" | "toggle" | "add";
 
 export type PickHandlers = {
@@ -36,7 +37,7 @@ const elementTree = {
 export function startPicking(
   host: Element,
   layer: Element,
-  mode: PickMode,
+  mode: Exclude<PickMode, "text">,
   handlers: PickHandlers,
 ): () => void {
   let frame = 0;
@@ -177,7 +178,7 @@ export function startPicking(
   };
 }
 
-function isTextField(target: EventTarget): boolean {
+export function isTextField(target: EventTarget): boolean {
   return (
     target instanceof HTMLTextAreaElement ||
     target instanceof HTMLInputElement ||
@@ -185,6 +186,6 @@ function isTextField(target: EventTarget): boolean {
   );
 }
 
-function isMenu(target: EventTarget): boolean {
+export function isMenu(target: EventTarget): boolean {
   return target instanceof Element && target.getAttribute("role") === "menu";
 }

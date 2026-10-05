@@ -30,6 +30,7 @@ import {
   type Picked,
   type SendPhase,
 } from "./send.ts";
+import type { Quote } from "../shared/schema.ts";
 import { useList, useStore } from "./store.ts";
 import { Button } from "./ui/button.tsx";
 
@@ -69,6 +70,7 @@ function promptTitle(prompt: string): string {
 function references(
   text: string,
   elements: readonly Element[],
+  numbers: readonly number[],
   attachments: readonly ComposerAttachment[],
   offset: number,
 ): string {
@@ -77,8 +79,8 @@ function references(
     (token, kind: string, id: string, at: number, whole: string) => {
       let reference = token;
       if (kind === "element") {
-        const n = elements.findIndex((element) => String(elementKey(element)) === id) + 1;
-        reference = n === 0 ? "" : `[element ${n}]`;
+        const n = numbers[elements.findIndex((element) => String(elementKey(element)) === id)];
+        reference = n === undefined ? "" : `[element ${n}]`;
       } else if (kind === "attachment") {
         const index = attachments.findIndex((attachment) => attachment.id === id);
         const attachment = attachments[index];
@@ -92,6 +94,11 @@ function references(
       return `${before}${reference}${after}`;
     },
   );
+}
+
+function sameQuote(a: Quote | undefined, b: Quote | undefined): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  return a.exact === b.exact && a.prefix === b.prefix && a.suffix === b.suffix;
 }
 
 function tidy(text: string): string {
@@ -108,13 +115,13 @@ function tidy(text: string): string {
 function batchText(
   global: string,
   marks: readonly SavedMark[],
-  elements: readonly Element[],
+  numbers: readonly (readonly number[])[],
 ): string {
   const sections = new Map<string, string>();
   let offset = 0;
   for (const [index, mark] of marks.entries()) {
-    const refs = mark.elements.map((element) => elements.indexOf(element) + 1);
-    const prompt = references(mark.prompt, elements, mark.attachments, offset);
+    const refs = numbers[index] ?? [];
+    const prompt = references(mark.prompt, mark.elements, refs, mark.attachments, offset);
     offset += mark.attachments.length;
     sections.set(
       mark.id,
@@ -230,20 +237,26 @@ export function Composer({ batch = false }: { batch?: boolean }) {
             bytes: 0,
           },
         ];
-    // An element in several marks is sent once, with the pick of the first mark.
-    const picked = new Map<Element, Picked>();
-    for (const mark of chosen) {
-      for (const [index, element] of mark.elements.entries()) {
+    // An element in several marks is sent once, with the pick of the first mark. A quote
+    // is its own entry, so marks that quote different text in one element each keep theirs.
+    const elements: Element[] = [];
+    const picks: Picked[] = [];
+    const numbers = chosen.map((mark) =>
+      mark.elements.map((element, index) => {
         const pick = mark.picks[index];
         if (pick === undefined) throw new Error(`Element ${index + 1} of a mark has no pick`);
-        if (!picked.has(element)) picked.set(element, pick);
-      }
-    }
-    const elements = [...picked.keys()];
-    const picks = [...picked.values()];
+        const at = elements.findIndex(
+          (other, n) => other === element && sameQuote(picks[n]?.quote, pick.quote),
+        );
+        if (at !== -1) return at + 1;
+        elements.push(element);
+        picks.push(pick);
+        return elements.length;
+      }),
+    );
     const text = batch
-      ? batchText(current.globalPrompt, chosen, elements)
-      : tidy(references(current.prompt, elements, extra, 0));
+      ? batchText(current.globalPrompt, chosen, numbers)
+      : tidy(references(current.prompt, selection, numbers[0] ?? [], extra, 0));
     if (text.trim() === "") return;
     setError(null);
     ui.set({ busy: true, picking: null });
@@ -338,7 +351,15 @@ export function Composer({ batch = false }: { batch?: boolean }) {
           {
             route: location.pathname,
             viewport: currentViewport(),
-            prompt: tidy(references(prompt, selection, extra, 0)),
+            prompt: tidy(
+              references(
+                prompt,
+                selection,
+                selection.map((_element, index) => index + 1),
+                extra,
+                0,
+              ),
+            ),
             marks: [],
           },
           elements,

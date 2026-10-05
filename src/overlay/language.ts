@@ -8,6 +8,7 @@ const korean = new Map<string, string>(
     "⇧ Multi-select": "⇧ 복수 선택",
     Box: "영역 선택",
     Lasso: "올가미",
+    Text: "텍스트",
     Capture: "캡처",
     Record: "녹화",
     Screenshot: "스크린샷",

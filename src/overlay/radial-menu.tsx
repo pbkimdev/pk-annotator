@@ -6,6 +6,7 @@ import {
   CheckIcon,
   CircleAlertIcon,
   CircleArrowUpIcon,
+  HighlighterIcon,
   HistoryIcon,
   LanguagesIcon,
   LassoSelectIcon,
@@ -329,6 +330,13 @@ function useEntries(tools: Tools): Entry[] {
         icon: LassoSelectIcon,
         checked: picking === "lasso",
         run: () => togglePick("lasso"),
+      },
+      {
+        id: "text",
+        label: t("Text"),
+        icon: HighlighterIcon,
+        checked: picking === "text",
+        run: () => togglePick("text"),
       },
     ]),
     toolGroup(

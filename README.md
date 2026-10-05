@@ -77,13 +77,13 @@ Channels are a Claude Code research preview, and Team and Enterprise organizatio
 
 | Group    | Tools                                               |
 | -------- | --------------------------------------------------- |
-| Pick     | Select (Shift for several), Box, Lasso              |
+| Pick     | Select (Shift for several), Box, Lasso, Text        |
 | Capture  | Screenshot with crop, area recording as GIF or WebM |
 | Annotate | Freehand, Rectangle, Circle                         |
 | Debug    | Console, Network, Performance                       |
 | Settings | History, English/한국어, Exit                       |
 
-Pick and Capture tools open the prompt editor; a finished drawing becomes a screenshot mark stacked for Send. Send at once, or Save marks and send them together. Element and capture badges in the text become `[element n]` and `[attachment n: label]` references for the agent. Without a connected agent, Send also copies the annotation as Markdown.
+Pick and Capture tools open the prompt editor; a finished drawing becomes a screenshot mark stacked for Send. Send at once, or Save marks and send them together. Text highlights the page text you select and sends it as a quote with its element, for fixing that exact wording. Element and capture badges in the text become `[element n]` and `[attachment n: label]` references for the agent. Without a connected agent, Send also copies the annotation as Markdown.
 
 ## CLI
 

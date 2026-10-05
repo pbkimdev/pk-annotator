@@ -39,6 +39,7 @@ import { AgentIcon } from "./agent-icon.tsx";
 import { useOverlay } from "./context.tsx";
 import { useText } from "./language.ts";
 import type { ComposerAttachment } from "./registry.ts";
+import { pickOf } from "./send.ts";
 import { useStore } from "./store.ts";
 import { Button } from "./ui/button.tsx";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card.tsx";
@@ -123,6 +124,13 @@ function ElementBadge({ id, n, element }: { id: string; n: number; element: Elem
   }, [element]);
   const name = location?.component ?? ownerName(element) ?? element.localName;
   const where = location?.source ?? location?.usedAt;
+  const quote = pickOf(element).quote?.exact.replace(/\s+/g, " ").trim();
+  const label =
+    quote !== undefined
+      ? `“${quote.length <= 28 ? quote : `${quote.slice(0, 27)}…`}”`
+      : where === undefined
+        ? name
+        : `${name} ${fileLine(where)}`;
   return (
     <HoverCard openDelay={300}>
       <HoverCardTrigger asChild>
@@ -130,8 +138,8 @@ function ElementBadge({ id, n, element }: { id: string; n: number; element: Elem
           <span className="pka-ref-n" aria-hidden="true">
             {n}
           </span>
-          <span className="pka-ref-label font-mono">
-            {where === undefined ? name : `${name} ${fileLine(where)}`}
+          <span className={quote === undefined ? "pka-ref-label font-mono" : "pka-ref-label"}>
+            {label}
           </span>
           <RemoveButton
             label={`${t("Remove element")} ${n}`}
@@ -146,6 +154,9 @@ function ElementBadge({ id, n, element }: { id: string; n: number; element: Elem
         className="w-80 space-y-1 font-mono text-[11px] leading-4"
       >
         <p className="font-sans text-xs font-semibold">{name}</p>
+        {quote !== undefined && (
+          <p className="line-clamp-4 font-sans text-xs break-words">“{quote}”</p>
+        )}
         {location?.source !== undefined && <p className="break-all">source {location.source}</p>}
         {location?.usedAt !== undefined && <p className="break-all">used at {location.usedAt}</p>}
         {location !== undefined && location.owners.length > 0 && (

@@ -127,6 +127,50 @@ async function checkMarksStayOnRoute(page: Page): Promise<void> {
 }
 
 /** Connects a claude-code pka-mcp session, runs `whileConnected`, and disconnects it. */
+/** Text selects a phrase with the page's own selection and sends it as a quote. */
+async function checkTextQuote(
+  page: Page,
+  choose: (id: string, item: string, role: "menuitem" | "menuitemcheckbox") => Promise<void>,
+  readAnnotations: () => Promise<z.infer<typeof GetResult>["annotation"][]>,
+): Promise<void> {
+  await choose("pick", "Text", "menuitemcheckbox");
+  const phrase = await page.evaluate(() => {
+    const paragraph = [...document.querySelectorAll("p")].find((element) =>
+      element.textContent?.includes("exactly one solution"),
+    );
+    const text = paragraph?.firstChild;
+    if (!(text instanceof Text)) throw new Error("No practice paragraph with the phrase");
+    const range = document.createRange();
+    const at = text.data.indexOf("exactly one solution");
+    range.setStart(text, at);
+    range.setEnd(text, at + "exactly one solution".length);
+    const rect = range.getBoundingClientRect();
+    return { left: rect.left, right: rect.right, y: rect.top + rect.height / 2 };
+  });
+  await page.mouse.move(phrase.left + 1, phrase.y);
+  await page.mouse.down();
+  await page.mouse.move(phrase.right - 1, phrase.y, { steps: 5 });
+  await page.mouse.up();
+  await page.getByTestId("pka-element-ref").filter({ hasText: "“exactly one solution”" }).waitFor();
+  assert.ok(await page.evaluate(() => CSS.highlights.has("pka-quote")));
+  assert.equal(await page.evaluate(() => document.getSelection()?.isCollapsed), true);
+  const quoted = "Practice smoke: say at most one";
+  await page.getByTestId("pka-prompt").focus();
+  await page.keyboard.press("Control+End");
+  await page.keyboard.type(quoted);
+  await page.getByTestId("pka-send").click();
+  await page.getByTestId("pka-panel").waitFor({ state: "detached" });
+  assert.equal(await page.evaluate(() => CSS.highlights.has("pka-quote")), false);
+  const quotedAnnotation = (await readAnnotations()).find((annotation) =>
+    annotation.prompt.endsWith(quoted),
+  );
+  assert.ok(quotedAnnotation);
+  const quote = quotedAnnotation.elements[0]?.quote;
+  assert.equal(quote?.exact, "exactly one solution");
+  assert.equal(quote?.prefix, "Each input has ");
+  assert.match(quotedAnnotation.elements[0]?.source ?? "", /routes\/practice\.tsx:\d+:\d+$/);
+}
+
 async function checkAgentTheme(
   t: TestContext,
   page: Page,
@@ -654,40 +698,41 @@ test(
     await page.keyboard.type(" to Two Sum II {{mark:abc}}");
     await page.getByTestId("pka-send").click();
     await page.getByTestId("pka-panel").waitFor({ state: "detached" });
-    const practiceItems = ListResult.parse(
-      JSON.parse(
-        (
-          await exec(process.execPath, [
-            cli,
-            "--root",
-            workspace,
-            "--json",
-            "list",
-            "--status",
-            "all",
-          ])
-        ).stdout,
-      ),
-    ).items;
-    const practice = await Promise.all(
-      practiceItems.map(
-        async (candidate) =>
-          GetResult.parse(
-            JSON.parse(
-              (
-                await exec(process.execPath, [
-                  cli,
-                  "--root",
-                  workspace,
-                  "--json",
-                  "get",
-                  candidate.id,
-                ])
-              ).stdout,
-            ),
-          ).annotation,
-      ),
-    );
+    const readAnnotations = async () =>
+      Promise.all(
+        ListResult.parse(
+          JSON.parse(
+            (
+              await exec(process.execPath, [
+                cli,
+                "--root",
+                workspace,
+                "--json",
+                "list",
+                "--status",
+                "all",
+              ])
+            ).stdout,
+          ),
+        ).items.map(
+          async (candidate) =>
+            GetResult.parse(
+              JSON.parse(
+                (
+                  await exec(process.execPath, [
+                    cli,
+                    "--root",
+                    workspace,
+                    "--json",
+                    "get",
+                    candidate.id,
+                  ])
+                ).stdout,
+              ),
+            ).annotation,
+        ),
+      );
+    const practice = await readAnnotations();
     const judgedAnnotation = practice.find((annotation) => annotation.prompt.startsWith(judged));
     assert.ok(judgedAnnotation);
     assert.equal(judgedAnnotation.route, "/practice");
@@ -716,6 +761,8 @@ test(
     const pickedAnnotation = practice.find((annotation) => annotation.prompt === picked);
     assert.ok(pickedAnnotation);
     assert.match(pickedAnnotation.elements[0]?.source ?? "", /routes\/practice\.tsx:\d+:\d+$/);
+
+    await checkTextQuote(page, choose, readAnnotations);
 
     // With the agent connected, Send neither copies nor opens the pop-up.
     await page.evaluate(() => sessionStorage.removeItem("pka:copied-hint"));
@@ -984,7 +1031,7 @@ test(
     assert.deepEqual(errors, []);
     assert.deepEqual(consoleErrors, []);
     t.diagnostic(
-      "Direct send, keyboard menu, remembered tools, the Select tip, saved marks, editing, area/full screenshots with crop, persisted drawings, two region GIF/WebM recordings chosen at start, batch send with badges, the clipboard copy and pop-up without an agent, the MCP setup copy, closing on pointer exit, the hub count, the Claude agent theme, the practice page, language, session Exit, the 1.5× stroke position and CLI artifacts passed.",
+      "Direct send, keyboard menu, remembered tools, the Select tip, saved marks, editing, area/full screenshots with crop, persisted drawings, two region GIF/WebM recordings chosen at start, batch send with badges, the clipboard copy and pop-up without an agent, the MCP setup copy, closing on pointer exit, the hub count, the Claude agent theme, the practice page, a text quote, language, session Exit, the 1.5× stroke position and CLI artifacts passed.",
     );
   },
 );

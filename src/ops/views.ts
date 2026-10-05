@@ -79,6 +79,10 @@ export const ElementView = z.strictObject({
   }),
   crop: z.string().optional(),
   text: z.string().optional(),
+  quote: z
+    .strictObject({ exact: z.string(), prefix: z.string(), suffix: z.string() })
+    .optional()
+    .describe("Text the human selected inside the element, with the text just before and after it"),
   nearbyText: z.string().optional(),
   html: z.string().optional(),
   box: Box.optional(),
@@ -176,6 +180,13 @@ function elementView(element: ElementRef, detail: Detail): ElementView {
     crop: element.crop,
     text: optionalPageText(element.text, full ? CAP.text : CAP.short),
   };
+  if (element.quote !== undefined) {
+    view.quote = {
+      exact: pageText(element.quote.exact, full ? CAP.html : CAP.text),
+      prefix: pageText(element.quote.prefix, CAP.short),
+      suffix: pageText(element.quote.suffix, CAP.short),
+    };
+  }
   if (full) {
     view.nearbyText = optionalPageText(element.nearbyText, CAP.text);
     view.html = pageText(element.html, CAP.html);

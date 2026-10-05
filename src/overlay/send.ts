@@ -3,6 +3,7 @@ import type { ViteHotContext } from "vite/types/hot.d.ts";
 import { z } from "zod";
 
 import { describe, preferredLocator, type Description } from "../select/describe.ts";
+import { findQuote } from "../select/quote.ts";
 import { locate } from "../select/source.ts";
 import {
   CHANNEL,
@@ -15,7 +16,7 @@ import {
   UploadReadyMessage,
 } from "../shared/channel.ts";
 import { RECORDING, RecordingManifestDraft } from "../shared/recording.ts";
-import type { Attachment, Box, MarkPage, Viewport } from "../shared/schema.ts";
+import type { Attachment, Box, MarkPage, Quote, Viewport } from "../shared/schema.ts";
 import { listen, send } from "./channel-client.ts";
 import { HOST_TAG } from "./launcher.ts";
 import type { LocatedElement } from "./markdown.ts";
@@ -47,7 +48,7 @@ export function currentViewport(): Viewport {
  * A saved mark keeps its own copies, because a shared layout's element can be picked again
  * on another route.
  */
-export type Picked = { url: string; route: string; description: Description };
+export type Picked = { url: string; route: string; description: Description; quote?: Quote };
 // The picks of the current selection.
 const picked = new WeakMap<Element, Picked>();
 
@@ -58,6 +59,23 @@ export function remember(elements: readonly Element[]): void {
       route: location.pathname,
       description: describe(element),
     });
+}
+
+/** A text selection's pick: its element, described with the selection's box. */
+export function rememberQuote(element: Element, quote: Quote, range: Range): void {
+  const description = describe(element);
+  picked.set(element, {
+    url: location.href,
+    route: location.pathname,
+    description: { ...description, box: boxOf(range) },
+    quote,
+  });
+}
+
+function boxOf(range: Range): Box {
+  const rect = range.getBoundingClientRect();
+  const round = (value: number) => Math.round(value * 10) / 10;
+  return { x: round(rect.x), y: round(rect.y), w: round(rect.width), h: round(rect.height) };
 }
 
 /** Makes a saved mark's picks the current selection's again, for editing it. */
@@ -96,7 +114,12 @@ export async function locateElements(
       if (pick === undefined) throw new Error(`Element ${index + 1} has no pick`);
       const { url, description: remembered } = pick;
       const live = anchor(element, pick);
-      const description = live === null ? remembered : describe(live);
+      let description = live === null ? remembered : describe(live);
+      // A quote the page no longer shows keeps the box of its selection.
+      if (pick.quote !== undefined && live !== null) {
+        const range = findQuote(live, pick.quote);
+        description = { ...description, box: range === null ? remembered.box : boxOf(range) };
+      }
       const location = await locate(live ?? element);
       const located: LocatedElement = {
         n: index + 1,
@@ -110,6 +133,7 @@ export async function locateElements(
       if (location.source !== undefined) located.source = location.source;
       if (location.usedAt !== undefined) located.usedAt = location.usedAt;
       if (description.text !== undefined) located.text = description.text;
+      if (pick.quote !== undefined) located.quote = pick.quote;
       return located;
     }),
   );
@@ -274,10 +298,13 @@ export async function sendAnnotation(
   const located = await locateElements(elements, picks);
   const viewport = currentViewport();
   onPhase({ phase: "capturing" });
-  // Elements off their route or no longer on the page keep their description but get no crop.
+  // Elements off their route or no longer on the page, and quotes the page no longer shows,
+  // keep their description but get no crop.
   const live = elements.map((element, index) => {
     const pick = picks[index];
-    return pick === undefined ? null : anchor(element, pick);
+    const target = pick === undefined ? null : anchor(element, pick);
+    if (target === null || pick?.quote === undefined) return target;
+    return findQuote(target, pick.quote) === null ? null : target;
   });
   const { page, crops } = await capture(located.filter((_ref, index) => live[index] !== null));
 
