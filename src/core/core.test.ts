@@ -6,7 +6,7 @@ import { ErrorGroup } from "../shared/schema.ts";
 import { TimelineEntry } from "../shared/timeline.ts";
 import { fingerprintError } from "./errors.ts";
 import { createCapture, type Capture } from "./index.ts";
-import { MAX_BODY_BYTES, MAX_URL } from "./network.ts";
+import { MAX_BODY_BYTES, MAX_URL, redactBody } from "./network.ts";
 import { MAX_CALL_CHARS } from "./serialize.ts";
 
 let capture: Capture | undefined;
@@ -26,6 +26,25 @@ afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+});
+
+describe("body redaction", () => {
+  it("redacts nested credentials without exposing a body when serialization exceeds the stack", () => {
+    for (const depth of [3000, 9000]) {
+      const body =
+        "[".repeat(depth) + '{"password":"synthetic-secret","safe":"visible"}' + "]".repeat(depth);
+      expect(body.length).toBeLessThan(MAX_BODY_BYTES);
+      const redacted = redactBody(body);
+      expect(redacted).not.toContain("synthetic-secret");
+      expect(redacted).toContain("[redacted");
+      const safe = "[".repeat(depth) + '{"safe":"visible"}' + "]".repeat(depth);
+      expect(redactBody(safe)).toBe(safe);
+    }
+    expect(redactBody('{"safe":"visible","nested":[{"api_key":"synthetic-secret"}]}')).toBe(
+      '{"safe":"visible","nested":[{"api_key":"[redacted]"}]}',
+    );
+    expect(redactBody('{"unfinished":')).toBe('{"unfinished":');
+  });
 });
 
 describe("console capture", () => {

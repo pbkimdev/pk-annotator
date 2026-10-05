@@ -1,5 +1,5 @@
 import type { RequestEntry } from "../shared/timeline.ts";
-import { capString } from "./serialize.ts";
+import { capString, type Json } from "./serialize.ts";
 
 export const MAX_REQUESTS = 500;
 export const MAX_BODY_BYTES = 64 * 1024;
@@ -173,17 +173,37 @@ export function filterHeaders(headers: Headers): HeaderRecord {
 export function redactBody(text: string): string {
   if (!/^\s*[[{]/.test(text)) return text;
   let redacted = false;
-  let parsed: unknown;
+  let parsed: Json;
   try {
-    parsed = JSON.parse(text, (key, value) => {
-      if (!SECRET_JSON_KEY.test(key)) return value;
-      redacted = true;
-      return "[redacted]";
-    });
-  } catch {
-    return text;
+    parsed = JSON.parse(text);
+  } catch (cause) {
+    if (cause instanceof SyntaxError) return text;
+    throw cause;
   }
-  return redacted ? JSON.stringify(parsed) : text;
+  const pending = [parsed];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (Array.isArray(current)) {
+      for (const value of current) pending.push(value);
+      continue;
+    }
+    if (Object.prototype.toString.call(current) !== "[object Object]") continue;
+    // SAFETY: JSON.parse produces only JSON values; this tag excludes its primitives and arrays.
+    const record = current as Record<string, Json | undefined>;
+    for (const [key, value] of Object.entries(record)) {
+      if (SECRET_JSON_KEY.test(key)) {
+        record[key] = "[redacted]";
+        redacted = true;
+      } else if (value !== undefined) pending.push(value);
+    }
+  }
+  if (!redacted) return text;
+  try {
+    return JSON.stringify(parsed);
+  } catch (cause) {
+    if (cause instanceof RangeError) return "[redacted: JSON nesting exceeds serialization limit]";
+    throw cause;
+  }
 }
 
 export function utf8Length(text: string): number {
