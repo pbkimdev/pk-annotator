@@ -28,7 +28,7 @@ Start with [docs/DEVELOPING.md](docs/DEVELOPING.md) for the task map, fixture wo
 - One concern per commit; short messages that say why. Do not push; the driving agent merges and pushes.
 - Run checks and builds only in worktrees; the main checkout serves the live test page.
 - Scratch goes to `/tmp/pk-annotator/`; temporary working notes go to `_interim/` (ignored). Delete scratch you created and stop processes you started before reporting.
-- Never read or print secrets. Never write Infisical, DNS, Tunnel, Traefik, or host-sync.
+- Never read or print secrets. Never write fnox, DNS, Tunnel, Traefik, or host-sync.
 
 ## Commands
 

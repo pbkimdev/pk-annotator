@@ -76,4 +76,4 @@ Forgejo `srv/pk-annotator` is the only writable source. GitHub `pbkimdev/pk-anno
 
 If a tag push starts no GitHub run, or its run failed and the fix is in `publish.yml` itself, run the workflow from GitHub `main` with that tag: `gh workflow run publish.yml -R pbkimdev/pk-annotator -f tag=v<version>`. The run takes the workflow file from `main` but installs, verifies, and publishes the tagged tree, so any other fix needs a new version and tag.
 
-The Forgejo Actions secret `GH_PUBLISH_TOKEN` comes from Infisical `/platform/git/github` `GITHUB_PERSONAL_TOKEN`.
+The Forgejo Actions secret `GH_PUBLISH_TOKEN` comes from fnox `/platform/git/github` `GITHUB_PERSONAL_TOKEN`.
